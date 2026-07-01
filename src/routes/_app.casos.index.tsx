@@ -5,7 +5,7 @@ import { useClients } from "@/hooks/use-clients";
 import { useUploadDocument } from "@/hooks/use-documents";
 import { supabase } from "@/lib/supabase";
 import { Plus, Filter, CalendarClock, AlertTriangle, Search, ChevronDown, X, Loader2, FileUp, FileText } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 
 export const Route = createFileRoute("/_app/casos/")({
   head: () => ({ meta: [{ title: "Casos — CRM Jurídico" }] }),
@@ -39,6 +39,10 @@ function CasesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [expedienteFile, setExpedienteFile] = useState<File | null>(null);
   const expedienteRef = useRef<HTMLInputElement>(null);
+  // Client search state for the modal
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
+  const clientSearchRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     client_id: "",
     expediente: "",
@@ -48,6 +52,16 @@ function CasesPage() {
     juzgado: "",
     next_hearing: "",
   });
+
+  // Filtered clients for the search dropdown
+  const filteredClients = useMemo(() =>
+    clientSearch.trim()
+      ? clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
+      : clients,
+    [clients, clientSearch]
+  );
+
+  const selectedClientName = clients.find(c => c.id === form.client_id)?.name ?? "";
 
   const filtered = cases.filter(c => {
     const matchSearch = !search ||
@@ -82,6 +96,8 @@ function CasesPage() {
 
       setShowModal(false);
       setExpedienteFile(null);
+      setClientSearch("");
+      setClientDropdownOpen(false);
       setForm({ client_id: "", expediente: "", process_type: "", priority: "Media", status: "Consulta", juzgado: "", next_hearing: "" });
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Error al guardar.");
@@ -223,16 +239,71 @@ function CasesPage() {
           <Card className="w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold">Nuevo caso</h3>
-              <button onClick={() => { setShowModal(false); setExpedienteFile(null); }} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"><X className="h-4 w-4" /></button>
+              <button onClick={() => { setShowModal(false); setExpedienteFile(null); setClientSearch(""); setClientDropdownOpen(false); }} className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
-              <div>
+              {/* Cliente con buscador */}
+              <div className="relative">
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cliente *</label>
-                <select value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))} required
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm">
-                  <option value="">Seleccionar cliente...</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="mt-1.5 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <input
+                    ref={clientSearchRef}
+                    type="text"
+                    value={form.client_id ? selectedClientName : clientSearch}
+                    onChange={e => {
+                      setClientSearch(e.target.value);
+                      setForm(f => ({ ...f, client_id: "" }));
+                      setClientDropdownOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (!form.client_id) setClientDropdownOpen(true);
+                    }}
+                    placeholder="Buscar cliente por nombre..."
+                    required={!form.client_id}
+                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+                    autoComplete="off"
+                  />
+                  {form.client_id && (
+                    <button
+                      type="button"
+                      onClick={() => { setForm(f => ({ ...f, client_id: "" })); setClientSearch(""); setClientDropdownOpen(false); setTimeout(() => clientSearchRef.current?.focus(), 0); }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 h-5 w-5 grid place-items-center rounded hover:bg-muted/60 text-muted-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+                {/* Dropdown */}
+                {clientDropdownOpen && !form.client_id && (
+                  <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filteredClients.length === 0 ? (
+                      <div className="px-3 py-3 text-sm text-muted-foreground text-center">Sin resultados</div>
+                    ) : filteredClients.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onMouseDown={() => {
+                          setForm(f => ({ ...f, client_id: c.id }));
+                          setClientSearch("");
+                          setClientDropdownOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/50 text-left text-sm transition"
+                      >
+                        <div className="grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold text-white shrink-0"
+                          style={{ background: c.color ?? "oklch(0.55 0.13 235)" }}>
+                          {c.initials}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{c.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{c.process_type}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Hidden input for form validation */}
+                <input type="text" value={form.client_id} required readOnly className="sr-only" tabIndex={-1} aria-hidden />
               </div>
 
               {/* Expediente number + file attachment */}
@@ -287,14 +358,14 @@ function CasesPage() {
                   </select>
                 </div>
               </div>
-              <CaseField label="Juzgado *" value={form.juzgado} onChange={v => setForm(f => ({ ...f, juzgado: v }))} required />
+              <CaseField label="Juzgado (opcional)" value={form.juzgado} onChange={v => setForm(f => ({ ...f, juzgado: v }))} placeholder="Ej: 1° Juzgado Penal de Lima" />
               <div>
                 <CaseField label="Próxima audiencia (opcional)" value={form.next_hearing} onChange={v => setForm(f => ({ ...f, next_hearing: v }))} type="datetime-local" />
                 <p className="text-[11px] text-muted-foreground mt-1">Puedes dejarla en blanco y asignarla más adelante.</p>
               </div>
               {formError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{formError}</p>}
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => { setShowModal(false); setExpedienteFile(null); }} className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60">Cancelar</button>
+                <button type="button" onClick={() => { setShowModal(false); setExpedienteFile(null); setClientSearch(""); setClientDropdownOpen(false); }} className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60">Cancelar</button>
                 <button type="submit" disabled={saving} className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2">
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                   {saving ? "Guardando..." : "Guardar caso"}

@@ -506,7 +506,7 @@ function AgendaPage() {
                 <AF label="Fecha *"  value={form.event_date} onChange={v => setForm(f => ({ ...f, event_date: v }))} type="date" required />
                 <AF label="Hora *"   value={form.event_time} onChange={v => setForm(f => ({ ...f, event_time: v }))} type="time" required />
               </div>
-              <AF label="Lugar" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} />
+              <AF label="Lugar (opcional)" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} />
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cliente (opcional)</label>
                 <select
