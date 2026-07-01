@@ -9,9 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as GoogleCalendarCallbackRouteImport } from './routes/google-calendar-callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
-import { Route as AppReportesIndexRouteImport } from './routes/_app.reportes.index'
 import { Route as AppPagosIndexRouteImport } from './routes/_app.pagos.index'
 import { Route as AppDocumentosIndexRouteImport } from './routes/_app.documentos.index'
 import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configuracion.index'
@@ -21,6 +22,16 @@ import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoogleCalendarCallbackRoute = GoogleCalendarCallbackRouteImport.update({
+  id: '/google-calendar-callback',
+  path: '/google-calendar-callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -28,11 +39,6 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppReportesIndexRoute = AppReportesIndexRouteImport.update({
-  id: '/reportes/',
-  path: '/reportes/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPagosIndexRoute = AppPagosIndexRouteImport.update({
@@ -78,6 +84,8 @@ const AppCasosIdRoute = AppCasosIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/login': typeof LoginRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
   '/agenda/': typeof AppAgendaIndexRoute
@@ -86,9 +94,10 @@ export interface FileRoutesByFullPath {
   '/configuracion/': typeof AppConfiguracionIndexRoute
   '/documentos/': typeof AppDocumentosIndexRoute
   '/pagos/': typeof AppPagosIndexRoute
-  '/reportes/': typeof AppReportesIndexRoute
 }
 export interface FileRoutesByTo {
+  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/login': typeof LoginRoute
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
@@ -98,11 +107,12 @@ export interface FileRoutesByTo {
   '/configuracion': typeof AppConfiguracionIndexRoute
   '/documentos': typeof AppDocumentosIndexRoute
   '/pagos': typeof AppPagosIndexRoute
-  '/reportes': typeof AppReportesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
+  '/login': typeof LoginRoute
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
   '/_app/clientes/$id': typeof AppClientesIdRoute
@@ -112,12 +122,13 @@ export interface FileRoutesById {
   '/_app/configuracion/': typeof AppConfiguracionIndexRoute
   '/_app/documentos/': typeof AppDocumentosIndexRoute
   '/_app/pagos/': typeof AppPagosIndexRoute
-  '/_app/reportes/': typeof AppReportesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/google-calendar-callback'
+    | '/login'
     | '/casos/$id'
     | '/clientes/$id'
     | '/agenda/'
@@ -126,9 +137,10 @@ export interface FileRouteTypes {
     | '/configuracion/'
     | '/documentos/'
     | '/pagos/'
-    | '/reportes/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/google-calendar-callback'
+    | '/login'
     | '/'
     | '/casos/$id'
     | '/clientes/$id'
@@ -138,10 +150,11 @@ export interface FileRouteTypes {
     | '/configuracion'
     | '/documentos'
     | '/pagos'
-    | '/reportes'
   id:
     | '__root__'
     | '/_app'
+    | '/google-calendar-callback'
+    | '/login'
     | '/_app/'
     | '/_app/casos/$id'
     | '/_app/clientes/$id'
@@ -151,15 +164,30 @@ export interface FileRouteTypes {
     | '/_app/configuracion/'
     | '/_app/documentos/'
     | '/_app/pagos/'
-    | '/_app/reportes/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  GoogleCalendarCallbackRoute: typeof GoogleCalendarCallbackRoute
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/google-calendar-callback': {
+      id: '/google-calendar-callback'
+      path: '/google-calendar-callback'
+      fullPath: '/google-calendar-callback'
+      preLoaderRoute: typeof GoogleCalendarCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -172,13 +200,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/reportes/': {
-      id: '/_app/reportes/'
-      path: '/reportes'
-      fullPath: '/reportes/'
-      preLoaderRoute: typeof AppReportesIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/pagos/': {
@@ -250,7 +271,6 @@ interface AppRouteChildren {
   AppConfiguracionIndexRoute: typeof AppConfiguracionIndexRoute
   AppDocumentosIndexRoute: typeof AppDocumentosIndexRoute
   AppPagosIndexRoute: typeof AppPagosIndexRoute
-  AppReportesIndexRoute: typeof AppReportesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -263,14 +283,25 @@ const AppRouteChildren: AppRouteChildren = {
   AppConfiguracionIndexRoute: AppConfiguracionIndexRoute,
   AppDocumentosIndexRoute: AppDocumentosIndexRoute,
   AppPagosIndexRoute: AppPagosIndexRoute,
-  AppReportesIndexRoute: AppReportesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  GoogleCalendarCallbackRoute: GoogleCalendarCallbackRoute,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

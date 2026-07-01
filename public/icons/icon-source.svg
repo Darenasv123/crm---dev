@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#1e3a5f"/>
+
+  <!-- Gold balance scale (Scales of Justice) -->
+  <!-- Center pole -->
+  <rect x="248" y="140" width="16" height="232" rx="8" fill="#c9a227"/>
+
+  <!-- Top crossbar -->
+  <rect x="148" y="152" width="216" height="14" rx="7" fill="#c9a227"/>
+
+  <!-- Left pan chain -->
+  <line x1="190" y1="166" x2="178" y2="248" stroke="#c9a227" stroke-width="6" stroke-linecap="round"/>
+  <!-- Right pan chain -->
+  <line x1="322" y1="166" x2="334" y2="248" stroke="#c9a227" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Left pan -->
+  <path d="M148 248 Q178 278 208 248" stroke="#c9a227" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Right pan -->
+  <path d="M304 248 Q334 278 364 248" stroke="#c9a227" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- Base -->
+  <rect x="200" y="364" width="112" height="14" rx="7" fill="#c9a227"/>
+  <rect x="220" y="340" width="72" height="28" rx="6" fill="#c9a227"/>
+
+  <!-- "CRM" text below scale -->
+  <text x="256" y="420" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="700"
+        fill="#ffffff" text-anchor="middle" letter-spacing="4">CRM</text>
+</svg>
