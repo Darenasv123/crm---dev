@@ -9,6 +9,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:dry": "npm run build && wrangler deploy --dry-run",
+    "cf:secrets": "wrangler secret put",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -88,6 +91,7 @@
     "sharp": "0.35.2",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "wrangler": "^4.106.0"
   }
 }

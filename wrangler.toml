@@ -1,0 +1,21 @@
+# Wrangler configuration — Estudio Jurídico Arenas CRM
+# Este archivo es para gestión de secrets y configuración del Worker.
+# El deploy usa el wrangler.json generado en .output/server/
+# Comandos útiles:
+#   npm run deploy          → build + deploy a Cloudflare
+#   npm run deploy:dry      → build + dry-run (sin publicar)
+#   npx wrangler secret put VITE_GROQ_API_KEY   → configura un secret en el Worker
+
+name = "darenasv123-advocate-nest"
+compatibility_date = "2026-06-26"
+compatibility_flags = ["nodejs_compat"]
+main = ".output/server/index.mjs"
+no_bundle = true
+
+[assets]
+binding = "ASSETS"
+directory = ".output/public"
+
+[[rules]]
+type = "ESModule"
+globs = ["**/*.mjs", "**/*.js"]

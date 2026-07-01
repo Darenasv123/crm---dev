@@ -1,6 +1,7 @@
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/_app")({
   component: ProtectedLayout,
@@ -8,6 +9,14 @@ export const Route = createFileRoute("/_app")({
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  // Auth resolved and no user — redirect to login
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate({ to: "/login", replace: true });
+    }
+  }, [user, loading, navigate]);
 
   // Show spinner while auth state is being resolved
   if (loading) {
@@ -21,14 +30,8 @@ function ProtectedLayout() {
     );
   }
 
-  // Auth resolved and no user — redirect to login
-  if (!user) {
-    // Use window.location for a hard redirect so there's no router state conflict
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
-    }
-    return null;
-  }
+  // Not authenticated — redirect is in progress, render nothing
+  if (!user) return null;
 
   return <Outlet />;
 }
