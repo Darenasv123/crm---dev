@@ -1,6 +1,6 @@
 # Wrangler configuration — Estudio Jurídico Arenas CRM
 # Nitro genera .output/server/wrangler.json en cada build con main/assets correctos.
 # Este archivo solo define el nombre y compatibilidad para que wrangler lo tome como base.
-name = "darenasv123-advocate-nest"
+name = "crm---dev"
 compatibility_date = "2026-06-26"
 compatibility_flags = ["nodejs_compat"]
