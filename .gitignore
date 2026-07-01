@@ -25,6 +25,9 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Bun lockfile — CI uses npm (packageManager: npm@10.9.2), bun versions differ
+bun.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
