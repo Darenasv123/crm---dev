@@ -6,7 +6,7 @@
 #   npm run deploy:dry      → build + dry-run (sin publicar)
 #   npx wrangler secret put VITE_GROQ_API_KEY   → configura un secret en el Worker
 
-name = "darenasv123-advocate-nest"
+name = "crmabogadosatuservicio"
 compatibility_date = "2026-06-26"
 compatibility_flags = ["nodejs_compat"]
 main = ".output/server/index.mjs"
