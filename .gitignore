@@ -25,8 +25,7 @@ dist-ssr
 .wrangler/
 .dev.vars
 
-# Bun lockfile — CI uses npm (packageManager: npm@10.9.2), bun versions differ
-bun.lock
+# Bun — bunfig.toml is local-only (CI uses npm via package-lock.json detection)
 bunfig.toml
 
 # Editor directories and files
