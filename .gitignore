@@ -25,7 +25,8 @@ dist-ssr
 .wrangler/
 .dev.vars
 
-# Bun — bunfig.toml is local-only (CI uses npm via package-lock.json detection)
+# Bun — lockfile y config son locales, CI usa npm
+bun.lock
 bunfig.toml
 
 # Editor directories and files
