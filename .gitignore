@@ -27,6 +27,7 @@ dist-ssr
 
 # Bun lockfile — CI uses npm (packageManager: npm@10.9.2), bun versions differ
 bun.lock
+bunfig.toml
 
 # Editor directories and files
 .vscode/*
