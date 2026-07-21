@@ -69,8 +69,10 @@ export function useCreateCase() {
           juzgado: payload.juzgado,
           demandante: payload.demandante,
           demandado: payload.demandado,
-          notes: payload.notes,
         };
+        if ("notes" in payload) {
+          (legacyPayload as Record<string, any>).notes = (payload as Record<string, any>).notes;
+        }
         ({ data, error } = await db.from("cases").insert(legacyPayload).select().single());
       }
 
@@ -98,8 +100,10 @@ export function useUpdateCase() {
           ...(updates.juzgado !== undefined && { juzgado: updates.juzgado }),
           ...(updates.demandante !== undefined && { demandante: updates.demandante }),
           ...(updates.demandado !== undefined && { demandado: updates.demandado }),
-          ...(updates.notes !== undefined && { notes: updates.notes }),
         };
+        if ("notes" in updates) {
+          (legacyUpdates as Record<string, any>).notes = (updates as Record<string, any>).notes;
+        }
         ({ data, error } = await db
           .from("cases")
           .update(legacyUpdates)

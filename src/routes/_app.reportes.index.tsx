@@ -147,7 +147,7 @@ function buildPublishedReportData(
     phone: client.phone,
     email: client.email ?? "—",
     processType: client.process_type,
-    category: reportCategoryLabel(report.category),
+    category: reportCategoryLabel(report.category as ReportCategory),
     title: report.title.trim(),
     body: report.body.trim(),
     createdAt: formatPeruDateTime(report.created_at, {
@@ -881,9 +881,9 @@ function CasesBlock({
               <InfoLine label="Juzgado" value={selectedCase.juzgado || "—"} />
               <InfoLine label="Próxima audiencia" value={formatDate(selectedCase.next_hearing)} />
             </div>
-            {selectedCase.notes && (
+            {(selectedCase.current_summary || (selectedCase as Record<string, any>).notes) && (
               <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm whitespace-pre-wrap">
-                {selectedCase.notes}
+                {selectedCase.current_summary || (selectedCase as Record<string, any>).notes}
               </div>
             )}
             <Link
@@ -1058,8 +1058,8 @@ function ReportsFeed({
           visibleReports.map((report) => (
             <article key={report.id} className="min-w-0 rounded-lg border border-border p-3">
               <div className="flex items-start justify-between gap-2">
-                <StatusBadge tone={categoryTone[report.category]}>
-                  {reportCategoryLabel(report.category)}
+                <StatusBadge tone={categoryTone[report.category as ReportCategory] || "default"}>
+                  {reportCategoryLabel(report.category as ReportCategory)}
                 </StatusBadge>
                 <div className="shrink-0 text-right text-[10px] leading-4 text-muted-foreground">
                   <div>{formatDate(report.created_at)}</div>

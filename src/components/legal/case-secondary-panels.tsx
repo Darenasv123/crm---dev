@@ -182,7 +182,7 @@ export function CaseAnalysisPanel({ item }: { item: CaseRow }) {
         <dl className="mt-4 space-y-3">
           <AnalysisRow
             label="Resumen actual"
-            value={item.current_summary || item.notes || "Sin resumen registrado."}
+            value={item.current_summary || (item as Record<string, any>).notes || "Sin resumen registrado."}
           />
           <AnalysisRow
             label="Situación actual"

@@ -239,7 +239,7 @@ export function CaseTasksPanel({ caseId, clientId }: { caseId: string; clientId:
                             : "default"
                     }
                   >
-                    {overdue ? "Vencida" : taskStatusLabel[task.status]}
+                    {overdue ? "Vencida" : taskStatusLabel[task.status as keyof typeof taskStatusLabel] || task.status}
                   </StatusBadge>
                   {profile?.role === "Administrador" && (
                     <button

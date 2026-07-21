@@ -10,17 +10,17 @@ export const reviewDecisionSchema = z.object({
 
 export type ReviewDecision = z.infer<typeof reviewDecisionSchema>;
 
-export function applyReviewDecision<T extends { id: string; value: string; status: string }>(
-  findings: T[],
-  decision: ReviewDecision,
-) {
+export function applyReviewDecision<
+  S extends string,
+  T extends { id: string; value: string; status: S },
+>(findings: T[], decision: ReviewDecision): T[] {
   const parsed = reviewDecisionSchema.parse(decision);
   return findings.map((finding) =>
     finding.id === parsed.findingId
       ? {
           ...finding,
           value: parsed.editedValue ?? finding.value,
-          status: parsed.status,
+          status: parsed.status as S,
           reviewNotes: parsed.notes ?? null,
         }
       : finding,

@@ -39,3 +39,5 @@ bunfig.toml
 *.njsproj
 *.sln
 *.sw?
+
+supabase/.temp/
