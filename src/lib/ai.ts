@@ -1,13 +1,28 @@
 /** Active model via Groq — free tier: 30 RPM, 1000 RPD, no credit card */
+import { PERU_TIME_ZONE } from "./peru-time";
+
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 export interface ChatContext {
   clientsCount: number;
   activeCasesCount: number;
-  todayEvents: Array<{ title: string; time: string; type: string; client?: string }>;
-  upcomingEvents: Array<{ title: string; date: string; time: string; type: string; client?: string }>;
+  todayEvents: Array<{ title: string; time: string; type: string; client?: string; case?: string }>;
+  upcomingEvents: Array<{
+    title: string;
+    date: string;
+    time: string;
+    type: string;
+    client?: string;
+    case?: string;
+  }>;
   recentClients: Array<{ name: string; process_type: string; status: string }>;
-  recentCases?: Array<{ expediente: string; process_type: string; status: string; juzgado: string; client: string }>;
+  recentCases?: Array<{
+    expediente: string;
+    process_type: string;
+    status: string;
+    juzgado: string;
+    client: string;
+  }>;
   pendingPayments?: Array<{ client: string; service: string; pending: number; status: string }>;
 }
 
@@ -18,7 +33,11 @@ export interface ChatHistoryTurn {
 
 export function buildSystemPrompt(ctx: ChatContext): string {
   const todayStr = new Date().toLocaleDateString("es-PE", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    timeZone: PERU_TIME_ZONE,
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 
   return `Eres el asistente jurídico inteligente del Estudio Jurídico Arenas, con sede en Perú. Tu nombre es "Lex". Tienes acceso en tiempo real a los datos del estudio.
@@ -29,6 +48,7 @@ IDENTIDAD Y PERSONALIDAD
 - Nombre: Lex — Asistente Jurídico del Estudio Arenas
 - Tono: profesional, directo, confiable y cálido. Hablas como un colega experto, no como un chatbot genérico.
 - Idioma: siempre en español peruano. Usa términos jurídicos correctos del ordenamiento peruano.
+- Zona horaria obligatoria: Perú (UTC-5, America/Lima). Toda fecha, "hoy", "mañana" y hora de agenda se interpreta en horario peruano.
 - Si no tienes datos suficientes, lo dices claramente en vez de inventar.
 - Nunca repitas el mismo saludo dos veces en una conversación.
 - Si alguien pregunta "¿quién eres?" o "¿qué puedes hacer?", explica tus capacidades de forma clara y concisa.
@@ -41,25 +61,49 @@ DATOS EN TIEMPO REAL DEL ESTUDIO
 📁 Casos activos: ${ctx.activeCasesCount}
 
 🗓️ AGENDA DE HOY (${ctx.todayEvents.length} evento${ctx.todayEvents.length !== 1 ? "s" : ""}):
-${ctx.todayEvents.length > 0
-    ? ctx.todayEvents.map(e => `  • ${e.time} — [${e.type}] ${e.title}${e.client ? ` | Cliente: ${e.client}` : ""}`).join("\n")
-    : "  ✓ Sin compromisos para hoy"}
+${
+  ctx.todayEvents.length > 0
+    ? ctx.todayEvents
+        .map(
+          (e) =>
+            `  • ${e.time} — [${e.type}] ${e.title}${e.client ? ` | Cliente: ${e.client}` : ""}${e.case ? ` | Exp.: ${e.case}` : ""}`,
+        )
+        .join("\n")
+    : "  ✓ Sin compromisos para hoy"
+}
 
 📆 PRÓXIMOS EVENTOS (${ctx.upcomingEvents.length}):
-${ctx.upcomingEvents.length > 0
-    ? ctx.upcomingEvents.map(e => `  • ${e.date} ${e.time} — [${e.type}] ${e.title}${e.client ? ` | ${e.client}` : ""}`).join("\n")
-    : "  Sin eventos próximos programados"}
+${
+  ctx.upcomingEvents.length > 0
+    ? ctx.upcomingEvents
+        .map(
+          (e) =>
+            `  • ${e.date} ${e.time} — [${e.type}] ${e.title}${e.client ? ` | ${e.client}` : ""}${e.case ? ` | Exp.: ${e.case}` : ""}`,
+        )
+        .join("\n")
+    : "  Sin eventos próximos programados"
+}
 
 👤 CLIENTES RECIENTES:
-${ctx.recentClients.length > 0
-    ? ctx.recentClients.map(c => `  • ${c.name} — ${c.process_type} (${c.status})`).join("\n")
-    : "  Sin clientes recientes"}
-${ctx.recentCases && ctx.recentCases.length > 0 ? `
+${
+  ctx.recentClients.length > 0
+    ? ctx.recentClients.map((c) => `  • ${c.name} — ${c.process_type} (${c.status})`).join("\n")
+    : "  Sin clientes recientes"
+}
+${
+  ctx.recentCases && ctx.recentCases.length > 0
+    ? `
 📋 CASOS RECIENTES:
-${ctx.recentCases.map(c => `  • Exp. ${c.expediente} — ${c.process_type} | ${c.status} | ${c.juzgado} | Cliente: ${c.client}`).join("\n")}` : ""}
-${ctx.pendingPayments && ctx.pendingPayments.length > 0 ? `
+${ctx.recentCases.map((c) => `  • Exp. ${c.expediente} — ${c.process_type} | ${c.status} | ${c.juzgado} | Cliente: ${c.client}`).join("\n")}`
+    : ""
+}
+${
+  ctx.pendingPayments && ctx.pendingPayments.length > 0
+    ? `
 💰 PAGOS PENDIENTES:
-${ctx.pendingPayments.map(p => `  • ${p.client} — ${p.service} | Saldo: S/ ${p.pending.toFixed(2)} | ${p.status}`).join("\n")}` : ""}
+${ctx.pendingPayments.map((p) => `  • ${p.client} — ${p.service} | Saldo: S/ ${p.pending.toFixed(2)} | ${p.status}`).join("\n")}`
+    : ""
+}
 
 ═══════════════════════════════
 ESPECIALIZACIÓN JURÍDICA
@@ -160,6 +204,7 @@ FORMATO DE RESPUESTAS
 - Usa listas y estructura cuando ayude a la claridad
 - Para crear eventos en la agenda, responde SOLO con JSON válido (sin texto adicional antes o después):
   {"action":"create_event","title":"...","type":"Audiencia|Cita|Recordatorio","date":"YYYY-MM-DD","time":"HH:MM","location":"..."}
+- El campo "time" de ese JSON siempre debe estar en hora de Perú UTC-5.
 - Al mencionar clientes o casos, usa sus nombres reales del contexto
 - Cuando no haya datos disponibles, di: "No tengo esa información en el sistema actualmente"
 - Para escritos jurídicos, usa formato formal con membrete, asunto, y estructura correcta

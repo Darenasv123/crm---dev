@@ -59,8 +59,12 @@ function LoginPage() {
           <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gold text-gold-foreground shadow-soft mb-4">
             <Scale className="h-7 w-7" strokeWidth={2.2} />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Estudio Jurídico Arenas</h1>
-          <p className="text-sm text-muted-foreground mt-1">Derecho Penal & Familia · Acceso privado</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Estudio Jurídico Arenas
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Derecho Penal & Familia · Acceso privado
+          </p>
         </div>
 
         {/* Card */}
@@ -76,7 +80,7 @@ function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="nombre@abogados.pe"
                 required
                 autoComplete="email"
@@ -92,7 +96,7 @@ function LoginPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="Tu contraseña"
                   required
                   autoComplete="current-password"
@@ -100,7 +104,7 @@ function LoginPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(v => !v)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

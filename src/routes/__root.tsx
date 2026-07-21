@@ -79,7 +79,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Estudio Jurídico Arenas — CRM" },
-      { name: "description", content: "CRM privado del Estudio Jurídico Arenas — Penal & Familia." },
+      {
+        name: "description",
+        content: "CRM privado del Estudio Jurídico Arenas — Penal & Familia.",
+      },
       // PWA / mobile web app
       { name: "application-name", content: "CRM Arenas" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
@@ -95,7 +98,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+      },
       { rel: "stylesheet", href: appCss },
       // PWA manifest
       { rel: "manifest", href: "/manifest.json" },
@@ -105,7 +111,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "apple-touch-icon", sizes: "144x144", href: "/icons/icon-144.png" },
       // Favicon
       { rel: "icon", type: "image/png", sizes: "192x192", href: "/icons/icon-192.png" },
-      { rel: "icon", type: "image/png", sizes: "96x96",  href: "/icons/icon-96.png" },
+      { rel: "icon", type: "image/png", sizes: "96x96", href: "/icons/icon-96.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -134,9 +140,9 @@ function RootComponent() {
   // Register PWA service worker
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js", { scope: "/" })
-        .catch(() => { /* SW registration is best-effort */ });
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+        /* SW registration is best-effort */
+      });
     }
   }, []);
 

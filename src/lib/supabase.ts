@@ -26,7 +26,9 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
  * injected explicitly — required for RLS with new ECC JWT keys.
  */
 export async function getAuthClient() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session?.access_token) return supabase;
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {

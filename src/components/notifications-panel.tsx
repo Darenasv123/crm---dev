@@ -1,7 +1,9 @@
 import { useNotifications } from "@/hooks/use-notifications";
+import type { Notification } from "@/hooks/use-notifications";
 import { Link } from "@tanstack/react-router";
 import { Bell, CalendarDays, Clock, MapPin, X, Gavel, Users, MessageSquare } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { formatPeruDate, getPeruTodayISO } from "@/lib/peru-time";
 
 interface Props {
   open: boolean;
@@ -32,9 +34,9 @@ export function NotificationsPanel({ open, onClose }: Props) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open, onClose]);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEvents = notifications.filter(n => n.date === today);
-  const upcomingEvents = notifications.filter(n => n.date > today);
+  const today = getPeruTodayISO();
+  const todayEvents = notifications.filter((n) => n.date === today);
+  const upcomingEvents = notifications.filter((n) => n.date > today);
 
   if (!open) return null;
 
@@ -53,7 +55,10 @@ export function NotificationsPanel({ open, onClose }: Props) {
             </span>
           )}
         </div>
-        <button onClick={onClose} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-muted/60">
+        <button
+          onClick={onClose}
+          className="h-7 w-7 grid place-items-center rounded-lg hover:bg-muted/60"
+        >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -71,7 +76,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
                 <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30">
                   Hoy
                 </div>
-                {todayEvents.map(n => (
+                {todayEvents.map((n) => (
                   <NotifItem key={n.id} n={n} urgent />
                 ))}
               </div>
@@ -81,7 +86,7 @@ export function NotificationsPanel({ open, onClose }: Props) {
                 <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30">
                   Próximos días
                 </div>
-                {upcomingEvents.map(n => (
+                {upcomingEvents.map((n) => (
                   <NotifItem key={n.id} n={n} />
                 ))}
               </div>
@@ -103,24 +108,42 @@ export function NotificationsPanel({ open, onClose }: Props) {
   );
 }
 
-function NotifItem({ n, urgent }: { n: ReturnType<typeof useNotifications>["data"][0]; urgent?: boolean }) {
+function NotifItem({ n, urgent }: { n: Notification; urgent?: boolean }) {
   const Icon = typeIcon[n.type as keyof typeof typeIcon] ?? Bell;
   const color = typeColor[n.type as keyof typeof typeColor] ?? "bg-muted text-foreground";
 
   return (
-    <div className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition ${urgent ? "bg-amber-50/50" : ""}`}>
+    <div
+      className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-muted/20 transition ${urgent ? "bg-amber-50/50" : ""}`}
+    >
       <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${color}`}>
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
           <div className="text-sm font-semibold truncate">{n.title}</div>
-          {urgent && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 rounded px-1 shrink-0">HOY</span>}
+          {urgent && (
+            <span className="text-[9px] font-bold text-amber-700 bg-amber-100 rounded px-1 shrink-0">
+              HOY
+            </span>
+          )}
         </div>
-        {n.description && <div className="text-xs text-muted-foreground truncate">{n.description}</div>}
+        {n.description && (
+          <div className="text-xs text-muted-foreground truncate">{n.description}</div>
+        )}
         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" /> {n.time}</span>
-          {!urgent && <span className="flex items-center gap-0.5"><CalendarDays className="h-3 w-3" /> {new Date(n.date + "T00:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}</span>}
+          <span className="flex items-center gap-0.5">
+            <Clock className="h-3 w-3" /> {n.time}
+          </span>
+          {!urgent && (
+            <span className="flex items-center gap-0.5">
+              <CalendarDays className="h-3 w-3" />{" "}
+              {formatPeruDate(n.date, {
+                day: "2-digit",
+                month: "short",
+              })}
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -129,7 +152,7 @@ function NotifItem({ n, urgent }: { n: ReturnType<typeof useNotifications>["data
 
 export function NotificationsBell() {
   const { data: notifications = [] } = useNotifications();
-  const urgentCount = notifications.filter(n => n.urgent).length;
+  const urgentCount = notifications.filter((n) => n.urgent).length;
   const totalCount = notifications.length;
 
   return { urgentCount, totalCount };

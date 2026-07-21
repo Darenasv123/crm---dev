@@ -6,12 +6,13 @@ type Payment = Database["public"]["Tables"]["payments"]["Row"];
 type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
 type PaymentRecord = Database["public"]["Tables"]["payment_records"]["Row"];
 type PaymentRecordInsert = Database["public"]["Tables"]["payment_records"]["Insert"];
+type QueryOptions = { enabled?: boolean };
 
 export interface PaymentWithClient extends Payment {
   clients: { name: string } | null;
 }
 
-export function usePayments() {
+export function usePayments(options: QueryOptions = {}) {
   return useQuery({
     queryKey: ["payments"],
     queryFn: async () => {
@@ -23,6 +24,7 @@ export function usePayments() {
       if (error) throw new Error(error.message);
       return data as PaymentWithClient[];
     },
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -48,11 +50,7 @@ export function useCreatePayment() {
   return useMutation({
     mutationFn: async (input: PaymentInsert) => {
       const db = await getAuthClient();
-      const { data, error } = await db
-        .from("payments")
-        .insert(input)
-        .select()
-        .single();
+      const { data, error } = await db.from("payments").insert(input).select().single();
       if (error) throw new Error(error.message);
       return data;
     },

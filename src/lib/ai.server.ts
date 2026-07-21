@@ -1,11 +1,6 @@
 import OpenAI from "openai";
 import { readServerEnv } from "./env-server";
-import {
-  buildSystemPrompt,
-  GROQ_MODEL,
-  type ChatContext,
-  type ChatHistoryTurn,
-} from "./ai";
+import { buildSystemPrompt, GROQ_MODEL, type ChatContext, type ChatHistoryTurn } from "./ai";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
@@ -59,7 +54,7 @@ export async function generateChatResponse(
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: buildSystemPrompt(context) },
-    ...history.map(turn => ({
+    ...history.map((turn) => ({
       role: turn.role as "user" | "assistant",
       content: turn.content,
     })),

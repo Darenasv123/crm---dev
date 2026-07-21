@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getAuthClient } from "@/lib/supabase";
+import type { Database } from "@/lib/database.types";
+import { addDaysToISO, getPeruTodayISO } from "@/lib/peru-time";
 
 export interface Notification {
   id: string;
@@ -11,15 +13,16 @@ export interface Notification {
   urgent: boolean;
 }
 
+type NotificationEventRow = Database["public"]["Tables"]["agenda_events"]["Row"] & {
+  clients?: { name: string } | null;
+};
+
 export function useNotifications() {
   return useQuery({
     queryKey: ["notifications"],
     queryFn: async () => {
-      const today = new Date();
-      const todayISO = today.toISOString().slice(0, 10);
-      const in3Days = new Date(today);
-      in3Days.setDate(in3Days.getDate() + 3);
-      const in3DaysISO = in3Days.toISOString().slice(0, 10);
+      const todayISO = getPeruTodayISO();
+      const in3DaysISO = addDaysToISO(todayISO, 3);
 
       const db = await getAuthClient();
       const { data, error } = await db
@@ -32,13 +35,15 @@ export function useNotifications() {
 
       if (error) throw new Error(error.message);
 
-      return (data ?? []).map(e => ({
+      const events = (data ?? []) as NotificationEventRow[];
+
+      return events.map((e) => ({
         id: e.id,
         type: e.type.toLowerCase() as Notification["type"],
         title: e.title,
         description: (e as { clients?: { name: string } | null }).clients?.name
           ? `Cliente: ${(e as { clients?: { name: string } | null }).clients!.name}${e.location ? ` · ${e.location}` : ""}`
-          : e.location ?? "",
+          : (e.location ?? ""),
         date: e.event_date,
         time: e.event_time,
         urgent: e.event_date === todayISO,

@@ -9,11 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ResonanciaRouteImport } from './routes/resonancia'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as GoogleCalendarCallbackRouteImport } from './routes/google-calendar-callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppRevisionIaIndexRouteImport } from './routes/_app.revision-ia.index'
+import { Route as AppReportesIndexRouteImport } from './routes/_app.reportes.index'
 import { Route as AppPagosIndexRouteImport } from './routes/_app.pagos.index'
+import { Route as AppImportacionesIndexRouteImport } from './routes/_app.importaciones.index'
 import { Route as AppDocumentosIndexRouteImport } from './routes/_app.documentos.index'
 import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configuracion.index'
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
@@ -22,6 +26,11 @@ import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
 
+const ResonanciaRoute = ResonanciaRouteImport.update({
+  id: '/resonancia',
+  path: '/resonancia',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -41,9 +50,24 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRevisionIaIndexRoute = AppRevisionIaIndexRouteImport.update({
+  id: '/revision-ia/',
+  path: '/revision-ia/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppReportesIndexRoute = AppReportesIndexRouteImport.update({
+  id: '/reportes/',
+  path: '/reportes/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPagosIndexRoute = AppPagosIndexRouteImport.update({
   id: '/pagos/',
   path: '/pagos/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportacionesIndexRoute = AppImportacionesIndexRouteImport.update({
+  id: '/importaciones/',
+  path: '/importaciones/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDocumentosIndexRoute = AppDocumentosIndexRouteImport.update({
@@ -86,6 +110,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
+  '/resonancia': typeof ResonanciaRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
   '/agenda/': typeof AppAgendaIndexRoute
@@ -93,11 +118,15 @@ export interface FileRoutesByFullPath {
   '/clientes/': typeof AppClientesIndexRoute
   '/configuracion/': typeof AppConfiguracionIndexRoute
   '/documentos/': typeof AppDocumentosIndexRoute
+  '/importaciones/': typeof AppImportacionesIndexRoute
   '/pagos/': typeof AppPagosIndexRoute
+  '/reportes/': typeof AppReportesIndexRoute
+  '/revision-ia/': typeof AppRevisionIaIndexRoute
 }
 export interface FileRoutesByTo {
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
+  '/resonancia': typeof ResonanciaRoute
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
@@ -106,13 +135,17 @@ export interface FileRoutesByTo {
   '/clientes': typeof AppClientesIndexRoute
   '/configuracion': typeof AppConfiguracionIndexRoute
   '/documentos': typeof AppDocumentosIndexRoute
+  '/importaciones': typeof AppImportacionesIndexRoute
   '/pagos': typeof AppPagosIndexRoute
+  '/reportes': typeof AppReportesIndexRoute
+  '/revision-ia': typeof AppRevisionIaIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
+  '/resonancia': typeof ResonanciaRoute
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
   '/_app/clientes/$id': typeof AppClientesIdRoute
@@ -121,7 +154,10 @@ export interface FileRoutesById {
   '/_app/clientes/': typeof AppClientesIndexRoute
   '/_app/configuracion/': typeof AppConfiguracionIndexRoute
   '/_app/documentos/': typeof AppDocumentosIndexRoute
+  '/_app/importaciones/': typeof AppImportacionesIndexRoute
   '/_app/pagos/': typeof AppPagosIndexRoute
+  '/_app/reportes/': typeof AppReportesIndexRoute
+  '/_app/revision-ia/': typeof AppRevisionIaIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -129,6 +165,7 @@ export interface FileRouteTypes {
     | '/'
     | '/google-calendar-callback'
     | '/login'
+    | '/resonancia'
     | '/casos/$id'
     | '/clientes/$id'
     | '/agenda/'
@@ -136,11 +173,15 @@ export interface FileRouteTypes {
     | '/clientes/'
     | '/configuracion/'
     | '/documentos/'
+    | '/importaciones/'
     | '/pagos/'
+    | '/reportes/'
+    | '/revision-ia/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/google-calendar-callback'
     | '/login'
+    | '/resonancia'
     | '/'
     | '/casos/$id'
     | '/clientes/$id'
@@ -149,12 +190,16 @@ export interface FileRouteTypes {
     | '/clientes'
     | '/configuracion'
     | '/documentos'
+    | '/importaciones'
     | '/pagos'
+    | '/reportes'
+    | '/revision-ia'
   id:
     | '__root__'
     | '/_app'
     | '/google-calendar-callback'
     | '/login'
+    | '/resonancia'
     | '/_app/'
     | '/_app/casos/$id'
     | '/_app/clientes/$id'
@@ -163,17 +208,28 @@ export interface FileRouteTypes {
     | '/_app/clientes/'
     | '/_app/configuracion/'
     | '/_app/documentos/'
+    | '/_app/importaciones/'
     | '/_app/pagos/'
+    | '/_app/reportes/'
+    | '/_app/revision-ia/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   GoogleCalendarCallbackRoute: typeof GoogleCalendarCallbackRoute
   LoginRoute: typeof LoginRoute
+  ResonanciaRoute: typeof ResonanciaRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/resonancia': {
+      id: '/resonancia'
+      path: '/resonancia'
+      fullPath: '/resonancia'
+      preLoaderRoute: typeof ResonanciaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -202,11 +258,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/revision-ia/': {
+      id: '/_app/revision-ia/'
+      path: '/revision-ia'
+      fullPath: '/revision-ia/'
+      preLoaderRoute: typeof AppRevisionIaIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/reportes/': {
+      id: '/_app/reportes/'
+      path: '/reportes'
+      fullPath: '/reportes/'
+      preLoaderRoute: typeof AppReportesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/pagos/': {
       id: '/_app/pagos/'
       path: '/pagos'
       fullPath: '/pagos/'
       preLoaderRoute: typeof AppPagosIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/importaciones/': {
+      id: '/_app/importaciones/'
+      path: '/importaciones'
+      fullPath: '/importaciones/'
+      preLoaderRoute: typeof AppImportacionesIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/documentos/': {
@@ -270,7 +347,10 @@ interface AppRouteChildren {
   AppClientesIndexRoute: typeof AppClientesIndexRoute
   AppConfiguracionIndexRoute: typeof AppConfiguracionIndexRoute
   AppDocumentosIndexRoute: typeof AppDocumentosIndexRoute
+  AppImportacionesIndexRoute: typeof AppImportacionesIndexRoute
   AppPagosIndexRoute: typeof AppPagosIndexRoute
+  AppReportesIndexRoute: typeof AppReportesIndexRoute
+  AppRevisionIaIndexRoute: typeof AppRevisionIaIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -282,7 +362,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppClientesIndexRoute: AppClientesIndexRoute,
   AppConfiguracionIndexRoute: AppConfiguracionIndexRoute,
   AppDocumentosIndexRoute: AppDocumentosIndexRoute,
+  AppImportacionesIndexRoute: AppImportacionesIndexRoute,
   AppPagosIndexRoute: AppPagosIndexRoute,
+  AppReportesIndexRoute: AppReportesIndexRoute,
+  AppRevisionIaIndexRoute: AppRevisionIaIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -291,6 +374,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   GoogleCalendarCallbackRoute: GoogleCalendarCallbackRoute,
   LoginRoute: LoginRoute,
+  ResonanciaRoute: ResonanciaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

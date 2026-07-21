@@ -8,14 +8,14 @@
  * Los eventos del CRM llevan extendedProperties.private.crmEventId = agenda_events.id
  */
 
-const GOOGLE_CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-const SCOPES =
-  "https://www.googleapis.com/auth/calendar.events";
-const STORAGE_KEY  = "gcal_access_token";
-const EXPIRY_KEY   = "gcal_token_expiry";
-const CALENDAR_ID  = "primary";
-const TIMEZONE     = "America/Lima";
+import { PERU_TIME_ZONE, PERU_UTC_OFFSET } from "./peru-time";
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const SCOPES = "https://www.googleapis.com/auth/calendar.events";
+const STORAGE_KEY = "gcal_access_token";
+const EXPIRY_KEY = "gcal_token_expiry";
+const CALENDAR_ID = "primary";
+const TIMEZONE = PERU_TIME_ZONE;
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ function getRedirectUri(): string {
 
 export function isGoogleCalendarConnected(): boolean {
   if (typeof window === "undefined") return false;
-  const token  = localStorage.getItem(STORAGE_KEY);
+  const token = localStorage.getItem(STORAGE_KEY);
   const expiry = localStorage.getItem(EXPIRY_KEY);
   if (!token || !expiry) return false;
   return Date.now() < Number(expiry);
@@ -43,36 +43,29 @@ export function disconnectGoogleCalendar(): void {
 
 export function initiateGoogleOAuth(): void {
   if (!GOOGLE_CLIENT_ID) {
-    alert(
-      "Configura VITE_GOOGLE_CLIENT_ID en .env\n" +
-      "URI de redirección: " + getRedirectUri()
-    );
+    alert("Configura VITE_GOOGLE_CLIENT_ID en .env\n" + "URI de redirección: " + getRedirectUri());
     return;
   }
   const params = new URLSearchParams({
-    client_id:     GOOGLE_CLIENT_ID,
-    redirect_uri:  getRedirectUri(),
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: getRedirectUri(),
     response_type: "token",
-    scope:         SCOPES,
-    prompt:        "select_account",
+    scope: SCOPES,
+    prompt: "select_account",
   });
-  window.location.href =
-    `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
 export function handleGoogleOAuthCallback(): boolean {
   if (typeof window === "undefined") return false;
   const hash = window.location.hash.substring(1);
   if (!hash) return false;
-  const params    = new URLSearchParams(hash);
-  const token     = params.get("access_token");
+  const params = new URLSearchParams(hash);
+  const token = params.get("access_token");
   const expiresIn = params.get("expires_in");
   if (!token) return false;
   localStorage.setItem(STORAGE_KEY, token);
-  localStorage.setItem(
-    EXPIRY_KEY,
-    String(Date.now() + (Number(expiresIn ?? 3600) - 60) * 1000)
-  );
+  localStorage.setItem(EXPIRY_KEY, String(Date.now() + (Number(expiresIn ?? 3600) - 60) * 1000));
   window.history.replaceState(null, "", window.location.pathname);
   return true;
 }
@@ -80,58 +73,80 @@ export function handleGoogleOAuthCallback(): boolean {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GCalEvent {
-  id:           string;       // CRM uuid
-  gcalId?:      string | null; // Google Calendar event id (si ya existe)
-  title:        string;
-  type:         string;
-  event_date:   string;       // YYYY-MM-DD
-  event_time:   string;       // HH:MM
-  location:     string | null;
-  client?:      string | null;
+  id: string; // CRM uuid
+  gcalId?: string | null; // Google Calendar event id (si ya existe)
+  title: string;
+  type: string;
+  event_date: string; // YYYY-MM-DD
+  event_time: string; // HH:MM
+  location: string | null;
+  client?: string | null;
+  case?: string | null;
 }
 
 /** Evento importado desde Google que no existe aún en el CRM */
 export interface GCalImportedEvent {
-  gcalId:     string;
-  title:      string;
+  gcalId: string;
+  title: string;
   event_date: string;
   event_time: string;
-  location:   string | null;
+  location: string | null;
 }
 
 // ─── Helpers de formato ───────────────────────────────────────────────────────
 
-function pad(n: number) { return String(n).padStart(2, "0"); }
+function pad(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function peruParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  return Object.fromEntries(parts.map((part) => [part.type, part.value])) as Record<string, string>;
+}
 
 function toDateTimeParts(date: string, time: string) {
-  const [y, m, d]   = date.split("-").map(Number);
-  const [hh, mm]    = time.split(":").map(Number);
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
   const start = `${y}-${pad(m)}-${pad(d)}T${pad(hh)}:${pad(mm)}:00`;
-  const endDt = new Date(y, m - 1, d, hh + 1, mm);
-  const end   = `${endDt.getFullYear()}-${pad(endDt.getMonth()+1)}-${pad(endDt.getDate())}T${pad(endDt.getHours())}:${pad(endDt.getMinutes())}:00`;
+  const endDt = new Date(
+    new Date(`${date}T${pad(hh)}:${pad(mm)}:00${PERU_UTC_OFFSET}`).getTime() + 60 * 60 * 1000,
+  );
+  const endParts = peruParts(endDt);
+  const end = `${endParts.year}-${endParts.month}-${endParts.day}T${endParts.hour}:${endParts.minute}:00`;
   return { start, end };
 }
 
 function toGCalBody(ev: GCalEvent): object {
   const { start, end } = toDateTimeParts(ev.event_date, ev.event_time);
+  const description = [
+    ev.client ? `Cliente: ${ev.client}` : null,
+    ev.case ? `Expediente: ${ev.case}` : null,
+    `Tipo: ${ev.type}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return {
-    summary:  ev.title,
+    summary: ev.title,
     location: ev.location ?? undefined,
-    description: ev.client
-      ? `Cliente: ${ev.client}\nTipo: ${ev.type}`
-      : `Tipo: ${ev.type}`,
+    description,
     start: { dateTime: start, timeZone: TIMEZONE },
-    end:   { dateTime: end,   timeZone: TIMEZONE },
+    end: { dateTime: end, timeZone: TIMEZONE },
     extendedProperties: { private: { crmEventId: ev.id } },
   };
 }
 
 // ─── Error handler ────────────────────────────────────────────────────────────
 
-async function gcalFetch(
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> {
+async function gcalFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = getGoogleAccessToken();
   if (!token) throw new Error("Token de Google expirado. Reconecta en Configuración.");
   const res = await fetch(url, {
@@ -155,13 +170,13 @@ async function gcalFetch(
 export async function createGCalEvent(ev: GCalEvent): Promise<string> {
   const res = await gcalFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`,
-    { method: "POST", body: JSON.stringify(toGCalBody(ev)) }
+    { method: "POST", body: JSON.stringify(toGCalBody(ev)) },
   );
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     throw new Error(`Google Calendar: ${err?.error?.message ?? res.statusText}`);
   }
-  const data = await res.json() as { id: string };
+  const data = (await res.json()) as { id: string };
   return data.id;
 }
 
@@ -171,10 +186,10 @@ export async function createGCalEvent(ev: GCalEvent): Promise<string> {
 export async function updateGCalEvent(gcalId: string, ev: GCalEvent): Promise<void> {
   const res = await gcalFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(gcalId)}`,
-    { method: "PUT", body: JSON.stringify(toGCalBody(ev)) }
+    { method: "PUT", body: JSON.stringify(toGCalBody(ev)) },
   );
   if (!res.ok && res.status !== 404) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     throw new Error(`Google Calendar (update): ${err?.error?.message ?? res.statusText}`);
   }
 }
@@ -185,10 +200,10 @@ export async function updateGCalEvent(gcalId: string, ev: GCalEvent): Promise<vo
 export async function deleteGCalEvent(gcalId: string): Promise<void> {
   const res = await gcalFetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/${encodeURIComponent(gcalId)}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
   if (!res.ok && res.status !== 404 && res.status !== 410) {
-    const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
+    const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
     throw new Error(`Google Calendar (delete): ${err?.error?.message ?? res.statusText}`);
   }
 }
@@ -196,48 +211,66 @@ export async function deleteGCalEvent(gcalId: string): Promise<void> {
 // ─── Google → CRM : listar eventos ───────────────────────────────────────────
 
 interface RawGCalEvent {
-  id:          string;
-  summary?:    string;
-  location?:   string;
-  start?:      { dateTime?: string; date?: string };
-  status?:     string;
+  id: string;
+  summary?: string;
+  location?: string;
+  updated?: string; // ISO timestamp de última modificación en Google
+  start?: { dateTime?: string; date?: string };
+  status?: string;
   extendedProperties?: { private?: { crmEventId?: string } };
 }
 
 /** Lista eventos de Google Calendar en el rango dado.
  *  Maneja paginación automáticamente (nextPageToken). */
-export async function fetchGCalEvents(
-  timeMin: Date,
-  timeMax: Date
-): Promise<RawGCalEvent[]> {
+export async function fetchGCalEvents(timeMin: Date, timeMax: Date): Promise<RawGCalEvent[]> {
   const all: RawGCalEvent[] = [];
   let pageToken: string | undefined;
 
   do {
     const params = new URLSearchParams({
-      timeMin:      timeMin.toISOString(),
-      timeMax:      timeMax.toISOString(),
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      timeZone: TIMEZONE,
       singleEvents: "true",
-      maxResults:   "2500",
-      orderBy:      "startTime",
+      maxResults: "2500",
+      orderBy: "startTime",
     });
     if (pageToken) params.set("pageToken", pageToken);
 
     const res = await gcalFetch(
-      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?${params}`
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events?${params}`,
     );
-    if (!res.ok) break;
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      throw new Error(`Google Calendar: ${err?.error?.message ?? res.statusText}`);
+    }
 
-    const data = await res.json() as {
+    const data = (await res.json()) as {
       items?: RawGCalEvent[];
       nextPageToken?: string;
     };
-    const items = (data.items ?? []).filter(e => e.status !== "cancelled");
+    const items = (data.items ?? []).filter((e) => e.status !== "cancelled");
     all.push(...items);
     pageToken = data.nextPageToken;
   } while (pageToken);
 
   return all;
+}
+
+// ─── Helper compartido: parsear start de GCal a {event_date, event_time} ─────
+
+export function parseGCalStart(rawStart?: string): { event_date: string; event_time: string } {
+  if (!rawStart) return { event_date: "", event_time: "09:00" };
+
+  if (rawStart.includes("T")) {
+    const parts = peruParts(new Date(rawStart));
+    return {
+      event_date: `${parts.year}-${parts.month}-${parts.day}`,
+      event_time: `${parts.hour}:${parts.minute}`,
+    };
+  }
+
+  return { event_date: rawStart.slice(0, 10), event_time: "09:00" };
 }
 
 // ─── Google → CRM : importar eventos nuevos ──────────────────────────────────
@@ -250,40 +283,58 @@ export async function fetchGCalEvents(
 export async function getNewGCalEvents(): Promise<GCalImportedEvent[]> {
   // Todo el historial: 10 años atrás hasta 5 años adelante
   const timeMin = new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000);
-  const timeMax = new Date(Date.now() +  5 * 365 * 24 * 60 * 60 * 1000);
+  const timeMax = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000);
 
   const events = await fetchGCalEvents(timeMin, timeMax);
 
   return events
-    .filter(e => !e.extendedProperties?.private?.crmEventId) // solo los que NO vienen del CRM
-    .map(e => {
+    .filter((e) => !e.extendedProperties?.private?.crmEventId) // solo los que NO vienen del CRM
+    .map((e) => {
       const rawStart = e.start?.dateTime ?? e.start?.date ?? "";
-
-      let event_date = rawStart.slice(0, 10); // "YYYY-MM-DD"
-      let event_time = "09:00";
-
-      if (rawStart.includes("T")) {
-        // Convertir a hora local de Lima (America/Lima = UTC-5, sin DST)
-        const dt = new Date(rawStart);
-        // getHours/getMinutes usa la zona horaria LOCAL del navegador.
-        // Forzamos a Lima (UTC-5) sin depender del sistema operativo.
-        const limaOffset = -5 * 60; // minutos
-        const utcMinutes = dt.getTime() / 60000 - dt.getTimezoneOffset();
-        const limaMinutes = utcMinutes + limaOffset;
-        const limaDate = new Date(limaMinutes * 60000);
-        const hh = String(limaDate.getUTCHours()).padStart(2, "0");
-        const mm = String(limaDate.getUTCMinutes()).padStart(2, "0");
-        event_time = `${hh}:${mm}`;
-        // Recalcular date desde Lima también
-        event_date = limaDate.toISOString().slice(0, 10);
-      }
-
+      const { event_date, event_time } = parseGCalStart(rawStart);
       return {
-        gcalId:     e.id,
-        title:      e.summary ?? "Evento sin título",
+        gcalId: e.id,
+        title: e.summary ?? "Evento sin título",
         event_date,
         event_time,
-        location:   e.location ?? null,
+        location: e.location ?? null,
+      };
+    });
+}
+
+// ─── Google → CRM : detectar eventos editados en Google ──────────────────────
+
+/** Tipo que describe un evento de Google que tiene crmEventId y sus campos actuales */
+export interface GCalUpdatedEvent {
+  gcalId: string;
+  crmId: string; // agenda_events.id original
+  title: string;
+  event_date: string;
+  event_time: string;
+  location: string | null;
+}
+
+/**
+ * Devuelve los eventos de Google Calendar que vinieron del CRM (tienen crmEventId)
+ * con sus campos actuales — el llamador decide cuáles difieren de Supabase y actualiza.
+ */
+export async function getUpdatedGCalEvents(): Promise<GCalUpdatedEvent[]> {
+  const timeMin = new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000);
+  const timeMax = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000);
+  const events = await fetchGCalEvents(timeMin, timeMax);
+
+  return events
+    .filter((e) => !!e.extendedProperties?.private?.crmEventId) // solo los que vienen del CRM
+    .map((e) => {
+      const rawStart = e.start?.dateTime ?? e.start?.date ?? "";
+      const { event_date, event_time } = parseGCalStart(rawStart);
+      return {
+        gcalId: e.id,
+        crmId: e.extendedProperties!.private!.crmEventId!,
+        title: e.summary ?? "Evento sin título",
+        event_date,
+        event_time,
+        location: e.location ?? null,
       };
     });
 }
@@ -292,15 +343,15 @@ export async function getNewGCalEvents(): Promise<GCalImportedEvent[]> {
 
 export async function syncAllEventsToGoogle(
   events: GCalEvent[],
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ success: number; errors: number; gcalIds: Record<string, string> }> {
   let success = 0;
-  let errors  = 0;
+  let errors = 0;
   const gcalIds: Record<string, string> = {}; // crmId → gcalId
 
   // Rango completo: 10 años atrás hasta 5 años adelante — cubre todo el historial
   const timeMin = new Date(Date.now() - 10 * 365 * 24 * 60 * 60 * 1000);
-  const timeMax = new Date(Date.now() +  5 * 365 * 24 * 60 * 60 * 1000);
+  const timeMax = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000);
   const existing = await fetchGCalEvents(timeMin, timeMax);
 
   const crmIdToGcalId = new Map<string, string>();
@@ -327,7 +378,7 @@ export async function syncAllEventsToGoogle(
     } catch {
       errors++;
     }
-    await new Promise(r => setTimeout(r, 120)); // rate limit
+    await new Promise((r) => setTimeout(r, 120)); // rate limit
   }
 
   onProgress?.(events.length, events.length);

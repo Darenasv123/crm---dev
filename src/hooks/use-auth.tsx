@@ -25,11 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authResolved = useRef(false);
 
   async function fetchProfile(userId: string) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .single();
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     setProfile(data ?? null);
   }
 
@@ -37,7 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Register the listener BEFORE calling getSession to avoid missing events.
     // onAuthStateChange fires an INITIAL_SESSION event synchronously on mount
     // which sets the initial auth state and marks loading as done.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
 

@@ -7,6 +7,7 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { useAgendaEvents, useCreateAgendaEvent } from "@/hooks/use-agenda";
+import { getPeruTodayISO } from "@/lib/peru-time";
 
 interface Message {
   role: "user" | "assistant";
@@ -40,16 +41,17 @@ export function Chatbot() {
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
+  const isAdmin = profile?.role === "Administrador";
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
-  const { data: payments = [] } = usePayments();
+  const { data: payments = [] } = usePayments({ enabled: isAdmin });
   const { data: events = [] } = useAgendaEvents();
   const createEvent = useCreateAgendaEvent();
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEvents = events.filter(e => e.event_date === today);
-  const upcomingEvents = events.filter(e => e.event_date > today).slice(0, 10);
+  const today = getPeruTodayISO();
+  const todayEvents = events.filter((e) => e.event_date === today);
+  const upcomingEvents = events.filter((e) => e.event_date > today).slice(0, 10);
 
   useEffect(() => {
     if (!open) return;
@@ -60,15 +62,17 @@ export function Chatbot() {
         if (cancelled) return;
         setAiReady(configured);
         setApiKeyMissing(!configured);
-        setMessages(prev => {
+        setMessages((prev) => {
           if (prev.length > 0) return prev;
-          return [{
-            role: "assistant",
-            content: configured
-              ? WELCOME_CONFIGURED
-              : `¡Hola! Soy tu asistente jurídico 👋\n\n⚠️ ${error ?? "Falta configurar GROQ_API_KEY en el servidor."}`,
-            timestamp: new Date(),
-          }];
+          return [
+            {
+              role: "assistant",
+              content: configured
+                ? WELCOME_CONFIGURED
+                : `¡Hola! Soy tu asistente jurídico 👋\n\n⚠️ ${error ?? "Falta configurar GROQ_API_KEY en el servidor."}`,
+              timestamp: new Date(),
+            },
+          ];
         });
       })
       .catch(() => {
@@ -77,7 +81,9 @@ export function Chatbot() {
           setApiKeyMissing(true);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   useEffect(() => {
@@ -87,36 +93,41 @@ export function Chatbot() {
   function buildContext(): ChatContext {
     return {
       clientsCount: clients.length,
-      activeCasesCount: cases.filter(c => c.status !== "Archivado").length,
-      todayEvents: todayEvents.map(e => ({
+      activeCasesCount: cases.filter((c) => c.status !== "Archivado").length,
+      todayEvents: todayEvents.map((e) => ({
         title: e.title,
         time: e.event_time,
         type: e.type,
         client: (e as { clients?: { name: string } | null }).clients?.name,
+        case: (e as { cases?: { expediente: string } | null }).cases?.expediente,
       })),
-      upcomingEvents: upcomingEvents.map(e => ({
+      upcomingEvents: upcomingEvents.map((e) => ({
         title: e.title,
         date: e.event_date,
         time: e.event_time,
         type: e.type,
         client: (e as { clients?: { name: string } | null }).clients?.name,
+        case: (e as { cases?: { expediente: string } | null }).cases?.expediente,
       })),
-      recentClients: clients.slice(0, 8).map(c => ({
+      recentClients: clients.slice(0, 8).map((c) => ({
         name: c.name,
         process_type: c.process_type,
         status: c.status,
       })),
-      recentCases: cases.filter(c => c.status !== "Archivado").slice(0, 8).map(c => ({
-        expediente: c.expediente,
-        process_type: c.process_type,
-        status: c.status,
-        juzgado: c.juzgado,
-        client: (c as { clients?: { name: string } | null }).clients?.name ?? "—",
-      })),
+      recentCases: cases
+        .filter((c) => c.status !== "Archivado")
+        .slice(0, 8)
+        .map((c) => ({
+          expediente: c.expediente,
+          process_type: c.process_type,
+          status: c.status,
+          juzgado: c.juzgado,
+          client: (c as { clients?: { name: string } | null }).clients?.name ?? "—",
+        })),
       pendingPayments: payments
-        .filter(p => p.status !== "Pagado")
+        .filter((p) => p.status !== "Pagado")
         .slice(0, 6)
-        .map(p => ({
+        .map((p) => ({
           client: (p as { clients?: { name: string } | null }).clients?.name ?? "—",
           service: p.service,
           pending: Number(p.fees) - Number(p.paid),
@@ -126,9 +137,7 @@ export function Chatbot() {
   }
 
   function buildHistory(priorMessages: Message[]): ChatHistoryTurn[] {
-    return priorMessages
-      .slice(1)
-      .map(m => ({ role: m.role, content: m.content }));
+    return priorMessages.slice(1).map((m) => ({ role: m.role, content: m.content }));
   }
 
   async function handleSend(text?: string) {
@@ -137,26 +146,33 @@ export function Chatbot() {
 
     const accessToken = session?.access_token;
     if (!accessToken) {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "❌ Sesión expirada. Cierra sesión e ingresa de nuevo.",
-        timestamp: new Date(),
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "❌ Sesión expirada. Cierra sesión e ingresa de nuevo.",
+          timestamp: new Date(),
+        },
+      ]);
       return;
     }
 
     setInput("");
     const priorMessages = messages;
-    setMessages(prev => [...prev, { role: "user", content: msg, timestamp: new Date() }]);
+    setMessages((prev) => [...prev, { role: "user", content: msg, timestamp: new Date() }]);
     setLoading(true);
 
     try {
       if (apiKeyMissing) {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: "⚠️ Falta configurar GROQ_API_KEY en el servidor. Revisa `.env` y reinicia el servidor.",
-          timestamp: new Date(),
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "⚠️ Falta configurar GROQ_API_KEY en el servidor. Revisa `.env` y reinicia el servidor.",
+            timestamp: new Date(),
+          },
+        ]);
         return;
       }
 
@@ -182,24 +198,35 @@ export function Chatbot() {
               location: action.location ?? null,
               client_id: null,
             });
-            setMessages(prev => [...prev, {
-              role: "assistant",
-              content: `✅ Evento creado: **${action.title}** el ${action.date} a las ${action.time}. Puedes verlo en la agenda.`,
-              timestamp: new Date(),
-            }]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `✅ Evento creado: **${action.title}** el ${action.date} a las ${action.time}. Puedes verlo en la agenda.`,
+                timestamp: new Date(),
+              },
+            ]);
             return;
           }
-        } catch { /* fallthrough */ }
+        } catch {
+          /* fallthrough */
+        }
       }
 
-      setMessages(prev => [...prev, { role: "assistant", content: responseText, timestamp: new Date() }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: responseText, timestamp: new Date() },
+      ]);
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "Error al conectar con el asistente.";
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: raw.startsWith("❌") ? raw : `❌ ${raw}`,
-        timestamp: new Date(),
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: raw.startsWith("❌") ? raw : `❌ ${raw}`,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -215,7 +242,7 @@ export function Chatbot() {
   return (
     <>
       <button
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         className={`fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
           ${open ? "bg-muted text-foreground" : "bg-primary text-primary-foreground hover:brightness-110"}`}
         title="Asistente jurídico"
@@ -232,26 +259,43 @@ export function Chatbot() {
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-white">Asistente Jurídico</div>
               <div className="text-[11px] text-white/70 flex items-center gap-1">
-                <span className={`h-1.5 w-1.5 rounded-full ${apiKeyMissing ? "bg-amber-400" : "bg-emerald-400"}`} />
-                {apiKeyMissing ? "API key no configurada" : "Powered by Groq · Llama 3.3"}
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${apiKeyMissing ? "bg-amber-400" : "bg-emerald-400"}`}
+                />
+                {apiKeyMissing ? "API key no configurada" : "Groq · Llama 3.3 · UTC-5 Perú"}
               </div>
             </div>
-            <button onClick={() => setOpen(false)} className="h-8 w-8 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition">
+            <button
+              onClick={() => setOpen(false)}
+              className="h-8 w-8 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition"
+            >
               <X className="h-4 w-4 text-white" />
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 max-h-[400px]">
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-2.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-                <div className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold
-                  ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                  {m.role === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
+              <div
+                key={i}
+                className={`flex gap-2.5 ${m.role === "user" ? "flex-row-reverse" : ""}`}
+              >
+                <div
+                  className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[10px] font-bold
+                  ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                >
+                  {m.role === "user" ? (
+                    <User className="h-3.5 w-3.5" />
+                  ) : (
+                    <Bot className="h-3.5 w-3.5" />
+                  )}
                 </div>
-                <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
-                  ${m.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-tr-sm"
-                    : "bg-muted text-foreground rounded-tl-sm"}`}
+                <div
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap
+                  ${
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-tr-sm"
+                      : "bg-muted text-foreground rounded-tl-sm"
+                  }`}
                 >
                   {m.content}
                 </div>
@@ -274,7 +318,7 @@ export function Chatbot() {
 
           {messages.length <= 1 && !apiKeyMissing && (
             <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-              {QUICK_PROMPTS.map(p => (
+              {QUICK_PROMPTS.map((p) => (
                 <button
                   key={p}
                   onClick={() => handleSend(p)}
@@ -290,7 +334,7 @@ export function Chatbot() {
           <div className="flex items-end gap-2 px-4 py-3 border-t border-border">
             <textarea
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Escribe un mensaje..."
               rows={1}
@@ -303,7 +347,11 @@ export function Chatbot() {
               disabled={!input.trim() || loading || apiKeyMissing}
               className="h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-40 transition"
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>

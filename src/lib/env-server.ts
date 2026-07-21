@@ -16,10 +16,5 @@ export function readServerEnv(name: string): string {
     (typeof meta[name] === "string" ? meta[name] : undefined) ??
     (typeof meta[viteName] === "string" ? meta[viteName] : undefined);
 
-  return (
-    fromMeta ??
-    process.env[name] ??
-    process.env[viteName] ??
-    ""
-  ).trim();
+  return (fromMeta ?? process.env[name] ?? process.env[viteName] ?? "").trim();
 }

@@ -11,6 +11,9 @@
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "deploy:dry": "npm run build && wrangler deploy --dry-run",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo:verify": "vitest run tests/mock-providers.test.ts tests/ai-review.test.ts",
     "cf:secrets": "wrangler secret put",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -76,10 +79,10 @@
   "optionalDependencies": {
     "@rolldown/binding-linux-x64-gnu": "1.1.4",
     "@rolldown/binding-linux-x64-musl": "1.1.4",
-    "lightningcss-linux-x64-gnu": "1.32.0",
-    "lightningcss-linux-x64-musl": "1.32.0",
     "@tailwindcss/oxide-linux-x64-gnu": "4.3.2",
-    "@tailwindcss/oxide-linux-x64-musl": "4.3.2"
+    "@tailwindcss/oxide-linux-x64-musl": "4.3.2",
+    "lightningcss-linux-x64-gnu": "1.32.0",
+    "lightningcss-linux-x64-musl": "1.32.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
@@ -100,6 +103,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.16",
+    "vitest": "^3.2.6",
     "wrangler": "^4.106.0"
   }
 }

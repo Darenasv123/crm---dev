@@ -8,37 +8,53 @@ import { generateChatResponse, formatGroqError } from "./ai.server";
 const chatContextSchema = z.object({
   clientsCount: z.number(),
   activeCasesCount: z.number(),
-  todayEvents: z.array(z.object({
-    title: z.string(),
-    time: z.string(),
-    type: z.string(),
-    client: z.string().optional(),
-  })),
-  upcomingEvents: z.array(z.object({
-    title: z.string(),
-    date: z.string(),
-    time: z.string(),
-    type: z.string(),
-    client: z.string().optional(),
-  })),
-  recentClients: z.array(z.object({
-    name: z.string(),
-    process_type: z.string(),
-    status: z.string(),
-  })),
-  recentCases: z.array(z.object({
-    expediente: z.string(),
-    process_type: z.string(),
-    status: z.string(),
-    juzgado: z.string(),
-    client: z.string(),
-  })).optional(),
-  pendingPayments: z.array(z.object({
-    client: z.string(),
-    service: z.string(),
-    pending: z.number(),
-    status: z.string(),
-  })).optional(),
+  todayEvents: z.array(
+    z.object({
+      title: z.string(),
+      time: z.string(),
+      type: z.string(),
+      client: z.string().optional(),
+      case: z.string().optional(),
+    }),
+  ),
+  upcomingEvents: z.array(
+    z.object({
+      title: z.string(),
+      date: z.string(),
+      time: z.string(),
+      type: z.string(),
+      client: z.string().optional(),
+      case: z.string().optional(),
+    }),
+  ),
+  recentClients: z.array(
+    z.object({
+      name: z.string(),
+      process_type: z.string(),
+      status: z.string(),
+    }),
+  ),
+  recentCases: z
+    .array(
+      z.object({
+        expediente: z.string(),
+        process_type: z.string(),
+        status: z.string(),
+        juzgado: z.string(),
+        client: z.string(),
+      }),
+    )
+    .optional(),
+  pendingPayments: z
+    .array(
+      z.object({
+        client: z.string(),
+        service: z.string(),
+        pending: z.number(),
+        status: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 const historyTurnSchema = z.object({
@@ -60,7 +76,7 @@ export const checkAIStatus = createServerFn({ method: "GET" }).handler(async () 
     return {
       configured: false,
       model: GROQ_MODEL,
-      error: "GROQ_API_KEY no configurada. Agrégala en tu .env como VITE_GROQ_API_KEY=gsk_...",
+      error: "GROQ_API_KEY no configurada. Agrégala en tu .env como GROQ_API_KEY=gsk_...",
     };
   }
   if (!key.startsWith("gsk_")) {

@@ -9,7 +9,7 @@
  */
 
 const path = require("path");
-const fs   = require("fs");
+const fs = require("fs");
 
 // Try to use sharp; if not installed, print instructions
 let sharp;
@@ -23,8 +23,8 @@ try {
 }
 
 const SVG_PATH = path.join(__dirname, "icon-source.svg");
-const OUT_DIR  = __dirname;
-const SIZES    = [72, 96, 128, 144, 152, 192, 384, 512];
+const OUT_DIR = __dirname;
+const SIZES = [72, 96, 128, 144, 152, 192, 384, 512];
 
 async function main() {
   const svgBuffer = fs.readFileSync(SVG_PATH);

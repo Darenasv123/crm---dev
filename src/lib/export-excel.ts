@@ -4,6 +4,7 @@
  * All exports run client-side — no server needed.
  */
 import ExcelJS from "exceljs";
+import { formatPeruDate, formatPeruDateTime, getPeruTodayISO } from "./peru-time";
 
 /** Triggers a browser download of the given ArrayBuffer as an .xlsx file. */
 function downloadBuffer(buffer: ArrayBuffer, filename: string) {
@@ -20,7 +21,7 @@ function downloadBuffer(buffer: ArrayBuffer, filename: string) {
 
 /** Applies consistent header styling to a row. */
 function styleHeader(row: ExcelJS.Row) {
-  row.eachCell(cell => {
+  row.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
@@ -34,7 +35,7 @@ function styleHeader(row: ExcelJS.Row) {
 /** Alternating row fill for readability. */
 function styleDataRow(row: ExcelJS.Row, index: number) {
   const color = index % 2 === 0 ? "FFF5F7FA" : "FFFFFFFF";
-  row.eachCell(cell => {
+  row.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
     cell.alignment = { vertical: "middle", wrapText: false };
     cell.border = { bottom: { style: "hair", color: { argb: "FFDDDDDD" } } };
@@ -63,13 +64,13 @@ export async function exportClientsExcel(clients: ExportClient[]) {
   const ws = wb.addWorksheet("Clientes", { views: [{ state: "frozen", ySplit: 1 }] });
 
   ws.columns = [
-    { header: "Nombre completo", key: "name",          width: 30 },
-    { header: "DNI",             key: "dni",           width: 12 },
-    { header: "Teléfono",        key: "phone",         width: 14 },
-    { header: "Correo",          key: "email",         width: 28 },
-    { header: "Proceso",         key: "process_type",  width: 35 },
-    { header: "Estado",          key: "status",        width: 14 },
-    { header: "Registro",        key: "registered_at", width: 14 },
+    { header: "Nombre completo", key: "name", width: 30 },
+    { header: "DNI", key: "dni", width: 12 },
+    { header: "Teléfono", key: "phone", width: 14 },
+    { header: "Correo", key: "email", width: 28 },
+    { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Registro", key: "registered_at", width: 14 },
   ];
 
   styleHeader(ws.getRow(1));
@@ -78,7 +79,7 @@ export async function exportClientsExcel(clients: ExportClient[]) {
     const row = ws.addRow({
       ...c,
       email: c.email ?? "",
-      registered_at: new Date(c.registered_at).toLocaleDateString("es-PE"),
+      registered_at: formatPeruDate(c.registered_at),
     });
     styleDataRow(row, i);
   });
@@ -86,7 +87,7 @@ export async function exportClientsExcel(clients: ExportClient[]) {
   ws.autoFilter = { from: "A1", to: "G1" };
 
   const buf = await wb.xlsx.writeBuffer();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getPeruTodayISO();
   downloadBuffer(buf, `clientes_${date}.xlsx`);
 }
 
@@ -112,14 +113,14 @@ export async function exportCasesExcel(cases: ExportCase[]) {
   const ws = wb.addWorksheet("Casos", { views: [{ state: "frozen", ySplit: 1 }] });
 
   ws.columns = [
-    { header: "N° Expediente",    key: "expediente",   width: 28 },
-    { header: "Cliente",          key: "client",       width: 28 },
-    { header: "Proceso",          key: "process_type", width: 35 },
-    { header: "Estado",           key: "status",       width: 20 },
-    { header: "Prioridad",        key: "priority",     width: 12 },
-    { header: "Juzgado",          key: "juzgado",      width: 35 },
-    { header: "Próxima audiencia",key: "next_hearing", width: 20 },
-    { header: "Registrado",       key: "created_at",   width: 14 },
+    { header: "N° Expediente", key: "expediente", width: 28 },
+    { header: "Cliente", key: "client", width: 28 },
+    { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Estado", key: "status", width: 20 },
+    { header: "Prioridad", key: "priority", width: 12 },
+    { header: "Juzgado", key: "juzgado", width: 35 },
+    { header: "Próxima audiencia", key: "next_hearing", width: 20 },
+    { header: "Registrado", key: "created_at", width: 14 },
   ];
 
   styleHeader(ws.getRow(1));
@@ -128,9 +129,12 @@ export async function exportCasesExcel(cases: ExportCase[]) {
     const row = ws.addRow({
       ...c,
       next_hearing: c.next_hearing
-        ? new Date(c.next_hearing).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })
+        ? formatPeruDateTime(c.next_hearing, {
+            dateStyle: "short",
+            timeStyle: "short",
+          })
         : "—",
-      created_at: new Date(c.created_at).toLocaleDateString("es-PE"),
+      created_at: formatPeruDate(c.created_at),
     });
     styleDataRow(row, i);
   });
@@ -138,7 +142,7 @@ export async function exportCasesExcel(cases: ExportCase[]) {
   ws.autoFilter = { from: "A1", to: "H1" };
 
   const buf = await wb.xlsx.writeBuffer();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getPeruTodayISO();
   downloadBuffer(buf, `casos_${date}.xlsx`);
 }
 
@@ -165,15 +169,15 @@ export async function exportPaymentsExcel(payments: ExportPayment[]) {
   const ws = wb.addWorksheet("Pagos", { views: [{ state: "frozen", ySplit: 1 }] });
 
   ws.columns = [
-    { header: "Cliente",        key: "client",             width: 28 },
-    { header: "Servicio",       key: "service",            width: 32 },
-    { header: "Honorarios",     key: "fees",               width: 14 },
-    { header: "Pagado",         key: "paid",               width: 14 },
-    { header: "Saldo pendiente",key: "pending",            width: 16 },
-    { header: "Cuotas",         key: "total_installments", width: 10 },
-    { header: "Pagadas",        key: "paid_installments",  width: 10 },
-    { header: "Estado",         key: "status",             width: 14 },
-    { header: "Creado",         key: "created_at",         width: 14 },
+    { header: "Cliente", key: "client", width: 28 },
+    { header: "Servicio", key: "service", width: 32 },
+    { header: "Honorarios", key: "fees", width: 14 },
+    { header: "Pagado", key: "paid", width: 14 },
+    { header: "Saldo pendiente", key: "pending", width: 16 },
+    { header: "Cuotas", key: "total_installments", width: 10 },
+    { header: "Pagadas", key: "paid_installments", width: 10 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Creado", key: "created_at", width: 14 },
   ];
 
   styleHeader(ws.getRow(1));
@@ -184,11 +188,11 @@ export async function exportPaymentsExcel(payments: ExportPayment[]) {
   payments.forEach((p, i) => {
     const row = ws.addRow({
       ...p,
-      created_at: new Date(p.created_at).toLocaleDateString("es-PE"),
+      created_at: formatPeruDate(p.created_at),
     });
     styleDataRow(row, i);
     // Apply currency format to numeric columns
-    (["fees", "paid", "pending"] as const).forEach(key => {
+    (["fees", "paid", "pending"] as const).forEach((key) => {
       const col = ws.getColumn(key);
       row.getCell(col.number!).numFmt = currencyFmt;
     });
@@ -198,20 +202,20 @@ export async function exportPaymentsExcel(payments: ExportPayment[]) {
   const totalRow = ws.addRow({
     client: "TOTAL",
     service: "",
-    fees:    payments.reduce((s, p) => s + p.fees, 0),
-    paid:    payments.reduce((s, p) => s + p.paid, 0),
+    fees: payments.reduce((s, p) => s + p.fees, 0),
+    paid: payments.reduce((s, p) => s + p.paid, 0),
     pending: payments.reduce((s, p) => s + p.pending, 0),
     total_installments: "",
     paid_installments: "",
     status: "",
     created_at: "",
   });
-  totalRow.eachCell(cell => {
+  totalRow.eachCell((cell) => {
     cell.font = { bold: true };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8EDF5" } };
     cell.border = { top: { style: "medium", color: { argb: "FF1E3A5F" } } };
   });
-  (["fees", "paid", "pending"] as const).forEach(key => {
+  (["fees", "paid", "pending"] as const).forEach((key) => {
     const col = ws.getColumn(key);
     totalRow.getCell(col.number!).numFmt = currencyFmt;
   });
@@ -219,7 +223,7 @@ export async function exportPaymentsExcel(payments: ExportPayment[]) {
   ws.autoFilter = { from: "A1", to: "I1" };
 
   const buf = await wb.xlsx.writeBuffer();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getPeruTodayISO();
   downloadBuffer(buf, `pagos_${date}.xlsx`);
 }
 
@@ -243,12 +247,12 @@ export async function exportAgendaExcel(events: ExportAgendaEvent[]) {
   const ws = wb.addWorksheet("Agenda", { views: [{ state: "frozen", ySplit: 1 }] });
 
   ws.columns = [
-    { header: "Título",   key: "title",      width: 35 },
-    { header: "Tipo",     key: "type",        width: 15 },
-    { header: "Fecha",    key: "event_date",  width: 14 },
-    { header: "Hora",     key: "event_time",  width: 10 },
-    { header: "Lugar",    key: "location",    width: 30 },
-    { header: "Cliente",  key: "client",      width: 28 },
+    { header: "Título", key: "title", width: 35 },
+    { header: "Tipo", key: "type", width: 15 },
+    { header: "Fecha", key: "event_date", width: 14 },
+    { header: "Hora", key: "event_time", width: 10 },
+    { header: "Lugar", key: "location", width: 30 },
+    { header: "Cliente", key: "client", width: 28 },
   ];
 
   styleHeader(ws.getRow(1));
@@ -265,7 +269,7 @@ export async function exportAgendaExcel(events: ExportAgendaEvent[]) {
   ws.autoFilter = { from: "A1", to: "F1" };
 
   const buf = await wb.xlsx.writeBuffer();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getPeruTodayISO();
   downloadBuffer(buf, `agenda_${date}.xlsx`);
 }
 
@@ -285,38 +289,47 @@ export async function exportFullBackup(data: {
   // ── Clientes ──
   const wsC = wb.addWorksheet("Clientes", { views: [{ state: "frozen", ySplit: 1 }] });
   wsC.columns = [
-    { header: "Nombre completo", key: "name",          width: 30 },
-    { header: "DNI",             key: "dni",           width: 12 },
-    { header: "Teléfono",        key: "phone",         width: 14 },
-    { header: "Correo",          key: "email",         width: 28 },
-    { header: "Proceso",         key: "process_type",  width: 35 },
-    { header: "Estado",          key: "status",        width: 14 },
-    { header: "Registro",        key: "registered_at", width: 14 },
+    { header: "Nombre completo", key: "name", width: 30 },
+    { header: "DNI", key: "dni", width: 12 },
+    { header: "Teléfono", key: "phone", width: 14 },
+    { header: "Correo", key: "email", width: 28 },
+    { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Registro", key: "registered_at", width: 14 },
   ];
   styleHeader(wsC.getRow(1));
   data.clients.forEach((c, i) => {
-    const row = wsC.addRow({ ...c, email: c.email ?? "", registered_at: new Date(c.registered_at).toLocaleDateString("es-PE") });
+    const row = wsC.addRow({
+      ...c,
+      email: c.email ?? "",
+      registered_at: formatPeruDate(c.registered_at),
+    });
     styleDataRow(row, i);
   });
 
   // ── Casos ──
   const wsK = wb.addWorksheet("Casos", { views: [{ state: "frozen", ySplit: 1 }] });
   wsK.columns = [
-    { header: "N° Expediente",    key: "expediente",   width: 28 },
-    { header: "Cliente",          key: "client",       width: 28 },
-    { header: "Proceso",          key: "process_type", width: 35 },
-    { header: "Estado",           key: "status",       width: 20 },
-    { header: "Prioridad",        key: "priority",     width: 12 },
-    { header: "Juzgado",          key: "juzgado",      width: 35 },
-    { header: "Próxima audiencia",key: "next_hearing", width: 20 },
-    { header: "Registrado",       key: "created_at",   width: 14 },
+    { header: "N° Expediente", key: "expediente", width: 28 },
+    { header: "Cliente", key: "client", width: 28 },
+    { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Estado", key: "status", width: 20 },
+    { header: "Prioridad", key: "priority", width: 12 },
+    { header: "Juzgado", key: "juzgado", width: 35 },
+    { header: "Próxima audiencia", key: "next_hearing", width: 20 },
+    { header: "Registrado", key: "created_at", width: 14 },
   ];
   styleHeader(wsK.getRow(1));
   data.cases.forEach((c, i) => {
     const row = wsK.addRow({
       ...c,
-      next_hearing: c.next_hearing ? new Date(c.next_hearing).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "—",
-      created_at: new Date(c.created_at).toLocaleDateString("es-PE"),
+      next_hearing: c.next_hearing
+        ? formatPeruDateTime(c.next_hearing, {
+            dateStyle: "short",
+            timeStyle: "short",
+          })
+        : "—",
+      created_at: formatPeruDate(c.created_at),
     });
     styleDataRow(row, i);
   });
@@ -324,32 +337,37 @@ export async function exportFullBackup(data: {
   // ── Pagos ──
   const wsP = wb.addWorksheet("Pagos", { views: [{ state: "frozen", ySplit: 1 }] });
   wsP.columns = [
-    { header: "Cliente",        key: "client",             width: 28 },
-    { header: "Servicio",       key: "service",            width: 32 },
-    { header: "Honorarios",     key: "fees",               width: 14 },
-    { header: "Pagado",         key: "paid",               width: 14 },
-    { header: "Saldo pendiente",key: "pending",            width: 16 },
-    { header: "Estado",         key: "status",             width: 14 },
-    { header: "Creado",         key: "created_at",         width: 14 },
+    { header: "Cliente", key: "client", width: 28 },
+    { header: "Servicio", key: "service", width: 32 },
+    { header: "Honorarios", key: "fees", width: 14 },
+    { header: "Pagado", key: "paid", width: 14 },
+    { header: "Saldo pendiente", key: "pending", width: 16 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Creado", key: "created_at", width: 14 },
   ];
   styleHeader(wsP.getRow(1));
   const currencyFmt = '"S/ "#,##0.00';
   data.payments.forEach((p, i) => {
-    const row = wsP.addRow({ ...p, created_at: new Date(p.created_at).toLocaleDateString("es-PE") });
+    const row = wsP.addRow({
+      ...p,
+      created_at: formatPeruDate(p.created_at),
+    });
     styleDataRow(row, i);
-    [3, 4, 5].forEach(n => { row.getCell(n).numFmt = currencyFmt; });
+    [3, 4, 5].forEach((n) => {
+      row.getCell(n).numFmt = currencyFmt;
+    });
   });
 
   // ── Agenda ──
   if (data.agendaEvents && data.agendaEvents.length > 0) {
     const wsA = wb.addWorksheet("Agenda", { views: [{ state: "frozen", ySplit: 1 }] });
     wsA.columns = [
-      { header: "Título",  key: "title",      width: 35 },
-      { header: "Tipo",    key: "type",        width: 15 },
-      { header: "Fecha",   key: "event_date",  width: 14 },
-      { header: "Hora",    key: "event_time",  width: 10 },
-      { header: "Lugar",   key: "location",    width: 30 },
-      { header: "Cliente", key: "client",      width: 28 },
+      { header: "Título", key: "title", width: 35 },
+      { header: "Tipo", key: "type", width: 15 },
+      { header: "Fecha", key: "event_date", width: 14 },
+      { header: "Hora", key: "event_time", width: 10 },
+      { header: "Lugar", key: "location", width: 30 },
+      { header: "Cliente", key: "client", width: 28 },
     ];
     styleHeader(wsA.getRow(1));
     data.agendaEvents.forEach((e, i) => {
@@ -359,6 +377,6 @@ export async function exportFullBackup(data: {
   }
 
   const buf = await wb.xlsx.writeBuffer();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = getPeruTodayISO();
   downloadBuffer(buf, `backup_completo_${date}.xlsx`);
 }

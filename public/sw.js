@@ -16,8 +16,8 @@ self.addEventListener("install", (event) => {
     caches.open(CACHE_NAME).then((cache) =>
       cache.addAll(STATIC_ASSETS).catch(() => {
         // Fail silently — network may not be available at install time
-      })
-    )
+      }),
+    ),
   );
   self.skipWaiting();
 });
@@ -25,13 +25,11 @@ self.addEventListener("install", (event) => {
 // ── Activate ─────────────────────────────────────────────────────────────────
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    )
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+      ),
   );
   self.clients.claim();
 });
@@ -68,15 +66,13 @@ self.addEventListener("fetch", (event) => {
         const fetchPromise = fetch(request)
           .then((response) => {
             if (response.ok) {
-              caches.open(CACHE_NAME).then((cache) =>
-                cache.put(request, response.clone())
-              );
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
             }
             return response;
           })
           .catch(() => cached); // offline fallback
         return cached || fetchPromise;
-      })
+      }),
     );
     return;
   }
@@ -84,15 +80,13 @@ self.addEventListener("fetch", (event) => {
   // Navigation requests: network-first, fallback to cached "/"
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() =>
-        caches.match("/").then((cached) => cached || Response.error())
-      )
+      fetch(request).catch(() => caches.match("/").then((cached) => cached || Response.error())),
     );
     return;
   }
 
   // Everything else: network-first
   event.respondWith(
-    fetch(request).catch(() => caches.match(request).then((r) => r || Response.error()))
+    fetch(request).catch(() => caches.match(request).then((r) => r || Response.error())),
   );
 });

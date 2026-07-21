@@ -1,27 +1,36 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAuthClient, supabase } from "@/lib/supabase";
+import { getAuthClient } from "@/lib/supabase";
+import { useAuth } from "@/hooks/use-auth";
+import { registerStaffFn } from "@/lib/profiles.functions";
 import type { Database } from "@/lib/database.types";
 
-type ProfileUpdate = Partial<Pick<Database["public"]["Tables"]["profiles"]["Row"], "full_name" | "phone" | "role" | "status" | "initials">>;
+type ProfileUpdate = Partial<
+  Pick<
+    Database["public"]["Tables"]["profiles"]["Row"],
+    "full_name" | "phone" | "role" | "status" | "initials"
+  >
+>;
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type QueryOptions = { enabled?: boolean };
 
-export function useProfiles() {
+export function useProfiles(options: QueryOptions = {}) {
   return useQuery({
     queryKey: ["profiles"],
     queryFn: async () => {
       const db = await getAuthClient();
-      const { data, error } = await db
-        .from("profiles")
-        .select("*")
-        .order("full_name");
+      const { data, error } = await db.from("profiles").select("*").order("full_name");
       if (error) throw new Error(error.message);
       return data as Profile[];
     },
+    enabled: options.enabled ?? true,
   });
 }
 
-export function useRegisterStaff() {  const qc = useQueryClient();
+export function useRegisterStaff() {
+  const qc = useQueryClient();
+  const { session } = useAuth();
+
   return useMutation({
     mutationFn: async ({
       email,
@@ -36,30 +45,12 @@ export function useRegisterStaff() {  const qc = useQueryClient();
       role: "Administrador" | "Personal";
       phone?: string;
     }) => {
-      const words = fullName.trim().split(/\s+/);
-      const initials =
-        words.length >= 2
-          ? (words[0][0] + words[1][0]).toUpperCase()
-          : words[0].slice(0, 2).toUpperCase();
+      const accessToken = session?.access_token;
+      if (!accessToken) throw new Error("Sesión expirada. Inicia sesión de nuevo.");
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName, initials, role, phone: phone ?? "" },
-        },
+      return registerStaffFn({
+        data: { accessToken, email, password, fullName, role, phone },
       });
-      if (error) throw new Error(error.message);
-
-      if (data.user && role === "Administrador") {
-        const db = await getAuthClient();
-        await db
-          .from("profiles")
-          .update({ role: "Administrador", full_name: fullName, initials, phone: phone ?? null })
-          .eq("id", data.user.id);
-      }
-
-      return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profiles"] }),
   });
