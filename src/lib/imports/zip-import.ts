@@ -26,15 +26,15 @@ const DRIVE_SUFFIXES = /\s*\(\d+\)$/;
 
 const DOC_TYPE_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
   { pattern: /DEMANDA/i, type: "DEMANDA" },
-  { pattern: /CONTESTACI[OÓ]N/i, type: "CONTESTACION" },
+  { pattern: /CONTESTACI/i, type: "CONTESTACIÓN" },
   { pattern: /ANEXO/i, type: "ANEXOS" },
   { pattern: /CARGO/i, type: "CARGO" },
   { pattern: /SENTENCIA/i, type: "SENTENCIA" },
-  { pattern: /RESOLUCI[OÓ]N/i, type: "RESOLUCION" },
+  { pattern: /RESOLUCI/i, type: "RESOLUCIÓN" },
   { pattern: /AUDIENCIA/i, type: "AUDIENCIA" },
-  { pattern: /LIQUIDACI[OÓ]N/i, type: "LIQUIDACION" },
+  { pattern: /LIQUIDACI/i, type: "LIQUIDACIÓN" },
   { pattern: /ESCRITO/i, type: "ESCRITO" },
-  { pattern: /NOTIFICACI[OÓ]N/i, type: "NOTIFICACION" },
+  { pattern: /NOTIFICACI/i, type: "NOTIFICACIÓN" },
 ];
 
 const PATTERNS = {
@@ -911,6 +911,8 @@ function nameSimilarity(a: string, b: string): number {
   for (const t of tokensA) if (tokensB.has(t)) common++;
   return (common * 2) / (tokensA.size + tokensB.size);
 }
+
+
 
 
 
