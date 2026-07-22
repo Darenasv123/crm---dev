@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useClient, useUpdateClient } from "@/hooks/use-clients";
+import { useClient, useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
@@ -72,6 +72,7 @@ function ClientDetail() {
   const updateClient = useUpdateClient();
   const uploadDoc = useUploadDocument();
   const deleteDoc = useDeleteDocument();
+  const deleteClient = useDeleteClient();
 
   const [tab, setTab] = useState<Tab>("Resumen");
   const [editing, setEditing] = useState(false);
@@ -296,6 +297,24 @@ function ClientDetail() {
               >
                 <Briefcase className="h-3.5 w-3.5" /> Expedientes
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `¿Eliminar al cliente "${loadedClient.name}"? Esta acción eliminará permanentemente la ficha del cliente.`,
+                      )
+                    ) {
+                      deleteClient.mutate(id, {
+                        onSuccess: () => navigate({ to: "/clientes" as never }),
+                      });
+                    }
+                  }}
+                  className="col-span-2 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-red-200 bg-red-50/50 text-red-600 text-xs font-semibold hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Eliminar cliente
+                </button>
+              )}
             </div>
           </Card>
 

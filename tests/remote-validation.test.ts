@@ -126,7 +126,9 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
   it("persiste actualizaciones de decisión humana (Aprobación, Edición, Rechazo, Conflicto)", async () => {
     try {
       // Setup para decisión
-      await adminClient.from("import_jobs").insert({ id: TEST_JOB_ID, name: `${TEST_PREFIX}_JOB2`, status: "completed" });
+      await adminClient
+        .from("import_jobs")
+        .insert({ id: TEST_JOB_ID, name: `${TEST_PREFIX}_JOB2`, status: "completed" });
       await adminClient.from("ai_analysis_runs").insert({
         id: TEST_RUN_ID,
         import_job_id: TEST_JOB_ID,

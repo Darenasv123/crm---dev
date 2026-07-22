@@ -43,6 +43,7 @@ npm run deploy
 ```
 
 Este comando:
+
 1. Ejecuta `npm run build` → genera `.output/`
 2. Ejecuta `wrangler deploy` con el `wrangler.json` generado en `.output/server/`
 
@@ -71,6 +72,7 @@ npm run preview
 ## 5. Dominio personalizado
 
 Una vez desplegado el worker, en el dashboard de Cloudflare:
+
 1. Workers & Pages → `darenasv123-advocate-nest`
 2. Settings → Domains & Routes → Add Custom Domain
 3. Ingresa tu dominio (ej: `crm.estudioarenas.pe`)
@@ -80,6 +82,7 @@ Una vez desplegado el worker, en el dashboard de Cloudflare:
 ## 6. Google Calendar — Actualizar URI de redirección
 
 Después de asignar el dominio definitivo, actualizar en Google Cloud Console:
+
 1. APIs & Services → Credentials → tu OAuth 2.0 Client ID
 2. Authorized redirect URIs: agregar `https://tu-dominio.com/google-calendar-callback`
 3. Eliminar la URI antigua si ya no aplica
@@ -91,6 +94,7 @@ Después de asignar el dominio definitivo, actualizar en Google Cloud Console:
 El proyecto usa: `https://pnqdgwpxcxngeueosmnh.supabase.co`
 
 Verificar en Supabase Dashboard:
+
 - Authentication → URL Configuration → Site URL: debe ser tu dominio de producción
 - Redirect URLs: agregar `https://tu-dominio.com/**`
 

@@ -3,7 +3,8 @@ import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import { useAuth } from "@/hooks/use-auth";
 import { exportClientsExcel } from "@/lib/export-excel";
-import { Search, Download, Plus, ChevronDown, Eye, X, Loader2 } from "lucide-react";
+import { CSVImport } from "@/components/csv-import";
+import { Search, Download, Upload, Plus, ChevronDown, Eye, X, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 export const Route = createFileRoute("/_app/clientes/")({
@@ -17,7 +18,7 @@ const STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
 const SPECIALTY_OPTIONS = ["Todos", "Penal", "Familia"];
 
 function ClientsPage() {
-  const { data: clients = [], isLoading } = useClients();
+  const { data: clients = [], isLoading, refetch } = useClients();
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const createClient = useCreateClient();
@@ -25,6 +26,7 @@ function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [specialtyFilter, setSpecialtyFilter] = useState("Todos");
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [form, setForm] = useState({
     name: "",
     dni: "",
@@ -115,12 +117,20 @@ function ClientsPage() {
       actions={
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <button
-              onClick={() => exportClientsExcel(clients)}
-              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
-            >
-              <Download className="h-4 w-4" /> Excel
-            </button>
+            <>
+              <button
+                onClick={() => exportClientsExcel(clients)}
+                className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+              >
+                <Download className="h-4 w-4" /> Excel
+              </button>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+              >
+                <Upload className="h-4 w-4" /> Importar
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowModal(true)}
@@ -409,6 +419,16 @@ function ClientsPage() {
             </form>
           </Card>
         </div>
+      )}
+
+      {/* CSV Import Modal */}
+      {showImportModal && (
+        <CSVImport
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            refetch();
+          }}
+        />
       )}
     </AppLayout>
   );

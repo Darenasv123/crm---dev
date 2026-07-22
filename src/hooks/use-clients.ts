@@ -153,3 +153,17 @@ export function useUpdateClient() {
     },
   });
 }
+
+export function useDeleteClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const db = await getAuthClient();
+      const { error } = await db.from("clients").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}

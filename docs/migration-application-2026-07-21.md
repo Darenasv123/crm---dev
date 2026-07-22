@@ -4,7 +4,7 @@
 **Supabase Project REF:** `pnqdgwpxcxngeueosmnh` ("CRM Abogados a tu Servicio")  
 **Rama Git:** `rescue/fase-2a-antigravity`  
 **Tag Pre-Validación:** `fase-2a-pre-validacion-remota`  
-**Tag Validación:** `fase-2a-validada-remota`  
+**Tag Validación:** `fase-2a-validada-remota`
 
 ---
 

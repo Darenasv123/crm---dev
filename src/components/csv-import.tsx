@@ -28,11 +28,35 @@ const COLORS = [
   "oklch(0.34 0.09 255)",
 ];
 
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(cur.trim());
+      cur = "";
+    } else {
+      cur += char;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
 function parseCSV(text: string): ParsedClient[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/['"]/g, ""));
+  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, ""));
 
   // Map common header names
   const colMap: Record<string, string[]> = {
@@ -66,7 +90,7 @@ function parseCSV(text: string): ParsedClient[] {
     .slice(1)
     .filter((l) => l.trim())
     .map((line) => {
-      const vals = line.split(",").map((v) => v.trim().replace(/^["']|["']$/g, ""));
+      const vals = parseCSVLine(line).map((v) => v.replace(/^["']|["']$/g, ""));
 
       const name = cols.name >= 0 ? (vals[cols.name] ?? "") : "";
       const dni = cols.dni >= 0 ? (vals[cols.dni] ?? "").replace(/\D/g, "") : "";

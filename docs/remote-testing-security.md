@@ -1,7 +1,7 @@
 # Política y Seguridad de Pruebas Remotas — Supabase
 
 **CRM Estudio Jurídico Arenas** (`advocate-nest`)  
-**Fecha de actualización:** 21 de Julio de 2026  
+**Fecha de actualización:** 21 de Julio de 2026
 
 ---
 
@@ -9,13 +9,13 @@
 
 Las pruebas contra la base de datos remota de Supabase están protegidas por variables de entorno estrictas y salvaguardas de ejecución:
 
-| Variable | Tipo / Scope | Descripción / Requisito de Seguridad |
-|---|---|---|
-| `ALLOW_REMOTE_TESTS` | Server / Test | Debe valer explícitamente `"true"` para permitir la ejecución de `tests/remote-validation.test.ts`. Sin este valor, la suite remota se omite automáticamente (0 escrituras en DB). |
-| `SUPABASE_PROJECT_REF` | Server / Test | Identificador de proyecto de Supabase (`pnqdgwpxcxngeueosmnh`). Valida que las pruebas apunten únicamente al entorno autorizado. |
-| `VITE_SUPABASE_URL` | Client / Server | URL pública del proyecto Supabase. Libre de datos sensibles. |
-| `VITE_SUPABASE_ANON_KEY` | Client / Server | Clave pública anónima de Supabase. Sujeta a políticas RLS de lectura y restricción de escritura. |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Server-Only** | Clave administrativa de Supabase con bypass de RLS. **NUNCA debe ser expuesta al cliente, incluida en compilados frontend ni versionada en Git.** |
+| Variable                    | Tipo / Scope    | Descripción / Requisito de Seguridad                                                                                                                                               |
+| --------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALLOW_REMOTE_TESTS`        | Server / Test   | Debe valer explícitamente `"true"` para permitir la ejecución de `tests/remote-validation.test.ts`. Sin este valor, la suite remota se omite automáticamente (0 escrituras en DB). |
+| `SUPABASE_PROJECT_REF`      | Server / Test   | Identificador de proyecto de Supabase (`pnqdgwpxcxngeueosmnh`). Valida que las pruebas apunten únicamente al entorno autorizado.                                                   |
+| `VITE_SUPABASE_URL`         | Client / Server | URL pública del proyecto Supabase. Libre de datos sensibles.                                                                                                                       |
+| `VITE_SUPABASE_ANON_KEY`    | Client / Server | Clave pública anónima de Supabase. Sujeta a políticas RLS de lectura y restricción de escritura.                                                                                   |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server-Only** | Clave administrativa de Supabase con bypass de RLS. **NUNCA debe ser expuesta al cliente, incluida en compilados frontend ni versionada en Git.**                                  |
 
 ---
 
