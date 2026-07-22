@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+﻿import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
+import { useCases } from "@/hooks/use-cases";
 import { useAuth } from "@/hooks/use-auth";
 import { exportClientsExcel } from "@/lib/export-excel";
 import { CSVImport } from "@/components/csv-import";
@@ -9,7 +10,7 @@ import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/_app/clientes/")({
   head: () => ({
-    meta: [{ title: "Clientes — Estudio Jurídico" }],
+    meta: [{ title: "Clientes â€” Estudio JurÃ­dico" }],
   }),
   component: ClientsPage,
 });
@@ -18,6 +19,7 @@ const STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
 
 function ClientsPage() {
   const { data: clients = [], isLoading, refetch } = useClients();
+  const { data: cases = [] } = useCases();
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const createClient = useCreateClient();
@@ -25,18 +27,24 @@ function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [specialtyFilter, setSpecialtyFilter] = useState("Todos");
 
-  // Build dynamic specialty options from real process_type values
+  const casesByClient = useMemo(() => {
+    const map = new Map<string, typeof cases>();
+    for (const item of cases) {
+      const current = map.get(item.client_id) ?? [];
+      current.push(item);
+      map.set(item.client_id, current);
+    }
+    return map;
+  }, [cases]);
+
   const specialtyOptions = useMemo(() => {
     const types = new Set<string>();
-    for (const c of clients) {
-      if (c.process_type) {
-        // Normalize: grab first word or segment before " — " or "-"
-        const base = c.process_type.split(/\s*[—-]\s*/)[0].trim();
-        if (base) types.add(base);
-      }
+    for (const item of cases) {
+      const base = (item.process_type || item.case_type || "").split(/\s*[—-]\s*/)[0].trim();
+      if (base && base !== "Pendiente de clasificacion") types.add(base);
     }
     return ["Todos", ...Array.from(types).sort()];
-  }, [clients]);
+  }, [cases]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [form, setForm] = useState({
@@ -60,23 +68,38 @@ function ClientsPage() {
       c.dni.includes(search) ||
       (c.email ?? "").toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "Todos" || c.status === statusFilter;
+    const clientCases = casesByClient.get(c.id) ?? [];
     const matchSpecialty =
       specialtyFilter === "Todos" ||
-      c.process_type.toLowerCase().includes(specialtyFilter.toLowerCase());
+      clientCases.some((item) =>
+        (item.process_type || item.case_type || "")
+          .toLowerCase()
+          .includes(specialtyFilter.toLowerCase()),
+      );
     return matchSearch && matchStatus && matchSpecialty;
   });
-
+  function getCaseSummary(clientId: string) {
+    const clientCases = casesByClient.get(clientId) ?? [];
+    if (clientCases.length === 0) {
+      return { title: "Pendiente de clasificacion", detail: "Sin expediente vinculado" };
+    }
+    const main = clientCases[0];
+    return {
+      title: `${clientCases.length} expediente${clientCases.length === 1 ? "" : "s"}`,
+      detail: main.case_number || main.expediente || main.case_name || "Expediente sin numero",
+    };
+  }
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
-    // Validar DNI y teléfono
+    // Validar DNI y telÃ©fono
     if (form.dni.length > 0 && form.dni.length !== 8) {
-      setFormError("El DNI debe tener exactamente 8 dígitos.");
+      setFormError("El DNI debe tener exactamente 8 dÃ­gitos.");
       return;
     }
     if (form.phone.length !== 9) {
-      setFormError("El teléfono debe tener exactamente 9 dígitos.");
+      setFormError("El telÃ©fono debe tener exactamente 9 dÃ­gitos.");
       return;
     }
     const existingClient = form.dni ? clients.find((client) => client.dni === form.dni) : null;
@@ -124,8 +147,8 @@ function ClientsPage() {
 
   return (
     <AppLayout
-      title="Gestión de Clientes"
-      subtitle={`${clients.length} clientes registrados · Penal & Familia`}
+      title="GestiÃ³n de Clientes"
+      subtitle={`${clients.length} clientes registrados Â· Penal & Familia`}
       actions={
         <div className="flex items-center gap-2">
           {isAdmin && (
@@ -191,8 +214,8 @@ function ClientsPage() {
                 <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="py-3 pl-5 pr-3 font-semibold">Cliente</th>
                   <th className="py-3 px-3 font-semibold">DNI</th>
-                  <th className="py-3 px-3 font-semibold">Teléfono</th>
-                  <th className="py-3 px-3 font-semibold">Proceso</th>
+                  <th className="py-3 px-3 font-semibold">TelÃ©fono</th>
+                  <th className="py-3 px-3 font-semibold">Expedientes</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
                   <th className="py-3 px-3 font-semibold">Registro</th>
                   <th className="py-3 pr-5 font-semibold text-right">Acciones</th>
@@ -202,11 +225,13 @@ function ClientsPage() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
-                      {search ? "No se encontraron clientes." : "Aún no hay clientes registrados."}
+                      {search ? "No se encontraron clientes." : "AÃºn no hay clientes registrados."}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => (
+                  filtered.map((c) => {
+                    const caseSummary = getCaseSummary(c.id);
+                    return (
                     <tr key={c.id} className="border-t border-border hover:bg-muted/30 transition">
                       <td className="py-3 pl-5 pr-3">
                         <div className="flex items-center gap-3">
@@ -219,7 +244,7 @@ function ClientsPage() {
                           <div className="min-w-0">
                             <div className="font-semibold truncate">{c.name}</div>
                             <div className="text-xs text-muted-foreground truncate">
-                              {c.email ?? "—"}
+                              {c.email ?? "â€”"}
                             </div>
                           </div>
                         </div>
@@ -228,7 +253,7 @@ function ClientsPage() {
                       <td className="py-3 px-3 text-muted-foreground">{c.phone}</td>
                       <td className="py-3 px-3">
                         <span className="text-xs text-muted-foreground">
-                          {c.process_type || "—"}
+                          {c.process_type || "â€”"}
                         </span>
                       </td>
                       <td className="py-3 px-3">
@@ -262,9 +287,9 @@ function ClientsPage() {
                         >
                           <Eye className="h-3.5 w-3.5" /> Ver ficha
                         </Link>
-                      </td>
-                    </tr>
-                  ))
+                      </td>                    </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -286,7 +311,7 @@ function ClientsPage() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-base font-semibold">Nuevo cliente</h3>
-                <p className="text-xs text-muted-foreground">Penal · Familia</p>
+                <p className="text-xs text-muted-foreground">Penal Â· Familia</p>
               </div>
               <button
                 onClick={() => setShowModal(false)}
@@ -303,7 +328,7 @@ function ClientsPage() {
                 required
               />
               <div className="grid grid-cols-2 gap-4">
-                {/* DNI: solo 8 dígitos numéricos */}
+                {/* DNI: solo 8 dÃ­gitos numÃ©ricos */}
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     DNI (opcional)
@@ -321,14 +346,14 @@ function ClientsPage() {
                   />
                   {form.dni.length > 0 && form.dni.length < 8 && (
                     <p className="text-[11px] text-amber-600 mt-0.5">
-                      Faltan {8 - form.dni.length} dígitos
+                      Faltan {8 - form.dni.length} dÃ­gitos
                     </p>
                   )}
                 </div>
-                {/* Teléfono: solo 9 dígitos numéricos */}
+                {/* TelÃ©fono: solo 9 dÃ­gitos numÃ©ricos */}
                 <div>
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Teléfono *
+                    TelÃ©fono *
                   </label>
                   <input
                     inputMode="numeric"
@@ -347,7 +372,7 @@ function ClientsPage() {
                   />
                   {form.phone.length > 0 && form.phone.length < 9 && (
                     <p className="text-[11px] text-amber-600 mt-0.5">
-                      Faltan {9 - form.phone.length} dígitos
+                      Faltan {9 - form.phone.length} dÃ­gitos
                     </p>
                   )}
                 </div>
@@ -367,13 +392,13 @@ function ClientsPage() {
                 />
               </div>
               <MF
-                label="Correo electrónico"
+                label="Correo electrÃ³nico"
                 value={form.email}
                 onChange={(v) => setForm((f) => ({ ...f, email: v }))}
                 type="email"
               />
               <MF
-                label="Ocupación"
+                label="OcupaciÃ³n"
                 value={form.occupation}
                 onChange={(v) => setForm((f) => ({ ...f, occupation: v }))}
               />
@@ -499,3 +524,7 @@ function MF({
     </div>
   );
 }
+
+
+
+
