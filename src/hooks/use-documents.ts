@@ -5,6 +5,28 @@ import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
 
+export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "jpg",
+  "jpeg",
+  "png",
+  "xlsx",
+  "xls",
+]);
+
+export function validateDocumentFile(file: Pick<File, "name" | "size" | "type">) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!file.name.trim()) throw new Error("El archivo debe tener un nombre valido.");
+  if (!ALLOWED_DOCUMENT_EXTENSIONS.has(extension)) {
+    throw new Error("Formato no permitido. Usa PDF, DOC, DOCX, JPG, PNG, XLS o XLSX.");
+  }
+  if (file.size <= 0) throw new Error("El archivo esta vacio.");
+  if (file.size > MAX_DOCUMENT_SIZE_BYTES) throw new Error("El archivo supera el limite de 10 MB.");
+}
+
 export interface DocumentWithClient extends Document {
   clients: { name: string } | null;
   cases: { expediente: string; process_type: string } | null;
@@ -45,6 +67,7 @@ export function useUploadDocument() {
       clientId?: string;
       caseId?: string;
     }) => {
+      validateDocumentFile(file);
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `${Date.now()}_${safeName}`;
 

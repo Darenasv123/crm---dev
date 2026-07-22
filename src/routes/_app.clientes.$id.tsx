@@ -6,6 +6,7 @@ import { usePayments } from "@/hooks/use-payments";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
 import { useAuth } from "@/hooks/use-auth";
 import { useClientReports } from "@/hooks/use-reports";
+import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
 import { supabase } from "@/lib/supabase";
 import {
@@ -38,9 +39,10 @@ export const Route = createFileRoute("/_app/clientes/$id")({
 const TABS = [
   "Resumen",
   "Expedientes",
-  "Documentos",
+  "Documentos sin clasificar",
   "Pagos",
-  "Comunicaciones",
+  "Agenda",
+  "Reportes",
   "Historial",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -65,6 +67,7 @@ function ClientDetail() {
   const { data: allPayments = [] } = usePayments();
   const { data: allDocs = [] } = useDocuments();
   const { data: allReports = [] } = useClientReports();
+  const { data: allAgendaEvents = [] } = useAgendaEvents();
   const clientCaseIds = allCases.filter((item) => item.client_id === id).map((item) => item.id);
   const { data: clientTasks = [] } = useCaseTasks({ clientId: id });
   const { data: clientEvents = [] } = useCaseEvents(clientCaseIds);
@@ -117,7 +120,11 @@ function ClientDetail() {
   const clientCases = allCases.filter((c) => c.client_id === id);
   const clientPayments = allPayments.filter((p) => p.client_id === id);
   const clientDocs = allDocs.filter((d) => d.client_id === id);
+  const unclassifiedClientDocs = clientDocs.filter((d) => !d.case_id);
   const clientReports = allReports.filter((report) => report.client_id === id);
+  const clientAgendaEvents = allAgendaEvents.filter(
+    (event) => event.client_id === id || clientCaseIds.includes(event.case_id ?? ""),
+  );
   const isAdmin = profile?.role === "Administrador";
   const pendingTasks = clientTasks.filter(
     (task) => !["completed", "cancelled"].includes(task.status),
@@ -376,7 +383,7 @@ function ClientDetail() {
                     n={clientCases.filter((item) => item.status !== "Archivado").length}
                     l="Activos"
                   />
-                  <Stat n={pendingTasks.length} l="Tareas pendientes" />
+                  <Stat n={unclassifiedClientDocs.length} l="Docs sin clasificar" />
                   <Stat n={currency(pendingBalance)} l="Saldo pendiente" />
                 </div>
               </Card>
@@ -554,7 +561,7 @@ function ClientDetail() {
             </Card>
           )}
 
-          {tab === "Documentos" && (
+          {tab === "Documentos sin clasificar" && (
             <div>
               <div className="flex justify-end mb-3">
                 <button
@@ -564,13 +571,13 @@ function ClientDetail() {
                   <FileUp className="h-3.5 w-3.5" /> Subir documento
                 </button>
               </div>
-              {clientDocs.length === 0 ? (
+              {unclassifiedClientDocs.length === 0 ? (
                 <Card className="py-12 text-center text-sm text-muted-foreground">
-                  No hay documentos para este cliente.
+                  No hay documentos sin clasificar para este cliente.
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {clientDocs.map((d) => (
+                  {unclassifiedClientDocs.map((d) => (
                     <Card key={d.id} className="p-4 flex items-center gap-3 group">
                       <div className="grid h-10 w-10 place-items-center rounded-lg bg-red-50 text-red-600 shrink-0">
                         <FileText className="h-5 w-5" />
@@ -613,10 +620,58 @@ function ClientDetail() {
             </div>
           )}
 
-          {tab === "Comunicaciones" && (
+          {tab === "Agenda" && (
+            <Card className="overflow-hidden">
+              {clientAgendaEvents.length === 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No hay actividades de agenda vinculadas a este cliente.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                      <th className="py-3 px-4">Fecha</th>
+                      <th className="py-3 px-4">Hora</th>
+                      <th className="py-3 px-4">Actividad</th>
+                      <th className="py-3 px-4">Tipo</th>
+                      <th className="py-3 px-4">Lugar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...clientAgendaEvents]
+                      .sort((a, b) =>
+                        `${a.event_date} ${a.event_time}`.localeCompare(
+                          `${b.event_date} ${b.event_time}`,
+                        ),
+                      )
+                      .map((event) => (
+                        <tr key={event.id} className="border-t border-border hover:bg-muted/30">
+                          <td className="py-3 px-4 text-xs text-muted-foreground">
+                            {new Date(`${event.event_date}T00:00:00-05:00`).toLocaleDateString(
+                              "es-PE",
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-xs text-muted-foreground">
+                            {String(event.event_time).slice(0, 5)}
+                          </td>
+                          <td className="py-3 px-4 font-semibold">{event.title}</td>
+                          <td className="py-3 px-4">
+                            <StatusBadge tone="info">{event.type}</StatusBadge>
+                          </td>
+                          <td className="py-3 px-4 text-xs text-muted-foreground">
+                            {event.location || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
+          )}
+          {tab === "Reportes" && (
             <Card className="p-5">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <MessageSquareText className="h-4 w-4 text-primary" /> Comunicaciones y reportes
+                <MessageSquareText className="h-4 w-4 text-primary" /> Reportes del cliente
               </h3>
               {clientReports.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">

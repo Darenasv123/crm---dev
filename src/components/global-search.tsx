@@ -26,11 +26,21 @@ interface SearchResult {
 
 type ClientSearchRow = Pick<
   Database["public"]["Tables"]["clients"]["Row"],
-  "id" | "name" | "dni" | "process_type" | "status"
+  "id" | "name" | "dni" | "document_number" | "phone" | "whatsapp" | "process_type" | "status"
 >;
 type CaseSearchRow = Pick<
   Database["public"]["Tables"]["cases"]["Row"],
-  "id" | "expediente" | "process_type" | "status" | "internal_code" | "case_number"
+  | "id"
+  | "expediente"
+  | "process_type"
+  | "status"
+  | "internal_code"
+  | "case_number"
+  | "juzgado"
+  | "court"
+  | "demandante"
+  | "demandado"
+  | "next_action"
 > & { clients?: { name: string } | null };
 type DocumentSearchRow = Pick<
   Database["public"]["Tables"]["documents"]["Row"],
@@ -56,6 +66,22 @@ type CaseEventSearchRow = Pick<
   Database["public"]["Tables"]["case_events"]["Row"],
   "id" | "case_id" | "title" | "event_type" | "event_date"
 >;
+
+async function safeSearchResult<T>(
+  request: PromiseLike<{ data?: unknown; error?: { message?: string } | null }>,
+) {
+  try {
+    const result = await request;
+    if (result.error) return [] as T[];
+    return (result.data ?? []) as T[];
+  } catch {
+    return [] as T[];
+  }
+}
+
+function searchTerm(value: string) {
+  return value.trim().replace(/[(),]/g, " ").replace(/\s+/g, " ").slice(0, 80);
+}
 
 export function GlobalSearch() {
   const [query, setQuery] = useState("");
@@ -110,98 +136,109 @@ export function GlobalSearch() {
       setLoading(true);
       try {
         const db = await getAuthClient();
-        const term = q.trim();
+        const term = searchTerm(q);
 
         const [
-          clientsRes,
-          casesRes,
-          docsRes,
-          reportsRes,
-          eventsRes,
-          paymentsRes,
-          partiesRes,
-          caseEventsRes,
+          clientRows,
+          caseRows,
+          documentRows,
+          reportRows,
+          eventRows,
+          paymentRows,
+          partyRows,
+          caseEventRows,
         ] = await Promise.all([
-          db
-            .from("clients")
-            .select("id, name, dni, process_type, status")
-            .or(`name.ilike.%${term}%,dni.ilike.%${term}%,email.ilike.%${term}%`)
-            .limit(4),
+          safeSearchResult<ClientSearchRow>(
+            db
+              .from("clients")
+              .select("id, name, dni, document_number, phone, whatsapp, process_type, status")
+              .or(
+                `name.ilike.%${term}%,dni.ilike.%${term}%,document_number.ilike.%${term}%,phone.ilike.%${term}%,whatsapp.ilike.%${term}%,email.ilike.%${term}%`,
+              )
+              .limit(5),
+          ),
           (async () => {
             const expanded = await db
               .from("cases")
               .select(
-                "id, expediente, process_type, status, internal_code, case_number, clients(name)",
+                "id, expediente, process_type, status, internal_code, case_number, juzgado, court, demandante, demandado, next_action, clients(name)",
               )
               .or(
-                `expediente.ilike.%${term}%,process_type.ilike.%${term}%,internal_code.ilike.%${term}%,case_number.ilike.%${term}%,next_action.ilike.%${term}%`,
+                `expediente.ilike.%${term}%,process_type.ilike.%${term}%,internal_code.ilike.%${term}%,case_number.ilike.%${term}%,juzgado.ilike.%${term}%,court.ilike.%${term}%,demandante.ilike.%${term}%,demandado.ilike.%${term}%,next_action.ilike.%${term}%`,
               )
-              .limit(4);
+              .limit(5);
 
-            if (!isMissingSchemaFieldError(expanded.error)) return expanded;
+            if (!isMissingSchemaFieldError(expanded.error))
+              return (expanded.data ?? []) as CaseSearchRow[];
 
-            return db
+            const legacy = await db
               .from("cases")
               .select("id, expediente, process_type, status, clients(name)")
               .or(`expediente.ilike.%${term}%,process_type.ilike.%${term}%`)
-              .limit(4);
+              .limit(5);
+            return (legacy.data ?? []) as CaseSearchRow[];
           })(),
-          db
-            .from("documents")
-            .select("id, name, type, clients(name)")
-            .ilike("name", `%${term}%`)
-            .limit(3),
-          db
-            .from("client_reports")
-            .select("id, title, category, clients(name), cases(expediente)")
-            .or(`title.ilike.%${term}%,body.ilike.%${term}%`)
-            .limit(3),
-          db
-            .from("agenda_events")
-            .select("id, title, type, event_date, event_time, clients(name), cases(expediente)")
-            .or(`title.ilike.%${term}%,location.ilike.%${term}%`)
-            .limit(3),
+          safeSearchResult<DocumentSearchRow>(
+            db
+              .from("documents")
+              .select("id, name, type, clients(name)")
+              .ilike("name", `%${term}%`)
+              .limit(4),
+          ),
+          safeSearchResult<ReportSearchRow>(
+            db
+              .from("client_reports")
+              .select("id, title, category, clients(name), cases(expediente)")
+              .or(`title.ilike.%${term}%,body.ilike.%${term}%`)
+              .limit(4),
+          ),
+          safeSearchResult<EventSearchRow>(
+            db
+              .from("agenda_events")
+              .select("id, title, type, event_date, event_time, clients(name), cases(expediente)")
+              .or(`title.ilike.%${term}%,location.ilike.%${term}%`)
+              .limit(4),
+          ),
           canSearchPayments
-            ? db
-                .from("payments")
-                .select("id, service, status, clients(name)")
-                .ilike("service", `%${term}%`)
-                .limit(3)
-            : Promise.resolve({ data: [] }),
-          db
-            .from("case_parties")
-            .select("id, case_id, full_name, role, document_number")
-            .or(`full_name.ilike.%${term}%,document_number.ilike.%${term}%`)
-            .limit(3),
-          db
-            .from("case_events")
-            .select("id, case_id, title, event_type, event_date")
-            .or(`title.ilike.%${term}%,description.ilike.%${term}%,source_excerpt.ilike.%${term}%`)
-            .limit(3),
+            ? safeSearchResult<PaymentSearchRow>(
+                db
+                  .from("payments")
+                  .select("id, service, status, clients(name)")
+                  .ilike("service", `%${term}%`)
+                  .limit(4),
+              )
+            : Promise.resolve([] as PaymentSearchRow[]),
+          safeSearchResult<PartySearchRow>(
+            db
+              .from("case_parties")
+              .select("id, case_id, full_name, role, document_number")
+              .or(`full_name.ilike.%${term}%,document_number.ilike.%${term}%`)
+              .limit(4),
+          ),
+          safeSearchResult<CaseEventSearchRow>(
+            db
+              .from("case_events")
+              .select("id, case_id, title, event_type, event_date")
+              .or(
+                `title.ilike.%${term}%,description.ilike.%${term}%,source_excerpt.ilike.%${term}%`,
+              )
+              .limit(4),
+          ),
         ]);
-
-        const clientRows = (clientsRes.data ?? []) as ClientSearchRow[];
-        const caseRows = (casesRes.data ?? []) as CaseSearchRow[];
-        const documentRows = (docsRes.data ?? []) as DocumentSearchRow[];
-        const reportRows = (reportsRes.data ?? []) as ReportSearchRow[];
-        const eventRows = (eventsRes.data ?? []) as EventSearchRow[];
-        const paymentRows = (paymentsRes.data ?? []) as PaymentSearchRow[];
-        const partyRows = (partiesRes.data ?? []) as PartySearchRow[];
-        const caseEventRows = (caseEventsRes.data ?? []) as CaseEventSearchRow[];
 
         const combined: SearchResult[] = [
           ...clientRows.map((c) => ({
             id: c.id,
             type: "client" as const,
             title: c.name,
-            subtitle: `DNI: ${c.dni} · ${c.process_type} · ${c.status}`,
+            subtitle: `${c.document_number || c.dni}${c.phone ? ` · ${c.phone}` : ""} · ${c.process_type} · ${c.status}`,
             href: `/clientes/${c.id}`,
           })),
           ...caseRows.map((c) => ({
             id: c.id,
             type: "case" as const,
             title: c.expediente,
-            subtitle: `${c.process_type} · ${c.status}${(c as { clients?: { name: string } | null }).clients?.name ? ` · ${(c as { clients?: { name: string } | null }).clients!.name}` : ""}`,
+            subtitle: `${c.process_type} · ${c.status}${c.juzgado ? ` · ${c.juzgado}` : ""}${(c as { clients?: { name: string } | null }).clients?.name ? ` · ${(c as { clients?: { name: string } | null }).clients!.name}` : ""}`,
             href: `/casos/${c.id}`,
           })),
           ...documentRows.map((d) => ({

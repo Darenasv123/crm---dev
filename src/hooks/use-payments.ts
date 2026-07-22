@@ -8,6 +8,19 @@ type PaymentRecord = Database["public"]["Tables"]["payment_records"]["Row"];
 type PaymentRecordInsert = Database["public"]["Tables"]["payment_records"]["Insert"];
 type QueryOptions = { enabled?: boolean };
 
+export function validatePaymentInput(
+  input: Pick<PaymentInsert, "client_id" | "service" | "fees" | "total_installments">,
+) {
+  const fees = Number(input.fees);
+  const installments = Number(input.total_installments ?? 1);
+  if (!input.client_id) throw new Error("Selecciona un cliente para registrar el pago.");
+  if (!input.service.trim()) throw new Error("Describe el servicio asociado al pago.");
+  if (!Number.isFinite(fees) || fees <= 0) throw new Error("Los honorarios deben ser mayores a 0.");
+  if (!Number.isInteger(installments) || installments < 1) {
+    throw new Error("El numero de cuotas debe ser al menos 1.");
+  }
+}
+
 export interface PaymentWithClient extends Payment {
   clients: { name: string } | null;
 }
@@ -49,8 +62,20 @@ export function useCreatePayment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: PaymentInsert) => {
+      validatePaymentInput(input);
       const db = await getAuthClient();
-      const { data, error } = await db.from("payments").insert(input).select().single();
+      const { data, error } = await db
+        .from("payments")
+        .insert({
+          ...input,
+          fees: Number(input.fees),
+          total_installments: Number(input.total_installments ?? 1),
+          paid: input.paid ?? 0,
+          paid_installments: input.paid_installments ?? 0,
+          status: input.status ?? "Pendiente",
+        })
+        .select()
+        .single();
       if (error) throw new Error(error.message);
       return data;
     },
