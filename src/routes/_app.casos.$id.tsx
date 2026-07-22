@@ -96,7 +96,8 @@ function CaseDetail() {
   const [savingNotes, setSavingNotes] = useState(false);
   const [notesSaved, setNotesSaved] = useState(false);
   const itemId = item?.id;
-  const itemNotes = (item as Record<string, any>)?.current_summary ?? (item as Record<string, any>)?.notes;
+  const itemNotes = ((item as unknown as Record<string, unknown>)?.current_summary ??
+    (item as unknown as Record<string, unknown>)?.notes) as string | undefined;
 
   // Sync notes from DB when item loads
   useEffect(() => {
@@ -162,7 +163,10 @@ function CaseDetail() {
       judicial_district: item.judicial_district ?? "",
       judge_or_prosecutor: item.judge_or_prosecutor ?? "",
       filing_date: item.filing_date ?? "",
-      current_summary: item.current_summary ?? (item as Record<string, any>).notes ?? "",
+      current_summary:
+        ((item as unknown as Record<string, unknown>).current_summary as string | undefined) ??
+        ((item as unknown as Record<string, unknown>).notes as string | undefined) ??
+        "",
       current_status_description: item.current_status_description ?? "",
       next_action: item.next_action ?? "",
       next_hearing: toPeruDateTimeInput(item.next_hearing),

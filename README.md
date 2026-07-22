@@ -40,12 +40,21 @@ npm run dev
 
 La aplicación de desarrollo se inicia en la URL que muestra Vite.
 
+## Pruebas y Seguridad
+
+- **Pruebas unitarias locales:** `npm test` (ejecuta exclusivamente pruebas locales sin tocar la base de datos).
+- **Pruebas remotas aisladas:** `npm run test:remote` (requiere `ALLOW_REMOTE_TESTS=true` y `SUPABASE_PROJECT_REF=pnqdgwpxcxngeueosmnh`; omite ejecuciones automáticamente si no están autorizadas).
+- Consulte `docs/remote-testing-security.md` para más información sobre políticas de seguridad y respaldos.
+
 ## Migraciones
 
 Para una base existente, aplicar en orden las migraciones de `supabase/migrations`. La migración de esta fase es:
 
 ```text
 supabase/migrations/20260721090000_legal_case_foundation.sql
+supabase/migrations/20260721120000_case_summary_defensive_backfill.sql
+supabase/migrations/20260721130000_grant_table_permissions.sql
+supabase/migrations/20260721140000_revoke_anon_write_permissions.sql
 ```
 
 Con Supabase CLI y el proyecto previamente vinculado:
@@ -53,7 +62,7 @@ Con Supabase CLI y el proyecto previamente vinculado:
 ```powershell
 npx supabase login
 npx supabase link --project-ref TU_PROJECT_REF
-npx supabase db push
+npx supabase db push --dry-run
 ```
 
 En una instalación limpia creada desde SQL Editor, ejecutar primero `supabase/schema.sql` y después `supabase/migrations/20260721090000_legal_case_foundation.sql`.

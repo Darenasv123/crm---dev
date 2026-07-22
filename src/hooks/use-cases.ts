@@ -71,7 +71,9 @@ export function useCreateCase() {
           demandado: payload.demandado,
         };
         if ("notes" in payload) {
-          (legacyPayload as Record<string, any>).notes = (payload as Record<string, any>).notes;
+          (legacyPayload as Record<string, unknown>).notes = (
+            payload as Record<string, unknown>
+          ).notes;
         }
         ({ data, error } = await db.from("cases").insert(legacyPayload).select().single());
       }
@@ -102,7 +104,9 @@ export function useUpdateCase() {
           ...(updates.demandado !== undefined && { demandado: updates.demandado }),
         };
         if ("notes" in updates) {
-          (legacyUpdates as Record<string, any>).notes = (updates as Record<string, any>).notes;
+          (legacyUpdates as Record<string, unknown>).notes = (
+            updates as Record<string, unknown>
+          ).notes;
         }
         ({ data, error } = await db
           .from("cases")

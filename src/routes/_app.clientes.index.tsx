@@ -77,7 +77,13 @@ function ClientsPage() {
     try {
       await createClient.mutateAsync({
         ...form,
-        initials: form.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "CL",
+        initials:
+          form.name
+            .split(" ")
+            .map((n) => n[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase() || "CL",
         document_number: form.dni || null,
         whatsapp: form.whatsapp || form.phone,
       });

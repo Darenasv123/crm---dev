@@ -58,13 +58,9 @@ export function FindingsListPanel({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase text-muted-foreground">
-                    {finding.group}
-                  </div>
+                  <div className="text-[10px] uppercase text-muted-foreground">{finding.group}</div>
                   <div className="mt-1 truncate text-sm font-semibold">{finding.fieldName}</div>
-                  <div className="mt-1 truncate text-xs text-muted-foreground">
-                    {finding.value}
-                  </div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{finding.value}</div>
                 </div>
                 <span
                   className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${

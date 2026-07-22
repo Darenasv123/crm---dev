@@ -400,7 +400,9 @@ function SettingsPage() {
                           </div>
                         </td>
                         <td className="py-3 px-3">
-                          <StatusBadge tone={roleColor[u.role as keyof typeof roleColor] || "default"}>
+                          <StatusBadge
+                            tone={roleColor[u.role as keyof typeof roleColor] || "default"}
+                          >
                             {u.role}
                           </StatusBadge>
                         </td>

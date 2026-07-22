@@ -17,7 +17,11 @@ interface FindingDetailPanelProps {
     nextAction?: string;
     reviewNotes?: string | null;
   };
-  onDecide: (status: "pending" | "approved" | "edited" | "rejected" | "conflict", editedValue?: string, notes?: string) => void;
+  onDecide: (
+    status: "pending" | "approved" | "edited" | "rejected" | "conflict",
+    editedValue?: string,
+    notes?: string,
+  ) => void;
   isSaving?: boolean;
 }
 
@@ -95,7 +99,9 @@ export function FindingDetailPanel({ finding, onDecide, isSaving }: FindingDetai
 
       {/* Notas de revisión */}
       <div className="mt-4">
-        <label className="text-xs font-semibold text-muted-foreground">Notas de revisión (opcional):</label>
+        <label className="text-xs font-semibold text-muted-foreground">
+          Notas de revisión (opcional):
+        </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

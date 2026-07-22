@@ -18,13 +18,14 @@ Las acciones aprobar, editar, rechazar, marcar conflicto y dejar pendiente funci
 
 `DocumentAnalysisProvider` separa clasificación, entidades, actuaciones y consolidación de carpeta. Todas las respuestas pasan por Zod. `MockDocumentAnalysisProvider` permite probar el flujo; las clases de Gemini y OpenAI no ejecutan llamadas reales.
 
-## Persistencia futura
+## Persistencia (Fase 2A)
 
-- Cada ejecución se guarda en `ai_analysis_runs` con versión de instrucción y proveedor.
-- Cada propuesta se guarda en `ai_findings`.
-- La fuente se registra en `source_references`.
-- La decisión humana registra estado, notas, usuario y fecha.
-- Solo una operación de confirmación transforma hallazgos aprobados en datos del CRM.
+- **`ai_findings` y `ai_analysis_runs`:** Implementado en `src/lib/ai-review/findings-service.ts` y `src/hooks/use-ai-findings.ts`.
+- **`source_references`:** Registro de referencias de documento, página, extracto y nivel de confianza.
+- **Decisión humana persistente:** `persistFindingDecision` registra `verification_status`, `review_notes`, `reviewed_by` y `reviewed_at`.
+- **Actualización optimista y rollback:** `useUpdateFindingDecision` aplica actualización optimista en UI con rollback automático si falla la red.
+- **Aislamiento de modo demostración:** La pantalla `/revision-ia` incluye un alternador "Supabase (Real)" vs "Modo demostración local", garantizando que los datos de prueba no toquen Supabase.
+- **Control de alcance:** Ninguna acción de revisión crea clientes o expedientes reales automáticamente en esta fase.
 
 ## Controles antes de conectar un modelo
 

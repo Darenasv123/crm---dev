@@ -881,9 +881,13 @@ function CasesBlock({
               <InfoLine label="Juzgado" value={selectedCase.juzgado || "—"} />
               <InfoLine label="Próxima audiencia" value={formatDate(selectedCase.next_hearing)} />
             </div>
-            {(selectedCase.current_summary || (selectedCase as Record<string, any>).notes) && (
+            {(selectedCase.current_summary ||
+              ((selectedCase as unknown as Record<string, unknown>).notes as
+                string | undefined)) && (
               <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm whitespace-pre-wrap">
-                {selectedCase.current_summary || (selectedCase as Record<string, any>).notes}
+                {selectedCase.current_summary ||
+                  ((selectedCase as unknown as Record<string, unknown>).notes as
+                    string | undefined)}
               </div>
             )}
             <Link

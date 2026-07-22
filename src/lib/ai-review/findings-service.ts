@@ -3,7 +3,10 @@ import type { Database } from "@/lib/database.types";
 import { z } from "zod";
 
 export type AiFindingRow = Database["public"]["Tables"]["ai_findings"]["Row"];
-export type VerificationStatus = AiFindingRow["verification_status"];
+
+// Supabase gen types emits `string` for TEXT columns with CHECK constraints.
+// We declare the allowed values explicitly so the rest of the codebase is narrowed.
+export type VerificationStatus = "pending" | "approved" | "edited" | "rejected" | "conflict";
 export type ImportJobRow = Database["public"]["Tables"]["import_jobs"]["Row"];
 export type SourceReferenceRow = Database["public"]["Tables"]["source_references"]["Row"];
 
@@ -26,11 +29,24 @@ export interface PaginatedFindingsResult {
   totalPages: number;
 }
 
+export const VERIFICATION_STATUSES = [
+  "pending",
+  "approved",
+  "edited",
+  "rejected",
+  "conflict",
+] as const;
+
 export const updateFindingDecisionSchema = z.object({
   findingId: z.string().uuid("ID de hallazgo inválido."),
-  status: z.enum(["pending", "approved", "edited", "rejected", "conflict"]),
+  status: z.enum(VERIFICATION_STATUSES),
   editedValue: z.string().trim().nullable().optional(),
-  reviewNotes: z.string().trim().max(1000, "Las notas no pueden superar los 1000 caracteres.").nullable().optional(),
+  reviewNotes: z
+    .string()
+    .trim()
+    .max(1000, "Las notas no pueden superar los 1000 caracteres.")
+    .nullable()
+    .optional(),
   userId: z.string().uuid("ID de usuario inválido."),
 });
 

@@ -91,37 +91,19 @@ alter table public.cases add column if not exists responsible_user_id uuid refer
 alter table public.cases add column if not exists updated_at timestamptz not null default now();
 alter table public.cases add column if not exists created_by uuid references public.profiles(id) on delete set null;
 
--- Relleno de campos ampliados con datos heredados.
--- La columna notes existe en el esquema teórico pero puede estar ausente en
--- bases creadas a partir de versiones anteriores de schema.sql.
--- Se usa un bloque DO para copiarla de forma defensiva solo cuando existe.
 update public.cases
 set internal_code = coalesce(nullif(expediente, ''), 'EXP-' || upper(left(id::text, 8))),
     case_name = coalesce(case_name, process_type),
     case_type = coalesce(case_type, process_type),
     court = coalesce(court, juzgado),
-    case_number = coalesce(case_number, expediente)
+    case_number = coalesce(case_number, expediente),
+    current_summary = coalesce(current_summary, notes)
 where internal_code is null
    or case_name is null
    or case_type is null
    or court is null
-   or case_number is null;
-
--- Copia current_summary desde notes solo si notes existe en la tabla.
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name   = 'cases'
-      and column_name  = 'notes'
-  ) then
-    update public.cases
-    set current_summary = notes
-    where current_summary is null and notes is not null;
-  end if;
-end;
-$$;
+   or case_number is null
+   or (current_summary is null and notes is not null);
 
 alter table public.payments add column if not exists case_id uuid references public.cases(id) on delete set null;
 

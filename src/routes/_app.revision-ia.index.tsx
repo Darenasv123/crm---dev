@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { DEMO_NOTICE, demoCase, demoClient, demoFindings } from "@/lib/legal/demo-data";
 import { applyReviewDecision } from "@/lib/ai-review/review-state";
-import { useAiFindings, useImportJobsFilter, useUpdateFindingDecision } from "@/hooks/use-ai-findings";
+import {
+  useAiFindings,
+  useImportJobsFilter,
+  useUpdateFindingDecision,
+} from "@/hooks/use-ai-findings";
 import { useAuth } from "@/hooks/use-auth";
 import { FindingsFilters } from "@/components/legal/findings-filters";
 import { DisplayFinding, FindingsListPanel } from "@/components/legal/findings-list-panel";
@@ -32,7 +36,12 @@ function AiReviewPage() {
   });
 
   // Supabase Queries & Mutations
-  const { data: realFindingsResult, isLoading: isLoadingReal, isError, error } = useAiFindings(filters);
+  const {
+    data: realFindingsResult,
+    isLoading: isLoadingReal,
+    isError,
+    error,
+  } = useAiFindings(filters);
   const { data: importJobs = [] } = useImportJobsFilter();
   const updateDecisionMutation = useUpdateFindingDecision();
 
@@ -64,15 +73,14 @@ function AiReviewPage() {
     }));
   }, [isDemoMode, demoState, realFindingsResult]);
 
-  const selectedId = isDemoMode
-    ? selectedDemoId
-    : (selectedRealId ?? listItems[0]?.id ?? "");
+  const selectedId = isDemoMode ? selectedDemoId : (selectedRealId ?? listItems[0]?.id ?? "");
 
   const counts = useMemo(
     () => ({
       pending: listItems.filter((item) => item.status === "pending").length,
       conflicts: listItems.filter((item) => item.status === "conflict").length,
-      approved: listItems.filter((item) => item.status === "approved" || item.status === "edited").length,
+      approved: listItems.filter((item) => item.status === "approved" || item.status === "edited")
+        .length,
     }),
     [listItems],
   );
@@ -81,15 +89,10 @@ function AiReviewPage() {
   const selectedDemoItem = demoState.find((item) => item.id === selectedId) ?? demoState[0];
   const selectedRealItem = (realFindingsResult?.data ?? []).find((item) => item.id === selectedId);
 
-  async function handleDecide(
-    status: VerificationStatus,
-    editedValue?: string,
-    notes?: string,
-  ) {
+  async function handleDecide(status: VerificationStatus, editedValue?: string, notes?: string) {
     if (isDemoMode) {
-      setDemoState(
-        (current) =>
-          applyReviewDecision(current, { findingId: selectedDemoItem.id, status, editedValue }) as DemoFinding[],
+      setDemoState((current) =>
+        applyReviewDecision(current, { findingId: selectedDemoItem.id, status, editedValue }),
       );
       setMessage(
         status === "approved"
@@ -126,18 +129,22 @@ function AiReviewPage() {
   }
 
   function resetDemo() {
-    setDemoState(demoFindings.map((item) => ({ ...item })) as DemoFinding[]);
+    setDemoState(
+      demoFindings.map((item) => ({ ...item, status: item.status satisfies VerificationStatus })),
+    );
     setSelectedDemoId(demoFindings[0].id);
     setMessage("Revisión demostrativa reiniciada.");
   }
 
-  const detailProps = isDemoMode
-    ? {
+  type DetailFinding = React.ComponentProps<typeof FindingDetailPanel>["finding"];
+
+  const detailProps: DetailFinding = isDemoMode
+    ? ({
         id: selectedDemoItem.id,
         group: selectedDemoItem.group,
         fieldName: selectedDemoItem.fieldName,
         value: selectedDemoItem.value,
-        status: selectedDemoItem.status,
+        status: selectedDemoItem.status satisfies VerificationStatus,
         clientName: demoClient.name,
         documentNumber: demoClient.documentNumber,
         caseType: demoCase.caseType,
@@ -145,13 +152,15 @@ function AiReviewPage() {
         caseStatus: demoCase.status,
         nextAction: demoCase.nextAction,
         reviewNotes: selectedDemoItem.reviewNotes,
-      }
-    : {
+      } satisfies DetailFinding)
+    : ({
         id: selectedRealItem?.id ?? "",
         group: selectedRealItem?.finding_type ?? "N/A",
         fieldName: selectedRealItem?.field_name ?? "N/A",
-        value: (selectedRealItem?.normalized_value as string) ?? (selectedRealItem?.proposed_value as string) ?? "Sin valor",
-        status: (selectedRealItem?.verification_status as VerificationStatus) ?? "pending",
+        value: (selectedRealItem?.normalized_value ??
+          selectedRealItem?.proposed_value ??
+          "Sin valor") as string,
+        status: (selectedRealItem?.verification_status ?? "pending") as VerificationStatus,
         clientName: "Cliente detectado",
         documentNumber: undefined,
         caseType: undefined,
@@ -159,7 +168,7 @@ function AiReviewPage() {
         caseStatus: undefined,
         nextAction: undefined,
         reviewNotes: selectedRealItem?.review_notes,
-      };
+      } satisfies DetailFinding);
 
   const sourceProps = isDemoMode
     ? {
@@ -204,7 +213,8 @@ function AiReviewPage() {
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div className="font-semibold">Modo demostración local activo</div>
           <p className="mt-1 text-xs leading-5">
-            {DEMO_NOTICE} Cambia a &quot;Supabase (Real)&quot; en los filtros si deseas revisar registros persistidos en la base de datos.
+            {DEMO_NOTICE} Cambia a &quot;Supabase (Real)&quot; en los filtros si deseas revisar
+            registros persistidos en la base de datos.
           </p>
         </div>
       )}
