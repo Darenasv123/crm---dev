@@ -36,3 +36,21 @@ Objetivo: importar desde Drive real con OAuth. Archivos: `src/lib/imports/drive-
 ## Checkpoint Fase 1 - 2026-07-22
 
 Fase 1 implementada en commits separados: dependencia directa `jszip`, parser jerarquico, persistencia segura, UI de revision, ajuste de Clientes y tests. Las fases 3 a 7 siguen vigentes para batch backend, OCR robusto, Drive OAuth y modelo canonico de importaciones.
+## Fase 8 - Limpieza y estabilizacion operativa completada el 2026-07-22
+
+Completado:
+
+- Checkpoint de importacion individual en `6af7b5c`.
+- Herramienta segura de limpieza `scripts/cleanup-test-imports.ts` con dry-run/execute en `4d2b033`.
+- Ejecucion y reporte de limpieza en `eeb7dfb`.
+- Formato del script administrativo en `1a53698`.
+- Estabilizacion de busqueda, documentos, pagos y ficha de cliente en `193e072`.
+
+Siguiente orden recomendado para registrar clientes reales:
+
+1. Mantener detenida la importacion ZIP masiva.
+2. Crear clientes manualmente desde `Clientes`.
+3. Crear expedientes manuales desde `Expedientes` y asociarlos al cliente correcto.
+4. Subir documentos uno por uno, asociandolos a cliente y expediente cuando corresponda.
+5. Usar `Reportes` solo con cliente/expediente ya revisado.
+6. Retomar importacion ZIP solo cuando exista batch backend o una cola con revision humana.

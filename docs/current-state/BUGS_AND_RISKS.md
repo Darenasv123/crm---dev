@@ -86,3 +86,20 @@ Evidencia: `npm run build` advierte chunks > 500 kB, especialmente importaciones
 ## Actualizacion Fase 1 - 2026-07-22
 
 Mitigado en frontend actual: P0-1, P0-2, P0-3, P0-4, parte de P0-5, P1-1, P1-2, P1-3 y P1-6. Persisten riesgos estructurales: procesamiento pesado en navegador, falta de transaccion real de base de datos, OCR pendiente y necesidad de migracion canonica para expedientes provisionales.
+## Actualizacion limpieza y estabilizacion - 2026-07-22
+
+Mitigado:
+
+- Datos ZIP de prueba eliminados de Supabase: 53 clientes, 66 expedientes, 650 documentos y 650 objetos del bucket `documents`.
+- Verificacion post-limpieza: 0 IDs del plan permanecen en `clients`, `cases` o `documents`; 0 objetos Storage del plan permanecen presentes; 0 errores de borrado.
+- Búsqueda global: ahora no queda inutilizada por fallos de tablas secundarias y consulta telefono/documento/juzgado/partes.
+- Subida manual de documentos: ahora valida extension permitida, archivo no vacio y limite de 10 MB antes de subir a Storage.
+- Pagos: ahora valida cliente, servicio, honorarios positivos y cuotas >= 1 tambien en el hook, no solo en el formulario.
+- Ficha de cliente: incorpora agenda vinculada y documentos sin clasificar para operar cliente por cliente.
+
+Riesgos pendientes:
+
+- No se probo Google Calendar end-to-end con OAuth real en esta fase; requiere token vigente y calendario conectado.
+- No se probo flujo E2E autenticado con Playwright; la app responde en localhost, pero la revision visual final queda para prueba manual con usuario real.
+- Los warnings Fast Refresh historicos siguen presentes y no bloquean build.
+- Sigue pendiente mover procesamiento pesado ZIP/OCR a backend si se retoma importacion masiva.
