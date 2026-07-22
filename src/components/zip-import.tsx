@@ -1,6 +1,6 @@
-/**
+﻿/**
  * zip-import.tsx
- * Componente de importación de carpetas de clientes desde ZIP (Google Drive).
+ * Componente de importaciÃ³n de carpetas de clientes desde ZIP (Google Drive).
  */
 import { useRef, useState, useCallback } from "react";
 import {
@@ -36,8 +36,9 @@ import {
   type ExistingClient,
   type ZipFileEntry,
 } from "@/lib/imports/zip-import";
+import { persistZipCandidate } from "@/lib/imports/zip-persistence";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface Props {
   onClose: () => void;
@@ -48,13 +49,16 @@ type ImportStep = "upload" | "parsing" | "review" | "importing" | "done";
 
 interface FolderImportResult {
   folderName: string;
-  status: "success" | "failed" | "skipped";
+  status: "success" | "partial" | "failed" | "skipped";
   clientId?: string;
   error?: string;
   documentsImported: number;
+  documentsSkipped?: number;
+  errors?: string[];
+  compensations?: string[];
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const COLORS = [
   "oklch(0.74 0.12 80)",
@@ -79,7 +83,7 @@ const DUPLICATE_ICONS: Record<DuplicateAction, typeof UserPlus> = {
   skip: SkipForward,
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -92,20 +96,20 @@ function randomColor(): string {
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ExtractionBadge({ status }: { status: ZipFileEntry["extractionStatus"] }) {
   const map = {
     extracted: {
       cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      label: "Texto extraído",
+      label: "Texto extraÃ­do",
     },
     ocr_required: {
       cls: "bg-amber-50 text-amber-700 border-amber-200",
-      label: "Pendiente de extracción OCR",
+      label: "Pendiente de extracciÃ³n OCR",
     },
     binary: { cls: "bg-slate-50 text-slate-600 border-slate-200", label: "Imagen/binario" },
-    empty: { cls: "bg-red-50 text-red-600 border-red-200", label: "Vacío" },
+    empty: { cls: "bg-red-50 text-red-600 border-red-200", label: "VacÃ­o" },
     error: { cls: "bg-red-50 text-red-600 border-red-200", label: "Error de lectura" },
   };
   const { cls, label } = map[status] ?? map.binary;
@@ -135,7 +139,7 @@ function DuplicateActionSelector({
   return (
     <div className="mt-3 space-y-2">
       <p className="text-xs font-semibold text-amber-800">
-        ⚠ Se encontraron posibles clientes existentes:
+        âš  Se encontraron posibles clientes existentes:
       </p>
       {matches.slice(0, 3).map((m) => (
         <div
@@ -143,7 +147,7 @@ function DuplicateActionSelector({
           className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs"
         >
           <span className="font-medium">{m.clientName}</span>
-          <span className="ml-2 text-amber-600">— {m.matchReason}</span>
+          <span className="ml-2 text-amber-600">â€” {m.matchReason}</span>
           {m.matchStrength === "approximate" && (
             <span className="ml-1 italic text-amber-500">(solo advertencia)</span>
           )}
@@ -176,7 +180,7 @@ function DuplicateActionSelector({
           value={existingClientId ?? ""}
           onChange={(e) => onClientChange(e.target.value)}
         >
-          <option value="">— Selecciona el cliente existente —</option>
+          <option value="">â€” Selecciona el cliente existente â€”</option>
           {matches.map((m) => (
             <option key={m.clientId} value={m.clientId}>
               {m.clientName}
@@ -188,7 +192,7 @@ function DuplicateActionSelector({
   );
 }
 
-// ─── CandidateCard ────────────────────────────────────────────────────────────
+// â”€â”€â”€ CandidateCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CandidateCard({
   candidate,
@@ -292,7 +296,7 @@ function CandidateCard({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {[
               { label: "DNI", field: "dni" as const, value: eff.dni ?? d.dni },
-              { label: "Teléfono", field: "phone" as const, value: eff.phone ?? d.phone },
+              { label: "TelÃ©fono", field: "phone" as const, value: eff.phone ?? d.phone },
               { label: "Correo", field: "email" as const, value: eff.email ?? d.email },
               {
                 label: "Tipo de proceso",
@@ -428,7 +432,7 @@ function CandidateCard({
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function ZipImport({ onClose, onSuccess }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -447,7 +451,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     [],
   );
 
-  // ─── ZIP parsing ─────────────────────────────────────────────────────────────
+  // â”€â”€â”€ ZIP parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleFile(f: File) {
     if (!f.name.toLowerCase().endsWith(".zip")) {
@@ -472,7 +476,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
       }
 
       // Cargar clientes existentes para detectar duplicados
-      addProgress("Verificando duplicados en la base de datos…");
+      addProgress("Verificando duplicados en la base de datosâ€¦");
       const db = await getAuthClient();
       const { data: existingRaw } = await db
         .from("clients")
@@ -491,6 +495,12 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         duplicates: detectDuplicates(c, existing),
         edits: {},
         excludedFiles: new Set<string>(),
+        excludedFolders: new Set<string>(),
+        documentCaseMap: Object.fromEntries(
+          (c.caseCandidates ?? []).flatMap((caseCandidate) =>
+            caseCandidate.documentPaths.map((path) => [path, caseCandidate.id] as const),
+          ),
+        ),
       }));
 
       setCandidates(reviewCandidates);
@@ -508,13 +518,13 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     if (f) handleFile(f);
   }
 
-  // ─── Candidate updates ───────────────────────────────────────────────────────
+  // â”€â”€â”€ Candidate updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function updateCandidate(idx: number, partial: Partial<ReviewCandidate>) {
     setCandidates((prev) => prev.map((c, i) => (i === idx ? { ...c, ...partial } : c)));
   }
 
-  // ─── Import final ────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Import final â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleImport(indicesToImport?: number[]) {
     const toImport = candidates.filter((c, i) => {
@@ -526,195 +536,60 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     });
 
     if (toImport.length === 0) {
-      setParseError(
-        "No hay carpetas seleccionadas para importar. Asigna una acción a cada duplicado.",
-      );
+      setParseError("No hay carpetas seleccionadas para importar. Asigna una accion a cada duplicado.");
       return;
     }
 
     setStep("importing");
     const batchResults: FolderImportResult[] = retryOnly ? [...results] : [];
     const newFailed: number[] = [];
+    const db = await getAuthClient();
+    const storageBucket = supabase.storage.from("documents");
 
     for (const candidate of toImport) {
       const globalIdx = candidates.indexOf(candidate);
-      setImportProgress(`Importando: ${candidate.proposedName}…`);
+      setImportProgress(`Importando: ${candidate.edits.proposedName ?? candidate.proposedName}...`);
 
-      try {
-        const effectiveName = candidate.edits.proposedName ?? candidate.proposedName;
-        const db = await getAuthClient();
+      const result = await persistZipCandidate({
+        candidate,
+        db,
+        storageBucket,
+        sourceFileName: fileName,
+        buildInitials,
+        randomColor,
+      });
 
-        let clientId: string | null = null;
+      const existing = batchResults.find((r) => r.folderName === candidate.folderName);
+      const nextResult: FolderImportResult = {
+        folderName: result.folderName,
+        status: result.status,
+        clientId: result.clientId,
+        error: result.error,
+        documentsImported: result.documentsImported,
+        documentsSkipped: result.documentsSkipped,
+        errors: result.errors,
+        compensations: result.compensations,
+      };
+      if (existing) Object.assign(existing, nextResult);
+      else batchResults.push(nextResult);
 
-        const action =
-          candidate.duplicates.length > 0
-            ? (candidate.duplicateAction ?? "create_new")
-            : "create_new";
-
-        if (action === "create_new") {
-          const payload = {
-            name: effectiveName,
-            dni: candidate.edits.dni ?? candidate.detected.dni ?? "00000000",
-            document_number: candidate.edits.dni ?? candidate.detected.dni ?? null,
-            document_type: "DNI",
-            phone: candidate.edits.phone ?? candidate.detected.phone ?? "000000000",
-            whatsapp: candidate.edits.phone ?? candidate.detected.phone ?? null,
-            email: candidate.edits.email ?? candidate.detected.email ?? null,
-            process_type:
-              candidate.edits.processType ??
-              candidate.detected.processType ??
-              "Defensa penal — Otros",
-            status: "Activo" as const,
-            initials: buildInitials(effectiveName),
-            color: randomColor(),
-            notes: `Importado desde Google Drive ZIP: ${fileName}`,
-          };
-          const { data, error } = await db.from("clients").insert(payload).select("id").single();
-          if (error) throw new Error(error.message);
-          clientId = data.id;
-        } else if (action === "update_existing" && candidate.existingClientId) {
-          type ClientUpd = { phone?: string; email?: string; process_type?: string };
-          const upd: ClientUpd = {};
-          if (candidate.edits.phone) upd.phone = candidate.edits.phone;
-          if (candidate.edits.email) upd.email = candidate.edits.email;
-          if (candidate.edits.processType) upd.process_type = candidate.edits.processType;
-          if (Object.keys(upd).length > 0) {
-            await db.from("clients").update(upd).eq("id", candidate.existingClientId);
-          }
-          clientId = candidate.existingClientId;
-        } else if (action === "attach_docs" && candidate.existingClientId) {
-          clientId = candidate.existingClientId;
-        }
-
-        if (!clientId) throw new Error("No se pudo determinar el cliente destino.");
-
-        // Crear expedientes detectados
-        const expedientes = candidate.detected.expedientes;
-        const caseIds: string[] = [];
-        for (const exp of expedientes.slice(0, 5)) {
-          const juzgado = candidate.edits.juzgado ?? candidate.detected.juzgado ?? "Por determinar";
-          const processType =
-            candidate.edits.processType ??
-            candidate.detected.processType ??
-            "Defensa penal — Otros";
-          const { data: caseData } = await db
-            .from("cases")
-            .insert({
-              client_id: clientId,
-              expediente: exp,
-              juzgado,
-              process_type: processType,
-              status: candidate.detected.stage ?? "En trámite",
-              priority: "Media",
-              demandante: candidate.detected.demandante ?? null,
-              demandado: candidate.detected.demandado ?? null,
-            })
-            .select("id")
-            .single();
-          if (caseData?.id) caseIds.push(caseData.id);
-        }
-
-        // Subir documentos
-        const activeFiles = candidate.files.filter(
-          (f) => !candidate.excludedFiles.has(f.zipPath) && f.data.byteLength > 0,
-        );
-        let docsImported = 0;
-
-        for (const docFile of activeFiles) {
-          try {
-            // Verifica duplicado por checksum
-            if (docFile.checksum) {
-              const { data: existing } = await db
-                .from("documents")
-                .select("id")
-                .eq("checksum", docFile.checksum)
-                .maybeSingle();
-              if (existing) continue; // ya existe
-            }
-
-            const safeName = docFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-            const storagePath = `${clientId}/${Date.now()}_${safeName}`;
-            const blob = new Blob([docFile.data]);
-
-            const { error: uploadErr } = await supabase.storage
-              .from("documents")
-              .upload(storagePath, blob, { upsert: false });
-            if (uploadErr) throw new Error(uploadErr.message);
-
-            const caseId = caseIds[0] ?? null;
-            const sizeStr = formatSize(docFile.size);
-
-            await db.from("documents").insert({
-              name: docFile.name,
-              original_name: docFile.name,
-              display_name: docFile.name,
-              type: docFile.docType,
-              document_type: docFile.docType,
-              size: sizeStr,
-              file_size: docFile.size,
-              storage_path: storagePath,
-              client_id: clientId,
-              case_id: caseId,
-              checksum: docFile.checksum || null,
-              source_type: "zip_import",
-              source_provider: "google_drive_zip",
-              processing_status:
-                docFile.extractionStatus === "ocr_required" ? "ocr_required" : "pending",
-              verification_status: "pending",
-            });
-
-            docsImported++;
-          } catch {
-            // Fallo individual no cancela la carpeta
-          }
-        }
-
-        const existing = batchResults.find((r) => r.folderName === candidate.folderName);
-        if (existing) {
-          existing.status = "success";
-          existing.clientId = clientId;
-          existing.documentsImported = docsImported;
-        } else {
-          batchResults.push({
-            folderName: candidate.folderName,
-            status: "success",
-            clientId,
-            documentsImported: docsImported,
-          });
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Error desconocido";
-        const existing = batchResults.find((r) => r.folderName === candidate.folderName);
-        if (existing) {
-          existing.status = "failed";
-          existing.error = msg;
-        } else {
-          batchResults.push({
-            folderName: candidate.folderName,
-            status: "failed",
-            error: msg,
-            documentsImported: 0,
-          });
-        }
-        newFailed.push(globalIdx);
-      }
+      if (result.status === "failed" || result.status === "partial") newFailed.push(globalIdx);
     }
 
     setResults(batchResults);
     setFailedIndices(newFailed);
     setRetryOnly(false);
     setStep("done");
-    if (batchResults.some((r) => r.status === "success")) onSuccess();
+    if (batchResults.some((r) => r.status === "success" || r.status === "partial")) onSuccess();
   }
-
-  // ─── Retry failed ────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Retry failed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleRetryFailed() {
     setRetryOnly(true);
     await handleImport(failedIndices);
   }
 
-  // ─── Render helpers ──────────────────────────────────────────────────────────
+  // â”€â”€â”€ Render helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const activeCount = candidates.filter((c) => !c.excluded && c.duplicateAction !== "skip").length;
   const unresolved = candidates.filter(
@@ -733,11 +608,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             <h3 className="text-base font-semibold">Importar desde Google Drive / ZIP</h3>
             <p className="text-xs text-muted-foreground truncate">
               {step === "upload" && "Sube un archivo .zip descargado desde Google Drive"}
-              {step === "parsing" && "Analizando archivo…"}
+              {step === "parsing" && "Analizando archivoâ€¦"}
               {step === "review" &&
-                `${candidates.length} carpeta(s) detectada(s) · ${activeCount} seleccionada(s)`}
+                `${candidates.length} carpeta(s) detectada(s) Â· ${activeCount} seleccionada(s)`}
               {step === "importing" && importProgress}
-              {step === "done" && `${successCount} importada(s) · ${failedCount} fallida(s)`}
+              {step === "done" && `${successCount} importada(s) Â· ${failedCount} fallida(s)`}
             </p>
           </div>
           <button
@@ -749,7 +624,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* ── Upload ── */}
+          {/* â”€â”€ Upload â”€â”€ */}
           {step === "upload" && (
             <div className="space-y-4">
               <div
@@ -760,13 +635,13 @@ export function ZipImport({ onClose, onSuccess }: Props) {
               >
                 <Upload className="h-10 w-10 text-muted-foreground" />
                 <div className="text-sm text-center">
-                  <p className="font-medium">Arrastra el ZIP aquí</p>
+                  <p className="font-medium">Arrastra el ZIP aquÃ­</p>
                   <p className="text-muted-foreground text-xs mt-0.5">
-                    o haz clic para seleccionar · <strong>.zip</strong>
+                    o haz clic para seleccionar Â· <strong>.zip</strong>
                   </p>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Descarga las carpetas desde Google Drive → clic derecho → "Descargar"
+                  Descarga las carpetas desde Google Drive â†’ clic derecho â†’ "Descargar"
                 </p>
               </div>
               <input
@@ -788,7 +663,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
               <div className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground space-y-1.5">
                 <p className="font-semibold text-foreground mb-1">Estructura esperada del ZIP:</p>
                 <p className="font-mono">YLLA NEGRON YENI/</p>
-                <p className="font-mono ml-4">DEMANDA DE EJECUCIÓN.docx</p>
+                <p className="font-mono ml-4">DEMANDA DE EJECUCIÃ“N.docx</p>
                 <p className="font-mono ml-4">CARGO-YLLA NEGRON.pdf</p>
                 <p className="font-mono">GARCIA TORRES MANUEL/</p>
                 <p className="font-mono ml-4">SENTENCIA.pdf</p>
@@ -797,11 +672,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* ── Parsing ── */}
+          {/* â”€â”€ Parsing â”€â”€ */}
           {step === "parsing" && (
             <div className="flex flex-col items-center justify-center gap-4 py-12">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm font-medium">Analizando archivo ZIP…</p>
+              <p className="text-sm font-medium">Analizando archivo ZIPâ€¦</p>
               <div className="w-full max-w-md space-y-1 max-h-40 overflow-y-auto">
                 {parseProgress.map((msg, i) => (
                   <p key={i} className="text-xs text-muted-foreground">
@@ -812,21 +687,21 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* ── Review ── */}
+          {/* â”€â”€ Review â”€â”€ */}
           {step === "review" && (
             <div className="space-y-3">
               {unresolved > 0 && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                   <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                   <p className="text-sm text-amber-800">
-                    {unresolved} carpeta(s) tienen posibles duplicados. Asigna una acción antes de
+                    {unresolved} carpeta(s) tienen posibles duplicados. Asigna una acciÃ³n antes de
                     importar.
                   </p>
                 </div>
               )}
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {candidates.length} carpetas · {candidates.filter((c) => !c.excluded).length}{" "}
+                  {candidates.length} carpetas Â· {candidates.filter((c) => !c.excluded).length}{" "}
                   activas
                 </span>
                 <span>{candidates.reduce((s, c) => s + c.files.length, 0)} documentos totales</span>
@@ -844,7 +719,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* ── Importing ── */}
+          {/* â”€â”€ Importing â”€â”€ */}
           {step === "importing" && (
             <div className="flex flex-col items-center justify-center gap-4 py-12">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -852,7 +727,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* ── Done ── */}
+          {/* â”€â”€ Done â”€â”€ */}
           {step === "done" && (
             <div className="space-y-4">
               <div className="flex flex-col items-center gap-3 py-4">
@@ -921,7 +796,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 }}
                 className="h-10 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
               >
-                ← Atrás
+                â† AtrÃ¡s
               </button>
               <button
                 onClick={() => handleImport()}
@@ -956,3 +831,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     </div>
   );
 }
+
+
+
+
