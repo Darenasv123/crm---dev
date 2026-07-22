@@ -82,3 +82,7 @@ Evidencia: lint reporta 7 warnings en UI/auth. Impacto bajo en produccion, ruido
 
 Evidencia: `npm run build` advierte chunks > 500 kB, especialmente importaciones/exceljs. Impacto: carga inicial pesada. Recomendacion: code splitting/dynamic import de importadores pesados.
 
+
+## Actualizacion Fase 1 - 2026-07-22
+
+Mitigado en frontend actual: P0-1, P0-2, P0-3, P0-4, parte de P0-5, P1-1, P1-2, P1-3 y P1-6. Persisten riesgos estructurales: procesamiento pesado en navegador, falta de transaccion real de base de datos, OCR pendiente y necesidad de migracion canonica para expedientes provisionales.

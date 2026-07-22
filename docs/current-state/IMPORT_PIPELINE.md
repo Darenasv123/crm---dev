@@ -69,3 +69,9 @@ flowchart TD
 - Hashes: si calcula y guarda `checksum` (`src/lib/imports/zip-import.ts:171`, `src/components/zip-import.tsx:658`).
 - Duplicados reales: parcial; clientes por DNI/nombre/telefono. No deduplica expedientes ni candidatos internos del ZIP.
 
+
+## Estado tras Fase 1 - 2026-07-22
+
+El ZIP ya no interpreta automaticamente la carpeta de primer nivel como cliente. Primero reconstruye el arbol completo, clasifica carpetas y propone candidatos de cliente y expediente para revision humana. La persistencia solo ocurre al confirmar y valida errores de Supabase/Storage en cada paso. Si un documento se sube a Storage pero falla su fila en `documents`, se intenta retirar el objeto subido y se reporta compensacion.
+
+CSV/XLSX no se mezclan con este flujo; permanecen en el importador tabular.

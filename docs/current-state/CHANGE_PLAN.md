@@ -32,3 +32,7 @@ Objetivo: sacar JSZip/OCR del navegador. Archivos: server functions/Edge/Cloudfl
 
 Objetivo: importar desde Drive real con OAuth. Archivos: `src/lib/imports/drive-provider.ts`, provider real, backend OAuth. Tablas: `documents.external_file_id`, `external_folder_id`, `external_url`, import tables. Migraciones: tokens seguros si aplica. Riesgos: permisos OAuth y datos sensibles. Pruebas: carpetas reales de prueba, refresh token, duplicados por external id. Criterio: Drive real inventaria sin descargar manualmente ZIP y conserva IDs externos. Prioridad: P2/P1 segun urgencia. Complejidad: Alta.
 
+
+## Checkpoint Fase 1 - 2026-07-22
+
+Fase 1 implementada en commits separados: dependencia directa `jszip`, parser jerarquico, persistencia segura, UI de revision, ajuste de Clientes y tests. Las fases 3 a 7 siguen vigentes para batch backend, OCR robusto, Drive OAuth y modelo canonico de importaciones.
