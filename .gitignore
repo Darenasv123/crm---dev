@@ -16,7 +16,7 @@ dist-ssr
 .nitro
 *.local
 
-# Environment variables — NEVER commit these
+# Environment variables - NEVER commit these
 .env
 .env.local
 .env.*.local
@@ -25,7 +25,7 @@ dist-ssr
 .wrangler/
 .dev.vars
 
-# Bun — lockfile y config son locales, CI usa npm
+# Bun - lockfile y config son locales, CI usa npm
 bun.lock
 bunfig.toml
 
@@ -41,3 +41,4 @@ bunfig.toml
 *.sw?
 
 supabase/.temp/
+.local-backups/

@@ -17,7 +17,8 @@
     "demo:verify": "vitest run tests/mock-providers.test.ts tests/ai-review.test.ts",
     "cf:secrets": "wrangler secret put",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "cleanup:test-imports": "node scripts/cleanup-test-imports.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
