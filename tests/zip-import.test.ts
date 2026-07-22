@@ -14,6 +14,11 @@ import {
   analyzeText,
   detectDuplicates,
   parseZipFile,
+  parseSingleClientZipFile,
+  SINGLE_CLIENT_ZIP_ERROR,
+  moveDocumentBetweenCases,
+  removeCaseCandidate,
+  analyzeTextWithEvidence,
   formatSize,
   sha256,
   buildZipTree,
@@ -488,5 +493,104 @@ describe("parseZipFile jerarquico", () => {
     expect(container?.totalDescendantDocs).toBe(2);
     expect(client?.depth).toBe(2);
     expect(client?.subfolders).toContain("Contenedor/Cliente Uno/Expediente A");
+  });
+});
+
+describe("importacion ZIP individual", () => {
+  it("acepta documentos directos de un solo cliente", async () => {
+    const zipBuf = await buildZip([
+      { path: "YLLA NEGRON YENI/DEMANDA.txt", content: "DNI: 12345678 Materia: Alimentos" },
+      { path: "YLLA NEGRON YENI/CARGO.pdf", content: "%PDF" },
+    ]);
+    const result = await parseSingleClientZipFile(zipBuf);
+    expect(result.rejectionReason).toBeUndefined();
+    expect(result.candidate?.proposedName).toBe("YLLA NEGRON YENI");
+    expect(result.candidate?.caseCandidates?.[0].origin).toBe("importacion_zip_individual");
+  });
+
+  it("acepta contenedor generico con un solo cliente real", async () => {
+    const zipBuf = await buildZip([
+      { path: "A-EXPEDIENTES DE CLIENTES/YLLA NEGRON YENI/DEMANDA.txt", content: "DNI: 12345678" },
+    ]);
+    const result = await parseSingleClientZipFile(zipBuf);
+    expect(result.candidate?.proposedName).toBe("YLLA NEGRON YENI");
+    expect(result.candidates).toHaveLength(1);
+  });
+
+  it("rechaza ZIP con mas de un cliente", async () => {
+    const zipBuf = await buildZip([
+      { path: "CLIENTE UNO/DEMANDA.txt", content: "DNI: 12345678" },
+      { path: "CLIENTE DOS/CARGO.txt", content: "DNI: 87654321" },
+    ]);
+    const result = await parseSingleClientZipFile(zipBuf);
+    expect(result.rejectionReason).toBe(SINGLE_CLIENT_ZIP_ERROR);
+    expect(result.candidates).toHaveLength(2);
+  });
+
+  it("no inventa datos y conserva evidencia por campo", () => {
+    const result = analyzeTextWithEvidence(
+      "DNI: 12345678\nRUC: 20123456789\nTelefono: 987654321\nCorreo: cliente@test.pe",
+      "CLIENTE/DEMANDA.txt",
+      "DEMANDA.txt",
+    );
+    expect(result.detected.dni).toBe("12345678");
+    expect(result.detected.ruc).toBe("20123456789");
+    expect(result.fieldEvidence.client.dni?.sourceName).toBe("DEMANDA.txt");
+    expect(result.fieldEvidence.client.address).toBeUndefined();
+  });
+
+  it("crea expediente provisional con estado pendiente_revision cuando falta numero", async () => {
+    const zipBuf = await buildZip([
+      { path: "MENDOZA TORRES/ANEXOS/documento.txt", content: "Documento sin expediente" },
+    ]);
+    const result = await parseSingleClientZipFile(zipBuf);
+    const provisional = result.candidate?.caseCandidates?.[0];
+    expect(provisional?.isProvisional).toBe(true);
+    expect(provisional?.status).toBe("pendiente_revision");
+    expect(provisional?.matter).toBe("Pendiente de clasificacion");
+  });
+
+  it("permite mover documentos entre expedientes y dejar sin clasificar", () => {
+    const cases = [
+      {
+        id: "exp-1",
+        title: "Exp 1",
+        caseNumber: "1",
+        processType: "Alimentos",
+        matter: "Alimentos",
+        specialty: "Familia",
+        juzgado: "Juzgado",
+        status: "Consulta",
+        origin: "importacion_zip_individual" as const,
+        originPath: "CLIENTE",
+        confidence: 0.8,
+        warnings: [],
+        documentPaths: ["a.pdf"],
+        isProvisional: false,
+      },
+      {
+        id: "exp-2",
+        title: "Exp 2",
+        caseNumber: "2",
+        processType: "Civil",
+        matter: "Civil",
+        specialty: "Civil",
+        juzgado: "Juzgado",
+        status: "Consulta",
+        origin: "importacion_zip_individual" as const,
+        originPath: "CLIENTE",
+        confidence: 0.8,
+        warnings: [],
+        documentPaths: [],
+        isProvisional: false,
+      },
+    ];
+    const moved = moveDocumentBetweenCases(cases, { "a.pdf": "exp-1" }, "a.pdf", "exp-2");
+    expect(moved.documentCaseMap["a.pdf"]).toBe("exp-2");
+    expect(moved.caseCandidates[1].documentPaths).toContain("a.pdf");
+
+    const removed = removeCaseCandidate(moved.caseCandidates, moved.documentCaseMap, "exp-2");
+    expect(removed.documentCaseMap["a.pdf"]).toBe("__unclassified");
+    expect(removed.caseCandidates.some((item) => item.id === "exp-2")).toBe(false);
   });
 });

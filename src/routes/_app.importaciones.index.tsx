@@ -4,9 +4,10 @@ import { FileSpreadsheet, FolderArchive, Upload, FileText } from "lucide-react";
 import { AppLayout, Card } from "@/components/app-layout";
 import { CSVImport } from "@/components/csv-import";
 import { ZipImport } from "@/components/zip-import";
+import { MassImportDryRun } from "@/components/mass-import-dry-run";
 
 export const Route = createFileRoute("/_app/importaciones/")({
-  head: () => ({ meta: [{ title: "Importaciones — CRM Jurídico" }] }),
+  head: () => ({ meta: [{ title: "Importaciones - CRM Juridico" }] }),
   component: ImportsPage,
 });
 
@@ -24,20 +25,18 @@ function ImportsPage() {
   return (
     <AppLayout
       title="Importaciones"
-      subtitle="Migra clientes y expedientes al CRM desde distintas fuentes"
+      subtitle="Migra clientes y expedientes con revision previa antes de guardar"
     >
-      {/* ── Success banner ── */}
       {lastSuccess && (
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <FileText className="h-4 w-4 shrink-0" />
           {lastSuccess.type === "csv"
             ? "Clientes importados correctamente desde CSV/XLSX."
-            : "Carpetas importadas correctamente desde ZIP."}
+            : "Cliente importado correctamente desde ZIP."}
         </div>
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* ── Opción 1: CSV / XLSX ── */}
         <Card className="flex flex-col gap-4 p-6">
           <div className="flex items-start gap-4">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -46,7 +45,7 @@ function ImportsPage() {
             <div className="min-w-0">
               <h2 className="text-base font-semibold">Importar lista de clientes</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Sube una hoja de cálculo con columnas de nombre, DNI, teléfono, correo y tipo de
+                Sube una hoja de calculo con columnas de nombre, DNI, telefono, correo y tipo de
                 proceso.
               </p>
             </div>
@@ -58,10 +57,10 @@ function ImportsPage() {
           </div>
 
           <ul className="space-y-1 text-xs text-muted-foreground">
-            <li>• Una fila por cliente</li>
-            <li>• Encabezados reconocidos automáticamente (español/inglés)</li>
-            <li>• Vista previa antes de confirmar</li>
-            <li>• Plantilla de ejemplo descargable</li>
+            <li>- Una fila por cliente</li>
+            <li>- Encabezados reconocidos automaticamente (espanol/ingles)</li>
+            <li>- Vista previa antes de confirmar</li>
+            <li>- Plantilla de ejemplo descargable</li>
           </ul>
 
           <button
@@ -73,17 +72,16 @@ function ImportsPage() {
           </button>
         </Card>
 
-        {/* ── Opción 2: ZIP Google Drive ── */}
         <Card className="flex flex-col gap-4 p-6">
           <div className="flex items-start gap-4">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700">
               <FolderArchive className="h-6 w-6" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-semibold">Importar carpetas de clientes desde ZIP</h2>
+              <h2 className="text-base font-semibold">Importar un cliente desde ZIP</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Descarga tus carpetas de Google Drive como ZIP y sube el archivo. El CRM extrae
-                clientes, expedientes y documentos automáticamente.
+                Sube un ZIP que contenga una sola carpeta de cliente. El CRM detecta datos,
+                expedientes y documentos para revision antes de guardar.
               </p>
             </div>
           </div>
@@ -93,19 +91,19 @@ function ImportsPage() {
           </div>
 
           <ul className="space-y-1 text-xs text-muted-foreground">
-            <li>• Cada carpeta = un cliente</li>
-            <li>• Extrae texto de DOCX y PDF seleccionables</li>
-            <li>• Detecta DNI, teléfono, expedientes, juzgado…</li>
-            <li>• Vista previa y edición antes de guardar</li>
-            <li>• Detección de duplicados por DNI, nombre y teléfono</li>
-            <li>• PDF escaneados marcados para OCR posterior</li>
+            <li>- Solo una carpeta de cliente por ZIP</li>
+            <li>- Extrae texto de DOCX y PDF seleccionables</li>
+            <li>- Detecta DNI, telefono, expedientes y juzgado</li>
+            <li>- Vista previa jerarquica y edicion antes de guardar</li>
+            <li>- Deteccion de duplicados por DNI, nombre y telefono</li>
+            <li>- PDF escaneados marcados para OCR posterior</li>
           </ul>
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <strong>¿Cómo descargar desde Google Drive?</strong>
+            <strong>Uso recomendado</strong>
             <br />
-            Selecciona las carpetas → clic derecho → <em>"Descargar"</em>. Google Drive genera
-            automáticamente un archivo ZIP.
+            Selecciona una carpeta individual del cliente, descargala como ZIP y confirma despues de
+            revisar duplicados, expedientes y documentos.
           </div>
 
           <button
@@ -113,12 +111,13 @@ function ImportsPage() {
             onClick={() => setModal("zip")}
             className="mt-auto flex h-10 items-center justify-center gap-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:brightness-110"
           >
-            <Upload className="h-4 w-4" /> Subir ZIP de Google Drive
+            <Upload className="h-4 w-4" /> Subir ZIP de un cliente
           </button>
         </Card>
       </div>
 
-      {/* ── Modals ── */}
+      <MassImportDryRun />
+
       {modal === "csv" && (
         <CSVImport onClose={() => setModal(null)} onSuccess={() => handleSuccess("csv")} />
       )}

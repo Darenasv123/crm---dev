@@ -69,6 +69,10 @@ export interface PersistZipCandidateResult {
   error?: string;
   errors: string[];
   compensations: string[];
+  caseIds: Array<{ id: string; title: string; caseNumber: string | null }>;
+  documentIds: Array<{ id: string; name: string; storagePath: string; caseId: string }>;
+  failedFiles: Array<{ name: string; path: string; error: string }>;
+  warnings: string[];
 }
 
 const PENDING_PROCESS_TYPE = "Pendiente de clasificacion";
@@ -144,9 +148,11 @@ function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
       title: "Expediente pendiente de clasificacion",
       caseNumber: null,
       processType: PENDING_PROCESS_TYPE,
+      matter: PENDING_PROCESS_TYPE,
+      specialty: PENDING_PROCESS_TYPE,
       juzgado: "Por determinar",
-      status: "Consulta",
-      origin: "importacion_zip",
+      status: "pendiente_revision",
+      origin: "importacion_zip_individual",
       originPath: candidate.folderPath,
       confidence: 0.35,
       warnings: ["No se detecto numero de expediente."],
@@ -156,6 +162,46 @@ function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
   ];
 }
 
+function prepareCasesForPersistence(candidate: ReviewCandidate): {
+  caseCandidates: ZipCaseCandidate[];
+  documentCaseMap: Record<string, string>;
+} {
+  const documentCaseMap = buildDocumentCaseMap(candidate);
+  const caseCandidates = [...fallbackCases(candidate)];
+  const activeFiles = candidate.files.filter(
+    (file) => file.data.byteLength > 0 && !candidate.excludedFiles.has(file.zipPath),
+  );
+
+  if (!candidate.caseCandidates?.length && caseCandidates[0]) {
+    for (const file of activeFiles) documentCaseMap[file.zipPath] = caseCandidates[0].id;
+  }
+
+  const unclassified = activeFiles.filter(
+    (file) => !documentCaseMap[file.zipPath] || documentCaseMap[file.zipPath] === "__unclassified",
+  );
+  if (unclassified.length > 0) {
+    const provisional: ZipCaseCandidate = {
+      id: "pending-unclassified",
+      title: "Expediente pendiente de clasificacion",
+      caseNumber: null,
+      processType: PENDING_PROCESS_TYPE,
+      matter: PENDING_PROCESS_TYPE,
+      specialty: PENDING_PROCESS_TYPE,
+      juzgado: "Por determinar",
+      status: "pendiente_revision",
+      origin: "importacion_zip_individual",
+      originPath: candidate.folderPath,
+      confidence: 0.3,
+      warnings: ["Documentos dejados sin clasificar durante la revision."],
+      documentPaths: unclassified.map((file) => file.zipPath),
+      isProvisional: true,
+    };
+    caseCandidates.push(provisional);
+    for (const file of unclassified) documentCaseMap[file.zipPath] = provisional.id;
+  }
+
+  return { caseCandidates, documentCaseMap };
+}
 function provisionalExpediente(
   clientId: string,
   caseCandidate: ZipCaseCandidate,
@@ -171,19 +217,32 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
   const processType = safeProcessType(
     candidate.edits.processType ?? candidate.detected.processType,
   );
+  const documentNumber =
+    candidate.edits.ruc ??
+    candidate.detected.ruc ??
+    candidate.edits.dni ??
+    candidate.detected.dni ??
+    null;
+  const documentType = (candidate.edits.ruc ?? candidate.detected.ruc) ? "RUC" : "DNI";
   const payload: ClientInsert = {
     name: effectiveName,
     dni: candidate.edits.dni ?? candidate.detected.dni ?? "00000000",
-    document_number: candidate.edits.dni ?? candidate.detected.dni ?? null,
-    document_type: "DNI",
+    document_number: documentNumber,
+    document_type: documentType,
     phone: candidate.edits.phone ?? candidate.detected.phone ?? "000000000",
     whatsapp: candidate.edits.phone ?? candidate.detected.phone ?? null,
     email: candidate.edits.email ?? candidate.detected.email ?? null,
+    address: candidate.edits.address ?? candidate.detected.address ?? null,
     process_type: processType,
-    status: "Activo",
+    status: candidate.edits.status ?? candidate.detected.status ?? "Activo",
     initials: buildInitials(effectiveName),
     color: randomColor(),
-    notes: `Importado desde Google Drive ZIP: ${sourceFileName}`,
+    notes: [
+      candidate.edits.observations ?? candidate.detected.observations,
+      `Importado desde ZIP individual: ${sourceFileName}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
   let { data, error } = await fromDb(db, "clients").insert(payload).select("id").single();
 
@@ -209,6 +268,9 @@ async function updateExistingClient(candidate: ReviewCandidate, db: DbClient): P
   const updates: ClientUpdate = {};
   if (candidate.edits.phone) updates.phone = candidate.edits.phone;
   if (candidate.edits.email) updates.email = candidate.edits.email;
+  if (candidate.edits.address) updates.address = candidate.edits.address;
+  if (candidate.edits.status) updates.status = candidate.edits.status;
+  if (candidate.edits.observations) updates.notes = candidate.edits.observations;
   if (candidate.edits.processType)
     updates.process_type = safeProcessType(candidate.edits.processType);
   if (Object.keys(updates).length > 0) {
@@ -286,7 +348,7 @@ async function insertDocument(
   caseId: string,
   docFile: ZipFileEntry,
   storagePath: string,
-): Promise<void> {
+): Promise<string> {
   const payload: DocumentInsert = {
     name: docFile.name,
     original_name: docFile.name,
@@ -300,8 +362,8 @@ async function insertDocument(
     client_id: clientId,
     case_id: caseId,
     checksum: docFile.checksum || null,
-    source_type: "zip_import",
-    source_provider: "google_drive_zip",
+    source_type: "zip_import_individual",
+    source_provider: "google_drive_zip_individual",
     external_file_id: docFile.zipPath,
     external_folder_id: docFile.folderPath,
     external_url: `zip://${encodeURIComponent(docFile.zipPath)}`,
@@ -309,7 +371,7 @@ async function insertDocument(
     verification_status: "pending",
   };
 
-  let { error } = await fromDb(db, "documents").insert(payload);
+  let { data, error } = await fromDb(db, "documents").insert(payload).select("id").single();
   if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: DocumentInsert = {
       name: payload.name,
@@ -319,9 +381,9 @@ async function insertDocument(
       client_id: payload.client_id,
       case_id: payload.case_id,
     };
-    ({ error } = await fromDb(db, "documents").insert(legacyPayload));
+    ({ data, error } = await fromDb(db, "documents").insert(legacyPayload).select("id").single());
   }
-  if (error) throw new Error(`Registrar documento ${docFile.name}: ${error.message}`);
+  return ensureSupabaseData<{ id: string }>(data, error, `Registrar documento ${docFile.name}`).id;
 }
 
 export async function persistZipCandidate(
@@ -330,6 +392,10 @@ export async function persistZipCandidate(
   const { candidate, db, storageBucket, now = () => Date.now() } = params;
   const errors: string[] = [];
   const compensations: string[] = [];
+  const caseIds: PersistZipCandidateResult["caseIds"] = [];
+  const documentIds: PersistZipCandidateResult["documentIds"] = [];
+  const failedFiles: PersistZipCandidateResult["failedFiles"] = [];
+  const warnings = [...candidate.warnings];
   let documentsImported = 0;
   let documentsSkipped = 0;
   let clientId: string | undefined;
@@ -345,6 +411,10 @@ export async function persistZipCandidate(
         documentsSkipped: 0,
         errors,
         compensations,
+        caseIds,
+        documentIds,
+        failedFiles,
+        warnings,
       };
     }
     clientId =
@@ -361,11 +431,14 @@ export async function persistZipCandidate(
       documentsSkipped: 0,
       errors: [msg],
       compensations,
+      caseIds,
+      documentIds,
+      failedFiles,
+      warnings,
     };
   }
 
-  const documentCaseMap = buildDocumentCaseMap(candidate);
-  const caseCandidates = fallbackCases(candidate);
+  const { documentCaseMap, caseCandidates } = prepareCasesForPersistence(candidate);
 
   for (const caseCandidate of caseCandidates) {
     const files = activeFilesForCase(candidate, caseCandidate, documentCaseMap);
@@ -374,6 +447,11 @@ export async function persistZipCandidate(
     let caseId: string;
     try {
       caseId = await createCase(db, clientId, caseCandidate, files);
+      caseIds.push({
+        id: caseId,
+        title: caseCandidate.title,
+        caseNumber: caseCandidate.caseNumber,
+      });
     } catch (err) {
       errors.push(err instanceof Error ? err.message : "Error creando expediente");
       continue;
@@ -395,11 +473,13 @@ export async function persistZipCandidate(
         });
         if (uploadError) throw new Error(`Subir ${docFile.name}: ${uploadError.message}`);
         uploaded = true;
-        await insertDocument(db, clientId, caseId, docFile, storagePath);
+        const documentId = await insertDocument(db, clientId, caseId, docFile, storagePath);
+        documentIds.push({ id: documentId, name: docFile.name, storagePath, caseId });
         documentsImported++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : `Error importando ${docFile.name}`;
         errors.push(msg);
+        failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
         if (uploaded) {
           const { error: removeError } = await storageBucket.remove([storagePath]);
           if (removeError)
@@ -421,5 +501,9 @@ export async function persistZipCandidate(
     error: errors[0],
     errors,
     compensations,
+    caseIds,
+    documentIds,
+    failedFiles,
+    warnings,
   };
 }

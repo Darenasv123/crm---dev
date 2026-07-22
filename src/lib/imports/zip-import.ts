@@ -39,8 +39,12 @@ const DOC_TYPE_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
 
 const PATTERNS = {
   dni: /\b(?:DNI|D\.N\.I\.?)[\s.:N°º#-]*([0-9]{8})\b/gi,
+  ruc: /\b(?:RUC|R\.U\.C\.?)?[\s.:N°º#-]*((?:10|20)[0-9]{9})\b/gi,
   phone: /(?:(?:cel(?:ular)?|tel(?:e|é)fono|telf?\.?|movil|móvil)[\s.:]*)?(\b9[0-9]{8}\b)/gi,
   email: /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi,
+  address: /(?:DIRECCI[OÓ]N|DOMICILIO|DOMICILIO REAL|DOMICILIO PROCESAL)\s*:?\s*([^\n.;]{5,120})/gi,
+  clientStatus: /(?:ESTADO DEL CLIENTE|SITUACI[OÓ]N DEL CLIENTE)\s*:?\s*([^\n.;]{3,60})/gi,
+  observations: /(?:OBSERVACIONES?|NOTAS?)\s*:?\s*([^\n]{5,180})/gi,
   expediente: /\b(?:EXP(?:EDIENTE)?\.?|N[°º]\.?)\s*([0-9]{4,5}-[0-9]{4}(?:-[A-Z0-9]+){0,8})\b/gi,
   expedienteAlt: /\b([0-9]{4,5}-[0-9]{4}(?:-[A-Z0-9]+){1,8})\b/g,
   court:
@@ -109,6 +113,35 @@ const EXPEDIENTE_FOLDER_TERMS = [
   "VIOLENCIA",
 ];
 
+export interface FieldEvidence<T = string> {
+  value: T;
+  confidence: number;
+  sourcePath: string;
+  sourceName: string;
+  evidence: string;
+}
+
+export type ClientDetectedFields = Partial<
+  Record<
+    "name" | "dni" | "ruc" | "phone" | "email" | "address" | "status" | "observations",
+    FieldEvidence
+  >
+>;
+
+export type CaseDetectedFields = Partial<
+  Record<
+    | "caseNumber"
+    | "specialty"
+    | "matter"
+    | "juzgado"
+    | "demandante"
+    | "demandado"
+    | "clientRole"
+    | "status",
+    FieldEvidence
+  >
+>;
+
 export interface ZipFileEntry {
   path: string;
   name: string;
@@ -122,12 +155,17 @@ export interface ZipFileEntry {
   zipPath: string;
   folderPath: string;
   detected?: DetectedData;
+  fieldEvidence?: { client: ClientDetectedFields; case: CaseDetectedFields };
 }
 
 export interface DetectedData {
   dni?: string;
+  ruc?: string;
   phone?: string;
   email?: string;
+  address?: string;
+  status?: string;
+  observations?: string;
   expedientes: string[];
   processType?: string;
   juzgado?: string;
@@ -164,16 +202,20 @@ export interface ZipCaseCandidate {
   title: string;
   caseNumber: string | null;
   processType: string;
+  matter: string;
+  specialty: string;
   juzgado: string;
   demandante?: string;
   demandado?: string;
+  clientRole?: string;
   status: string;
-  origin: "importacion_zip";
+  origin: "importacion_zip" | "importacion_zip_individual";
   originPath: string;
   confidence: number;
   warnings: string[];
   documentPaths: string[];
   isProvisional: boolean;
+  detectedFields?: CaseDetectedFields;
 }
 
 export interface ClientCandidate {
@@ -189,6 +231,7 @@ export interface ClientCandidate {
   confidence?: number;
   subfolderPaths?: string[];
   caseCandidates?: ZipCaseCandidate[];
+  detectedFields?: ClientDetectedFields;
 }
 
 export type DuplicateAction = "create_new" | "update_existing" | "attach_docs" | "skip";
@@ -207,8 +250,12 @@ export interface ReviewCandidate extends ClientCandidate {
   edits: Partial<{
     proposedName: string;
     dni: string;
+    ruc: string;
     phone: string;
     email: string;
+    address: string;
+    status: string;
+    observations: string;
     processType: string;
     juzgado: string;
   }>;
@@ -216,6 +263,9 @@ export interface ReviewCandidate extends ClientCandidate {
   excludedFolders?: Set<string>;
   documentCaseMap?: Record<string, string>;
 }
+
+export const SINGLE_CLIENT_ZIP_ERROR =
+  "Este archivo contiene más de un cliente. Selecciona una carpeta individual.";
 
 export interface ZipParseResult {
   candidates: ClientCandidate[];
@@ -392,19 +442,173 @@ function cleanDetectedName(value?: string): string | undefined {
   return value.replace(/\s+/g, " ").trim().slice(0, 90) || undefined;
 }
 
-export function analyzeText(text: string): DetectedData {
-  const dni = firstMatch(text, PATTERNS.dni);
-  const email = text.match(PATTERNS.email)?.[0];
-  const processType = normalizeProcessType(firstMatch(text, PATTERNS.processType));
-  const juzgado = cleanDetectedName(firstMatch(text, PATTERNS.court));
-  const demandante = cleanDetectedName(firstMatch(text, PATTERNS.demandante));
-  const demandado = cleanDetectedName(firstMatch(text, PATTERNS.demandado));
-  const stage = firstMatch(text, PATTERNS.stage);
-  const phone = text.match(/\b(9[0-9]{8})\b/)?.[1];
+function evidenceSnippet(text: string, value?: string): string {
+  if (!value) return text.replace(/\s+/g, " ").trim().slice(0, 180);
+  const clean = text.replace(/\s+/g, " ").trim();
+  const idx = clean.toUpperCase().indexOf(value.toUpperCase());
+  if (idx < 0) return clean.slice(0, 180);
+  const start = Math.max(0, idx - 45);
+  const end = Math.min(clean.length, idx + value.length + 45);
+  return clean.slice(start, end);
+}
+
+function firstEvidenceMatch(
+  text: string,
+  pattern: RegExp,
+  sourcePath: string,
+  sourceName: string,
+  confidence: number,
+  normalize?: (value: string) => string | undefined,
+): FieldEvidence | undefined {
+  pattern.lastIndex = 0;
+  const match = pattern.exec(text);
+  const raw = (match?.[1] ?? match?.[0])?.trim();
+  const value = raw && normalize ? normalize(raw) : raw;
+  if (!value) return undefined;
+  return { value, confidence, sourcePath, sourceName, evidence: evidenceSnippet(text, raw) };
+}
+
+function mergeFieldEvidence<T extends Record<string, FieldEvidence | undefined>>(
+  items: Array<T | undefined>,
+): T {
+  const merged: Record<string, FieldEvidence> = {};
+  for (const item of items) {
+    if (!item) continue;
+    for (const [key, value] of Object.entries(item)) {
+      if (!value) continue;
+      const current = merged[key];
+      if (!current || value.confidence > current.confidence) merged[key] = value;
+    }
+  }
+  return merged as T;
+}
+
+function specialtyForMatter(matter?: string | null): string {
+  const normalized = normalizedText(matter ?? "");
+  if (!normalized || normalized.includes("PENDIENTE")) return "Pendiente de clasificacion";
+  if (
+    ["ALIMENTO", "TENENCIA", "VISIT", "FILIACION", "DIVORCIO", "VIOLENCIA"].some((term) =>
+      normalized.includes(term),
+    )
+  )
+    return "Familia";
+  if (normalized.includes("PENAL") || normalized.includes("FISCAL")) return "Penal";
+  if (normalized.includes("LABORAL")) return "Laboral";
+  if (
+    normalized.includes("CONSTITUCIONAL") ||
+    normalized.includes("AMPARO") ||
+    normalized.includes("HABEAS")
+  )
+    return "Constitucional";
+  if (normalized.includes("ADMINISTRATIVO")) return "Administrativo";
+  if (normalized.includes("CIVIL")) return "Civil";
+  return matter ?? "Pendiente de clasificacion";
+}
+
+function inferClientRole(
+  clientName: string,
+  demandante?: string,
+  demandado?: string,
+): string | undefined {
+  const client = normalizeName(clientName);
+  if (demandante && nameSimilarity(client, normalizeName(demandante)) >= 0.5) return "demandante";
+  if (demandado && nameSimilarity(client, normalizeName(demandado)) >= 0.5) return "demandado";
+  return undefined;
+}
+
+export function analyzeTextWithEvidence(
+  text: string,
+  sourcePath = "texto",
+  sourceName = sourcePath.split("/").pop() ?? "texto",
+): {
+  detected: DetectedData;
+  fieldEvidence: { client: ClientDetectedFields; case: CaseDetectedFields };
+} {
+  const dniEvidence = firstEvidenceMatch(text, PATTERNS.dni, sourcePath, sourceName, 0.92);
+  const rucEvidence = firstEvidenceMatch(text, PATTERNS.ruc, sourcePath, sourceName, 0.9);
+  const phoneEvidence = firstEvidenceMatch(text, PATTERNS.phone, sourcePath, sourceName, 0.78);
+  const emailEvidence = firstEvidenceMatch(text, PATTERNS.email, sourcePath, sourceName, 0.88);
+  const addressEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.address,
+    sourcePath,
+    sourceName,
+    0.68,
+    cleanDetectedName,
+  );
+  const clientStatusEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.clientStatus,
+    sourcePath,
+    sourceName,
+    0.55,
+    cleanDetectedName,
+  );
+  const observationsEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.observations,
+    sourcePath,
+    sourceName,
+    0.5,
+    cleanDetectedName,
+  );
+  const processRawEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.processType,
+    sourcePath,
+    sourceName,
+    0.74,
+  );
+  const processType = normalizeProcessType(processRawEvidence?.value);
+  const processEvidence =
+    processType && processRawEvidence ? { ...processRawEvidence, value: processType } : undefined;
+  const juzgadoEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.court,
+    sourcePath,
+    sourceName,
+    0.76,
+    cleanDetectedName,
+  );
+  const demandanteEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.demandante,
+    sourcePath,
+    sourceName,
+    0.62,
+    cleanDetectedName,
+  );
+  const demandadoEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.demandado,
+    sourcePath,
+    sourceName,
+    0.62,
+    cleanDetectedName,
+  );
+  const stageEvidence = firstEvidenceMatch(
+    text,
+    PATTERNS.stage,
+    sourcePath,
+    sourceName,
+    0.6,
+    cleanDetectedName,
+  );
+
   const expedientes = new Set<string>([
     ...allMatches(text, PATTERNS.expediente),
     ...allMatches(text, PATTERNS.expedienteAlt),
   ]);
+  const caseNumber = Array.from(expedientes)[0];
+  const caseNumberEvidence = caseNumber
+    ? {
+        value: caseNumber,
+        confidence: 0.86,
+        sourcePath,
+        sourceName,
+        evidence: evidenceSnippet(text, caseNumber),
+      }
+    : undefined;
 
   const relevantDates: string[] = [];
   PATTERNS.dates.lastIndex = 0;
@@ -420,18 +624,53 @@ export function analyzeText(text: string): DetectedData {
   });
 
   return {
-    dni,
-    phone,
-    email,
-    expedientes: Array.from(expedientes),
-    processType,
-    juzgado,
-    demandante,
-    demandado,
-    stage,
-    relevantDates,
-    fullNameCandidates,
+    detected: {
+      dni: dniEvidence?.value,
+      ruc: rucEvidence?.value,
+      phone: phoneEvidence?.value,
+      email: emailEvidence?.value,
+      address: addressEvidence?.value,
+      status: clientStatusEvidence?.value,
+      observations: observationsEvidence?.value,
+      expedientes: Array.from(expedientes),
+      processType,
+      juzgado: juzgadoEvidence?.value,
+      demandante: demandanteEvidence?.value,
+      demandado: demandadoEvidence?.value,
+      stage: stageEvidence?.value,
+      relevantDates,
+      fullNameCandidates,
+    },
+    fieldEvidence: {
+      client: {
+        dni: dniEvidence,
+        ruc: rucEvidence,
+        phone: phoneEvidence,
+        email: emailEvidence,
+        address: addressEvidence,
+        status: clientStatusEvidence,
+        observations: observationsEvidence,
+      },
+      case: {
+        caseNumber: caseNumberEvidence,
+        matter: processEvidence,
+        specialty: processEvidence
+          ? {
+              ...processEvidence,
+              value: specialtyForMatter(processEvidence.value),
+              confidence: Math.min(processEvidence.confidence, 0.65),
+            }
+          : undefined,
+        juzgado: juzgadoEvidence,
+        demandante: demandanteEvidence,
+        demandado: demandadoEvidence,
+        status: stageEvidence,
+      },
+    },
   };
+}
+export function analyzeText(text: string): DetectedData {
+  return analyzeTextWithEvidence(text).detected;
 }
 
 function mergeDetected(items: DetectedData[]): DetectedData {
@@ -441,8 +680,12 @@ function mergeDetected(items: DetectedData[]): DetectedData {
   const names = new Set<string>();
   for (const item of items) {
     merged.dni ??= item.dni;
+    merged.ruc ??= item.ruc;
     merged.phone ??= item.phone;
     merged.email ??= item.email;
+    merged.address ??= item.address;
+    merged.status ??= item.status;
+    merged.observations ??= item.observations;
     merged.processType ??= item.processType;
     merged.juzgado ??= item.juzgado;
     merged.demandante ??= item.demandante;
@@ -662,13 +905,21 @@ function buildCaseCandidates(
 
   const cases: ZipCaseCandidate[] = [];
   let pendingCount = 0;
+  const clientName = normalizeFolderName(clientNode.name);
   for (const [key, group] of groups) {
     const perFileDetected = mergeDetected(
       group.files.map((file) => file.detected ?? emptyDetected()),
     );
+    const detectedFields = mergeFieldEvidence<CaseDetectedFields>(
+      group.files.map((file) => file.fieldEvidence?.case),
+    );
     const processType =
       perFileDetected.processType ?? detected.processType ?? "Pendiente de clasificacion";
+    const matter = processType;
+    const specialty = specialtyForMatter(matter);
     const juzgado = perFileDetected.juzgado ?? detected.juzgado ?? "Por determinar";
+    const demandante = perFileDetected.demandante ?? detected.demandante;
+    const demandado = perFileDetected.demandado ?? detected.demandado;
     const isProvisional = !group.caseNumber;
     if (isProvisional) pendingCount++;
     const title = group.caseNumber
@@ -678,16 +929,22 @@ function buildCaseCandidates(
             group.originPath.split("/").pop() ?? "Expediente pendiente de clasificacion",
           )
         : "Expediente pendiente de clasificacion";
+    const clientRole = inferClientRole(clientName, demandante, demandado);
     cases.push({
       id: group.caseNumber ? `exp-${group.caseNumber}` : `pending-${pendingCount}`,
       title,
       caseNumber: group.caseNumber,
       processType,
+      matter,
+      specialty,
       juzgado,
-      demandante: perFileDetected.demandante ?? detected.demandante,
-      demandado: perFileDetected.demandado ?? detected.demandado,
-      status: normalizeCaseStatus(perFileDetected.stage ?? detected.stage),
-      origin: "importacion_zip",
+      demandante,
+      demandado,
+      clientRole,
+      status: isProvisional
+        ? "pendiente_revision"
+        : normalizeCaseStatus(perFileDetected.stage ?? detected.stage),
+      origin: "importacion_zip_individual",
       originPath: group.originPath,
       confidence: group.caseNumber ? 0.85 : key.startsWith("folder:") ? 0.62 : 0.4,
       warnings: isProvisional
@@ -695,12 +952,67 @@ function buildCaseCandidates(
         : [],
       documentPaths: group.files.map((file) => file.zipPath),
       isProvisional,
+      detectedFields: {
+        ...detectedFields,
+        matter: detectedFields.matter ?? {
+          value: matter,
+          confidence: isProvisional ? 0.35 : 0.62,
+          sourcePath: group.originPath,
+          sourceName: group.originPath.split("/").pop() ?? group.originPath,
+          evidence: group.originPath,
+        },
+        specialty: detectedFields.specialty ?? {
+          value: specialty,
+          confidence: isProvisional ? 0.3 : 0.56,
+          sourcePath: group.originPath,
+          sourceName: group.originPath.split("/").pop() ?? group.originPath,
+          evidence: matter,
+        },
+        clientRole: clientRole
+          ? {
+              value: clientRole,
+              confidence: 0.55,
+              sourcePath: group.originPath,
+              sourceName: clientName,
+              evidence: `${clientName} coincide con ${clientRole}`,
+            }
+          : undefined,
+      },
     });
   }
 
   return cases;
 }
 
+export function moveDocumentBetweenCases(
+  caseCandidates: ZipCaseCandidate[],
+  documentCaseMap: Record<string, string>,
+  path: string,
+  caseId: string,
+): { caseCandidates: ZipCaseCandidate[]; documentCaseMap: Record<string, string> } {
+  const nextMap = { ...documentCaseMap, [path]: caseId };
+  const nextCases = caseCandidates.map((caseCandidate) => {
+    const without = caseCandidate.documentPaths.filter((docPath) => docPath !== path);
+    return caseCandidate.id === caseId && caseId !== "__unclassified"
+      ? { ...caseCandidate, documentPaths: [...without, path] }
+      : { ...caseCandidate, documentPaths: without };
+  });
+  return { caseCandidates: nextCases, documentCaseMap: nextMap };
+}
+
+export function removeCaseCandidate(
+  caseCandidates: ZipCaseCandidate[],
+  documentCaseMap: Record<string, string>,
+  caseId: string,
+): { caseCandidates: ZipCaseCandidate[]; documentCaseMap: Record<string, string> } {
+  const removed = caseCandidates.find((caseCandidate) => caseCandidate.id === caseId);
+  const nextMap = { ...documentCaseMap };
+  for (const path of removed?.documentPaths ?? []) nextMap[path] = "__unclassified";
+  return {
+    caseCandidates: caseCandidates.filter((caseCandidate) => caseCandidate.id !== caseId),
+    documentCaseMap: nextMap,
+  };
+}
 async function processRawFile(raw: RawZipFile): Promise<ZipFileEntry> {
   const rawData = await raw.zipFile.async("arraybuffer");
   const base: Omit<ZipFileEntry, "extractionStatus" | "checksum"> = {
@@ -715,7 +1027,13 @@ async function processRawFile(raw: RawZipFile): Promise<ZipFileEntry> {
   };
 
   if (rawData.byteLength === 0) {
-    return { ...base, extractionStatus: "empty", checksum: "", detected: emptyDetected() };
+    return {
+      ...base,
+      extractionStatus: "empty",
+      checksum: "",
+      detected: emptyDetected(),
+      fieldEvidence: { client: {}, case: {} },
+    };
   }
 
   const checksum = await sha256(rawData);
@@ -743,12 +1061,27 @@ async function processRawFile(raw: RawZipFile): Promise<ZipFileEntry> {
     extractionStatus = extractedText.trim() ? "extracted" : "empty";
   }
 
-  const detected = mergeDetected([
-    analyzeText(`${raw.zipPath}\n${raw.name}`),
-    extractedText ? analyzeText(extractedText) : emptyDetected(),
-  ]);
+  const pathAnalysis = analyzeTextWithEvidence(
+    `${raw.zipPath}\n${raw.name}`,
+    raw.zipPath,
+    raw.name,
+  );
+  const textAnalysis = extractedText
+    ? analyzeTextWithEvidence(extractedText, raw.zipPath, raw.name)
+    : { detected: emptyDetected(), fieldEvidence: { client: {}, case: {} } };
+  const detected = mergeDetected([pathAnalysis.detected, textAnalysis.detected]);
+  const fieldEvidence = {
+    client: mergeFieldEvidence<ClientDetectedFields>([
+      pathAnalysis.fieldEvidence.client,
+      textAnalysis.fieldEvidence.client,
+    ]),
+    case: mergeFieldEvidence<CaseDetectedFields>([
+      pathAnalysis.fieldEvidence.case,
+      textAnalysis.fieldEvidence.case,
+    ]),
+  };
 
-  return { ...base, extractedText, extractionStatus, checksum, detected };
+  return { ...base, extractedText, extractionStatus, checksum, detected, fieldEvidence };
 }
 
 export async function parseZipFile(
@@ -856,6 +1189,9 @@ export async function parseZipFile(
       evidence: clientNode.classification.evidence,
       confidence: clientNode.classification.confidence,
       subfolderPaths: clientNode.subfolders,
+      detectedFields: mergeFieldEvidence<ClientDetectedFields>(
+        processedFiles.map((file) => file.fieldEvidence?.client),
+      ),
       caseCandidates: caseCandidates.map((caseCandidate) => ({
         ...caseCandidate,
         documentPaths: caseCandidate.documentPaths.filter(
@@ -875,6 +1211,19 @@ export interface ExistingClient {
   phone: string;
 }
 
+export interface ZipSingleClientParseResult extends ZipParseResult {
+  candidate?: ClientCandidate;
+  rejectionReason?: string;
+}
+
+export async function parseSingleClientZipFile(
+  zipBuffer: ArrayBuffer,
+  onProgress?: (msg: string) => void,
+): Promise<ZipSingleClientParseResult> {
+  const result = await parseZipFile(zipBuffer, onProgress);
+  if (result.candidates.length > 1) return { ...result, rejectionReason: SINGLE_CLIENT_ZIP_ERROR };
+  return { ...result, candidate: result.candidates[0] };
+}
 export function detectDuplicates(
   candidate: ClientCandidate,
   existingClients: ExistingClient[],

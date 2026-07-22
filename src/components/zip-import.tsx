@@ -17,7 +17,7 @@ import {
   EyeOff,
   Pencil,
   Users,
-  Merge,
+  Trash2,
   SkipForward,
   UserPlus,
   RefreshCw,
@@ -25,7 +25,10 @@ import {
 import { Card } from "@/components/app-layout";
 import { getAuthClient, supabase } from "@/lib/supabase";
 import {
-  parseZipFile,
+  parseSingleClientZipFile,
+  SINGLE_CLIENT_ZIP_ERROR,
+  moveDocumentBetweenCases,
+  removeCaseCandidate,
   detectDuplicates,
   normalizeFolderName,
   formatSize,
@@ -57,6 +60,10 @@ interface FolderImportResult {
   documentsSkipped?: number;
   errors?: string[];
   compensations?: string[];
+  caseIds?: Array<{ id: string; title: string; caseNumber: string | null }>;
+  documentIds?: Array<{ id: string; name: string; storagePath: string; caseId: string }>;
+  failedFiles?: Array<{ name: string; path: string; error: string }>;
+  warnings?: string[];
 }
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -74,7 +81,7 @@ const DUPLICATE_LABELS: Record<DuplicateAction, string> = {
   create_new: "Crear nuevo cliente",
   update_existing: "Actualizar cliente existente",
   attach_docs: "Solo adjuntar documentos",
-  skip: "Omitir esta carpeta",
+  skip: "Cancelar importación",
 };
 
 const DUPLICATE_ICONS: Record<DuplicateAction, typeof UserPlus> = {
@@ -204,7 +211,7 @@ function CandidateCard({
   index: number;
   onUpdate: (idx: number, partial: Partial<ReviewCandidate>) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [editingName, setEditingName] = useState(false);
   const d = candidate.detected;
   const eff = candidate.edits;
@@ -231,9 +238,11 @@ function CandidateCard({
           title: "Expediente pendiente de clasificacion",
           caseNumber: null,
           processType: "Pendiente de clasificacion",
+          matter: "Pendiente de clasificacion",
+          specialty: "Pendiente de clasificacion",
           juzgado: "Por determinar",
-          status: "Consulta",
-          origin: "importacion_zip",
+          status: "pendiente_revision",
+          origin: "importacion_zip_individual",
           originPath: candidate.folderPath,
           confidence: 0.3,
           warnings: ["Creado manualmente durante la revision."],
@@ -252,14 +261,11 @@ function CandidateCard({
   }
 
   function moveFile(path: string, caseId: string) {
-    const nextMap = { ...documentCaseMap, [path]: caseId };
-    const nextCases = caseCandidates.map((caseCandidate) => {
-      const without = caseCandidate.documentPaths.filter((docPath) => docPath !== path);
-      return caseCandidate.id === caseId && caseId !== "__unclassified"
-        ? { ...caseCandidate, documentPaths: [...without, path] }
-        : { ...caseCandidate, documentPaths: without };
-    });
-    onUpdate(index, { documentCaseMap: nextMap, caseCandidates: nextCases });
+    onUpdate(index, moveDocumentBetweenCases(caseCandidates, documentCaseMap, path, caseId));
+  }
+
+  function deleteCase(caseId: string) {
+    onUpdate(index, removeCaseCandidate(caseCandidates, documentCaseMap, caseId));
   }
 
   function toggleFolder(folderPath: string) {
@@ -352,24 +358,39 @@ function CandidateCard({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               { label: "DNI", field: "dni" as const, value: eff.dni ?? d.dni },
+              { label: "RUC", field: "ruc" as const, value: eff.ruc ?? d.ruc },
               { label: "Telefono", field: "phone" as const, value: eff.phone ?? d.phone },
               { label: "Correo", field: "email" as const, value: eff.email ?? d.email },
-              { label: "Juzgado", field: "juzgado" as const, value: eff.juzgado ?? d.juzgado },
-            ].map(({ label, field, value }) => (
-              <div key={field} className="rounded-lg bg-muted/30 p-2">
-                <dt className="text-[9px] font-semibold uppercase text-muted-foreground">
-                  {label}
-                </dt>
-                <input
-                  className="mt-0.5 w-full bg-transparent text-xs font-medium placeholder:text-muted-foreground/50 focus:outline-none"
-                  value={value ?? ""}
-                  placeholder="No detectado"
-                  onChange={(e) =>
-                    onUpdate(index, { edits: { ...eff, [field]: e.target.value || undefined } })
-                  }
-                />
-              </div>
-            ))}
+              { label: "Direccion", field: "address" as const, value: eff.address ?? d.address },
+              { label: "Estado", field: "status" as const, value: eff.status ?? d.status },
+              {
+                label: "Observaciones",
+                field: "observations" as const,
+                value: eff.observations ?? d.observations,
+              },
+            ].map(({ label, field, value }) => {
+              const evidence = candidate.detectedFields?.[field];
+              return (
+                <div key={field} className="rounded-lg bg-muted/30 p-2">
+                  <dt className="text-[9px] font-semibold uppercase text-muted-foreground">
+                    {label}
+                  </dt>
+                  <input
+                    className="mt-0.5 w-full bg-transparent text-xs font-medium placeholder:text-muted-foreground/50 focus:outline-none"
+                    value={value ?? ""}
+                    placeholder="No detectado"
+                    onChange={(e) =>
+                      onUpdate(index, { edits: { ...eff, [field]: e.target.value || undefined } })
+                    }
+                  />
+                  {evidence && (
+                    <p className="mt-1 truncate text-[9px] text-muted-foreground">
+                      {evidence.sourceName} · {Math.round(evidence.confidence * 100)}%
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {(candidate.evidence?.length ?? 0) > 0 && (
@@ -480,6 +501,7 @@ function CandidateCard({
                       onChange={(e) =>
                         patchCase(caseCandidate.id, {
                           processType: e.target.value || "Pendiente de clasificacion",
+                          matter: e.target.value || "Pendiente de clasificacion",
                         })
                       }
                     />
@@ -489,6 +511,7 @@ function CandidateCard({
                       onChange={(e) => patchCase(caseCandidate.id, { status: e.target.value })}
                     >
                       {[
+                        "pendiente_revision",
                         "Consulta",
                         "Documentacion",
                         "Demanda presentada",
@@ -500,8 +523,14 @@ function CandidateCard({
                         <option key={status}>{status}</option>
                       ))}
                     </select>
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.specialty}
+                      placeholder="Especialidad"
+                      onChange={(e) => patchCase(caseCandidate.id, { specialty: e.target.value })}
+                    />
                   </div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-2 grid gap-2 sm:grid-cols-4">
                     <input
                       className="h-8 rounded border border-border bg-card px-2 text-xs"
                       value={caseCandidate.juzgado}
@@ -524,15 +553,30 @@ function CandidateCard({
                         patchCase(caseCandidate.id, { demandado: e.target.value || undefined })
                       }
                     />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.clientRole ?? ""}
+                      placeholder="Rol del cliente"
+                      onChange={(e) =>
+                        patchCase(caseCandidate.id, { clientRole: e.target.value || undefined })
+                      }
+                    />
                   </div>
                   {caseCandidate.warnings.length > 0 && (
                     <p className="mt-2 text-[10px] text-amber-700">
                       {caseCandidate.warnings.join(" ")}
                     </p>
                   )}
-                  <p className="mt-2 text-[10px] text-muted-foreground">
-                    {files.length} documento(s) asignado(s)
-                  </p>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span>{files.length} documento(s) asignado(s)</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteCase(caseCandidate.id)}
+                      className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3 w-3" /> Eliminar expediente
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -629,10 +673,16 @@ export function ZipImport({ onClose, onSuccess }: Props) {
 
     try {
       const buffer = await f.arrayBuffer();
-      const result = await parseZipFile(buffer, addProgress);
+      const result = await parseSingleClientZipFile(buffer, addProgress);
+
+      if (result.rejectionReason) {
+        setParseError(SINGLE_CLIENT_ZIP_ERROR);
+        setStep("upload");
+        return;
+      }
 
       if (result.candidates.length === 0) {
-        setParseError("El ZIP no contiene carpetas de clientes reconocibles.");
+        setParseError("El ZIP no contiene una carpeta de cliente reconocible.");
         setStep("upload");
         return;
       }
@@ -699,7 +749,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
 
     if (toImport.length === 0) {
       setParseError(
-        "No hay carpetas seleccionadas para importar. Asigna una accion a cada duplicado.",
+        "No hay un cliente seleccionado para importar. Resuelve duplicados o cancela la importacion.",
       );
       return;
     }
@@ -733,6 +783,10 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         documentsSkipped: result.documentsSkipped,
         errors: result.errors,
         compensations: result.compensations,
+        caseIds: result.caseIds,
+        documentIds: result.documentIds,
+        failedFiles: result.failedFiles,
+        warnings: result.warnings,
       };
       if (existing) Object.assign(existing, nextResult);
       else batchResults.push(nextResult);
@@ -744,7 +798,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     setFailedIndices(newFailed);
     setRetryOnly(false);
     setStep("done");
-    if (batchResults.some((r) => r.status === "success" || r.status === "partial")) onSuccess();
+    if (
+      batchResults.some((r) => r.status === "success") &&
+      batchResults.every((r) => r.status !== "partial" && r.status !== "failed")
+    )
+      onSuccess();
   }
   // â”€â”€â”€ Retry failed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -763,7 +821,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
   const successCount = results.filter((r) => r.status === "success").length;
   const partialCount = results.filter((r) => r.status === "partial").length;
   const failedCount = results.filter((r) => r.status === "failed").length;
-  const completedCount = successCount + partialCount;
+  const completedCount = successCount;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -771,12 +829,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold">Importar desde Google Drive / ZIP</h3>
+            <h3 className="text-base font-semibold">Importar un cliente desde ZIP</h3>
             <p className="text-xs text-muted-foreground truncate">
-              {step === "upload" && "Sube un archivo .zip descargado desde Google Drive"}
+              {step === "upload" && "Sube un ZIP que contenga una sola carpeta de cliente"}
               {step === "parsing" && "Analizando archivoâ€¦"}
-              {step === "review" &&
-                `${candidates.length} carpeta(s) detectada(s) Â· ${activeCount} seleccionada(s)`}
+              {step === "review" && `${activeCount} cliente seleccionado para revision`}
               {step === "importing" && importProgress}
               {step === "done" &&
                 `${completedCount} importada(s) Â· ${partialCount} parcial(es) Â· ${failedCount} fallida(s)`}
@@ -808,7 +865,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                   </p>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Descarga las carpetas desde Google Drive â†’ clic derecho â†’ "Descargar"
+                  Selecciona una sola carpeta de cliente y descargala como ZIP
                 </p>
               </div>
               <input
@@ -832,9 +889,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 <p className="font-mono">YLLA NEGRON YENI/</p>
                 <p className="font-mono ml-4">DEMANDA DE EJECUCIÃ“N.docx</p>
                 <p className="font-mono ml-4">CARGO-YLLA NEGRON.pdf</p>
-                <p className="font-mono">GARCIA TORRES MANUEL/</p>
-                <p className="font-mono ml-4">SENTENCIA.pdf</p>
-                <p className="mt-2">Cada carpeta de primer nivel se trata como un cliente.</p>
+                <p className="font-mono ml-4">EXP 01234-2024/</p>
+                <p className="font-mono ml-8">RESOLUCION.pdf</p>
+                <p className="mt-2">
+                  Si el ZIP contiene mas de un cliente, la importacion se bloqueara.
+                </p>
               </div>
             </div>
           )}
@@ -908,7 +967,9 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                   )}
                 </div>
                 <div className="text-center">
-                  <p className="text-base font-bold">{completedCount} carpeta(s) importada(s)</p>
+                  <p className="text-base font-bold">
+                    {completedCount} cliente importado correctamente
+                  </p>
                   {failedCount > 0 && (
                     <p className="text-sm text-muted-foreground mt-0.5">{failedCount} fallida(s)</p>
                   )}
@@ -971,7 +1032,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 <Users className="h-4 w-4" />
-                Importar {activeCount} carpeta{activeCount !== 1 ? "s" : ""}
+                Confirmar importación del cliente
               </button>
             </>
           )}

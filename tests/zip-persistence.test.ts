@@ -43,9 +43,11 @@ function makeCandidate(overrides: Partial<ReviewCandidate> = {}): ReviewCandidat
         title: "Expediente 01234-2024-0-JR-FC-01",
         caseNumber: "01234-2024-0-JR-FC-01",
         processType: "Alimentos",
+        matter: "Alimentos",
+        specialty: "Familia",
         juzgado: "1 JUZGADO DE PAZ LETRADO",
         status: "Consulta",
-        origin: "importacion_zip",
+        origin: "importacion_zip_individual",
         originPath: "CLIENTE PRUEBA/EXP 01234-2024-0-JR-FC-01",
         confidence: 0.9,
         warnings: [],
@@ -106,6 +108,8 @@ function makeDb(options: FakeOptions = {}) {
       single: async () => {
         if (table === "clients" && options.clientError)
           return { data: null, error: { message: options.clientError } };
+        if (table === "documents" && options.documentError)
+          return { data: null, error: { message: options.documentError } };
         if (table === "cases" && options.caseError)
           return { data: null, error: { message: options.caseError } };
         if (table === "clients") return { data: { id: "client-1" }, error: null };
@@ -181,6 +185,18 @@ describe("persistZipCandidate", () => {
     expect(result.documentsImported).toBe(1);
     expect(fakeDb.inserts.map((i) => i.table)).toEqual(["clients", "cases", "documents"]);
     expect(fakeStorage.uploads).toHaveLength(1);
+    expect(result.caseIds).toEqual([
+      {
+        id: "case-1",
+        title: "Expediente 01234-2024-0-JR-FC-01",
+        caseNumber: "01234-2024-0-JR-FC-01",
+      },
+    ]);
+    expect(result.documentIds[0]).toMatchObject({
+      id: "row-1",
+      name: "DEMANDA.txt",
+      caseId: "case-1",
+    });
   });
 
   it("falla sin subir documentos si no puede crear cliente", async () => {
@@ -228,5 +244,56 @@ describe("persistZipCandidate", () => {
       column: "checksum",
       value: "abc123",
     });
+  });
+  it("actualiza cliente existente sin crear uno nuevo", async () => {
+    const candidate = makeCandidate({
+      duplicates: [
+        {
+          clientId: "client-1",
+          clientName: "CLIENTE PRUEBA",
+          matchReason: "DNI",
+          matchStrength: "exact_dni",
+        },
+      ],
+      duplicateAction: "update_existing",
+      existingClientId: "client-1",
+      edits: { phone: "999999999" },
+    });
+    const { result, fakeDb } = await run(candidate);
+    expect(result.status).toBe("success");
+    expect(fakeDb.inserts.filter((i) => i.table === "clients")).toHaveLength(0);
+    expect(fakeDb.updates.filter((i) => i.table === "clients")).toHaveLength(1);
+  });
+
+  it("cancelar duplicado no persiste nada", async () => {
+    const candidate = makeCandidate({
+      duplicates: [
+        {
+          clientId: "client-1",
+          clientName: "CLIENTE PRUEBA",
+          matchReason: "DNI",
+          matchStrength: "exact_dni",
+        },
+      ],
+      duplicateAction: "skip",
+    });
+    const { result, fakeDb, fakeStorage } = await run(candidate);
+    expect(result.status).toBe("skipped");
+    expect(fakeDb.inserts).toHaveLength(0);
+    expect(fakeStorage.uploads).toHaveLength(0);
+  });
+
+  it("crea expediente provisional para documentos dejados sin clasificar", async () => {
+    const file = makeFile({ zipPath: "CLIENTE/doc.txt", path: "CLIENTE/doc.txt" });
+    const candidate = makeCandidate({
+      files: [file],
+      documentCaseMap: { [file.zipPath]: "__unclassified" },
+      caseCandidates: [],
+    });
+    const { result, fakeDb } = await run(candidate);
+    expect(result.status).toBe("success");
+    const caseInsert = fakeDb.inserts.find((item) => item.table === "cases");
+    expect(caseInsert?.payload.case_stage).toBe("pendiente_revision");
+    expect(result.caseIds[0].caseNumber).toBeNull();
   });
 });
