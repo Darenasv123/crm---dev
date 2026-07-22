@@ -119,7 +119,11 @@ function isImportDocument(doc: Row): boolean {
   );
 }
 
-function isImportCase(caseRow: Row, importedDocumentCaseIds: Set<string>, importedClientIds: Set<string>) {
+function isImportCase(
+  caseRow: Row,
+  importedDocumentCaseIds: Set<string>,
+  importedClientIds: Set<string>,
+) {
   const caseId = idOf(caseRow);
   const clientId = asString(caseRow.client_id);
   return (
@@ -149,7 +153,10 @@ function addTarget(plan: CleanupPlan, table: TableName, row: Row, reason: string
   plan.reasons[`${table}:${id}`] = [...(plan.reasons[`${table}:${id}`] ?? []), reason];
 }
 
-async function fetchAll(supabase: ReturnType<typeof createClient>, table: TableName): Promise<Row[]> {
+async function fetchAll(
+  supabase: ReturnType<typeof createClient>,
+  table: TableName,
+): Promise<Row[]> {
   const { data, error } = await supabase.from(table).select("*");
   if (error) {
     if (["42P01", "PGRST205"].includes(error.code ?? "")) return [];
@@ -187,7 +194,9 @@ async function buildPlan(): Promise<CleanupPlan> {
     "import_jobs",
     "import_folders",
   ];
-  const rows = Object.fromEntries(await Promise.all(tables.map(async (table) => [table, await fetchAll(supabase, table)]))) as Record<TableName, Row[]>;
+  const rows = Object.fromEntries(
+    await Promise.all(tables.map(async (table) => [table, await fetchAll(supabase, table)])),
+  ) as Record<TableName, Row[]>;
 
   const backupDir = join(BACKUP_ROOT, `import-cleanup-${timestamp()}`);
   const plan: CleanupPlan = {
@@ -206,24 +215,36 @@ async function buildPlan(): Promise<CleanupPlan> {
 
   const importDocuments = rows.documents.filter(isImportDocument);
   const importedDocumentIds = new Set(importDocuments.map(idOf));
-  const importedDocumentCaseIds = new Set(importDocuments.map((doc) => asString(doc.case_id)).filter(Boolean) as string[]);
-  const importedDocumentClientIds = new Set(importDocuments.map((doc) => asString(doc.client_id)).filter(Boolean) as string[]);
+  const importedDocumentCaseIds = new Set(
+    importDocuments.map((doc) => asString(doc.case_id)).filter(Boolean) as string[],
+  );
+  const importedDocumentClientIds = new Set(
+    importDocuments.map((doc) => asString(doc.client_id)).filter(Boolean) as string[],
+  );
 
   const noteClients = rows.clients.filter(hasImportClientNote);
   const importedClientIds = new Set([...noteClients.map(idOf), ...importedDocumentClientIds]);
   const docsByClient = groupBy(rows.documents, "client_id");
   const docsByCase = groupBy(rows.documents, "case_id");
 
-  for (const doc of importDocuments) addTarget(plan, "documents", doc, "documento con origen ZIP de importacion");
+  for (const doc of importDocuments)
+    addTarget(plan, "documents", doc, "documento con origen ZIP de importacion");
 
-  const candidateCases = rows.cases.filter((caseRow) => isImportCase(caseRow, importedDocumentCaseIds, importedClientIds));
+  const candidateCases = rows.cases.filter((caseRow) =>
+    isImportCase(caseRow, importedDocumentCaseIds, importedClientIds),
+  );
   const caseIdsToDelete = new Set<string>();
   for (const caseRow of candidateCases) {
     const caseId = idOf(caseRow);
     const docs = docsByCase.get(caseId) ?? [];
     const nonImportDocs = docs.filter((doc) => !importedDocumentIds.has(idOf(doc)));
     if (nonImportDocs.length > 0) {
-      plan.conflicts.push({ entity: "cases", id: caseId, reason: "expediente tiene documentos no originados por importacion ZIP", row: caseRow });
+      plan.conflicts.push({
+        entity: "cases",
+        id: caseId,
+        reason: "expediente tiene documentos no originados por importacion ZIP",
+        row: caseRow,
+      });
       continue;
     }
     addTarget(plan, "cases", caseRow, "expediente asociado a cliente/documentos ZIP de prueba");
@@ -237,10 +258,28 @@ async function buildPlan(): Promise<CleanupPlan> {
     const nonImportDocs = docs.filter((doc) => !importedDocumentIds.has(idOf(doc)));
     const clientCases = rows.cases.filter((caseRow) => asString(caseRow.client_id) === clientId);
     const nonDeleteCases = clientCases.filter((caseRow) => !caseIdsToDelete.has(idOf(caseRow)));
-    const relatedPayments = rows.payments.filter((row) => asString(row.client_id) === clientId || (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false));
-    const relatedAgenda = rows.agenda_events.filter((row) => asString(row.client_id) === clientId || (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false));
-    const relatedReports = rows.client_reports.filter((row) => asString(row.client_id) === clientId || (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false));
-    if (nonImportDocs.length || nonDeleteCases.length || relatedPayments.length || relatedAgenda.length || relatedReports.length) {
+    const relatedPayments = rows.payments.filter(
+      (row) =>
+        asString(row.client_id) === clientId ||
+        (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false),
+    );
+    const relatedAgenda = rows.agenda_events.filter(
+      (row) =>
+        asString(row.client_id) === clientId ||
+        (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false),
+    );
+    const relatedReports = rows.client_reports.filter(
+      (row) =>
+        asString(row.client_id) === clientId ||
+        (asString(row.case_id) ? caseIdsToDelete.has(asString(row.case_id)!) : false),
+    );
+    if (
+      nonImportDocs.length ||
+      nonDeleteCases.length ||
+      relatedPayments.length ||
+      relatedAgenda.length ||
+      relatedReports.length
+    ) {
       plan.conflicts.push({
         entity: "clients",
         id: clientId,
@@ -249,7 +288,14 @@ async function buildPlan(): Promise<CleanupPlan> {
       });
       continue;
     }
-    addTarget(plan, "clients", client, hasImportClientNote(client) ? "cliente con nota de importacion ZIP" : "cliente vinculado solo a documentos ZIP");
+    addTarget(
+      plan,
+      "clients",
+      client,
+      hasImportClientNote(client)
+        ? "cliente con nota de importacion ZIP"
+        : "cliente vinculado solo a documentos ZIP",
+    );
     clientIdsToDelete.add(clientId);
   }
 
@@ -257,42 +303,138 @@ async function buildPlan(): Promise<CleanupPlan> {
     for (const row of rows[table].filter(predicate)) addTarget(plan, table, row, reason);
   };
 
-  const paymentIds = new Set(rows.payments.filter((row) => clientIdsToDelete.has(asString(row.client_id) ?? "") || caseIdsToDelete.has(asString(row.case_id) ?? "")).map(idOf));
-  addIfReferenced("payment_records", (row) => paymentIds.has(asString(row.payment_id) ?? ""), "registro de pago asociado a pago ZIP de prueba");
-  addIfReferenced("payments", (row) => paymentIds.has(idOf(row)), "pago asociado a cliente/expediente ZIP de prueba");
-  addIfReferenced("agenda_events", (row) => clientIdsToDelete.has(asString(row.client_id) ?? "") || caseIdsToDelete.has(asString(row.case_id) ?? ""), "evento asociado a cliente/expediente ZIP de prueba");
-  addIfReferenced("client_reports", (row) => clientIdsToDelete.has(asString(row.client_id) ?? "") || caseIdsToDelete.has(asString(row.case_id) ?? ""), "reporte asociado a cliente/expediente ZIP de prueba");
-  addIfReferenced("case_parties", (row) => caseIdsToDelete.has(asString(row.case_id) ?? ""), "parte asociada a expediente ZIP de prueba");
-  addIfReferenced("case_events", (row) => caseIdsToDelete.has(asString(row.case_id) ?? "") || importedDocumentIds.has(asString(row.document_id) ?? ""), "actuacion asociada a expediente/documento ZIP de prueba");
-  addIfReferenced("case_tasks", (row) => caseIdsToDelete.has(asString(row.case_id) ?? "") || clientIdsToDelete.has(asString(row.client_id) ?? ""), "tarea asociada a cliente/expediente ZIP de prueba");
-  addIfReferenced("document_extractions", (row) => importedDocumentIds.has(asString(row.document_id) ?? ""), "extraccion asociada a documento ZIP de prueba");
-  addIfReferenced("source_references", (row) => importedDocumentIds.has(asString(row.document_id) ?? ""), "referencia asociada a documento ZIP de prueba");
-  addIfReferenced("ai_analysis_runs", (row) => importedDocumentIds.has(asString(row.document_id) ?? "") || caseIdsToDelete.has(asString(row.case_id) ?? ""), "analisis IA asociado a documento/expediente ZIP de prueba");
-  addIfReferenced("ai_findings", (row) => importedDocumentIds.has(asString(row.document_id) ?? "") || caseIdsToDelete.has(asString(row.case_id) ?? "") || clientIdsToDelete.has(asString(row.client_id) ?? ""), "hallazgo IA asociado a importacion ZIP de prueba");
+  const paymentIds = new Set(
+    rows.payments
+      .filter(
+        (row) =>
+          clientIdsToDelete.has(asString(row.client_id) ?? "") ||
+          caseIdsToDelete.has(asString(row.case_id) ?? ""),
+      )
+      .map(idOf),
+  );
+  addIfReferenced(
+    "payment_records",
+    (row) => paymentIds.has(asString(row.payment_id) ?? ""),
+    "registro de pago asociado a pago ZIP de prueba",
+  );
+  addIfReferenced(
+    "payments",
+    (row) => paymentIds.has(idOf(row)),
+    "pago asociado a cliente/expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "agenda_events",
+    (row) =>
+      clientIdsToDelete.has(asString(row.client_id) ?? "") ||
+      caseIdsToDelete.has(asString(row.case_id) ?? ""),
+    "evento asociado a cliente/expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "client_reports",
+    (row) =>
+      clientIdsToDelete.has(asString(row.client_id) ?? "") ||
+      caseIdsToDelete.has(asString(row.case_id) ?? ""),
+    "reporte asociado a cliente/expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "case_parties",
+    (row) => caseIdsToDelete.has(asString(row.case_id) ?? ""),
+    "parte asociada a expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "case_events",
+    (row) =>
+      caseIdsToDelete.has(asString(row.case_id) ?? "") ||
+      importedDocumentIds.has(asString(row.document_id) ?? ""),
+    "actuacion asociada a expediente/documento ZIP de prueba",
+  );
+  addIfReferenced(
+    "case_tasks",
+    (row) =>
+      caseIdsToDelete.has(asString(row.case_id) ?? "") ||
+      clientIdsToDelete.has(asString(row.client_id) ?? ""),
+    "tarea asociada a cliente/expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "document_extractions",
+    (row) => importedDocumentIds.has(asString(row.document_id) ?? ""),
+    "extraccion asociada a documento ZIP de prueba",
+  );
+  addIfReferenced(
+    "source_references",
+    (row) => importedDocumentIds.has(asString(row.document_id) ?? ""),
+    "referencia asociada a documento ZIP de prueba",
+  );
+  addIfReferenced(
+    "ai_analysis_runs",
+    (row) =>
+      importedDocumentIds.has(asString(row.document_id) ?? "") ||
+      caseIdsToDelete.has(asString(row.case_id) ?? ""),
+    "analisis IA asociado a documento/expediente ZIP de prueba",
+  );
+  addIfReferenced(
+    "ai_findings",
+    (row) =>
+      importedDocumentIds.has(asString(row.document_id) ?? "") ||
+      caseIdsToDelete.has(asString(row.case_id) ?? "") ||
+      clientIdsToDelete.has(asString(row.client_id) ?? ""),
+    "hallazgo IA asociado a importacion ZIP de prueba",
+  );
 
   const importJobIds = new Set<string>();
   for (const folder of rows.import_folders) {
-    if (clientIdsToDelete.has(asString(folder.detected_client_id) ?? "") || caseIdsToDelete.has(asString(folder.detected_case_id) ?? "")) {
-      addTarget(plan, "import_folders", folder, "carpeta de job asociada a cliente/expediente ZIP de prueba");
+    if (
+      clientIdsToDelete.has(asString(folder.detected_client_id) ?? "") ||
+      caseIdsToDelete.has(asString(folder.detected_case_id) ?? "")
+    ) {
+      addTarget(
+        plan,
+        "import_folders",
+        folder,
+        "carpeta de job asociada a cliente/expediente ZIP de prueba",
+      );
       const jobId = asString(folder.import_job_id);
       if (jobId) importJobIds.add(jobId);
     }
   }
   for (const job of rows.import_jobs) {
-    if (importJobIds.has(idOf(job)) || includesAny(job.provider, ["google", "zip"]) || includesAny(job.name, ["zip", "drive"])) {
-      plan.doubtful.push({ entity: "import_jobs", id: idOf(job), reason: "job potencialmente relacionado; no se elimina automaticamente sin relacion exacta", row: job });
+    if (
+      importJobIds.has(idOf(job)) ||
+      includesAny(job.provider, ["google", "zip"]) ||
+      includesAny(job.name, ["zip", "drive"])
+    ) {
+      plan.doubtful.push({
+        entity: "import_jobs",
+        id: idOf(job),
+        reason: "job potencialmente relacionado; no se elimina automaticamente sin relacion exacta",
+        row: job,
+      });
     }
   }
 
-  plan.storagePaths = Array.from(new Set(importDocuments.map((doc) => asString(doc.storage_path)).filter(Boolean) as string[]));
-  for (const [table, targets] of Object.entries(plan.deleteTargets)) plan.totals[table] = targets.length;
+  plan.storagePaths = Array.from(
+    new Set(importDocuments.map((doc) => asString(doc.storage_path)).filter(Boolean) as string[]),
+  );
+  for (const [table, targets] of Object.entries(plan.deleteTargets))
+    plan.totals[table] = targets.length;
   plan.totals.storageObjects = plan.storagePaths.length;
   plan.totals.conflicts = plan.conflicts.length;
   plan.totals.doubtful = plan.doubtful.length;
 
   mkdirSync(backupDir, { recursive: true });
   writeFileSync(join(backupDir, "cleanup-plan.json"), JSON.stringify(plan, null, 2));
-  writeFileSync(join(backupDir, "backup-metadata.json"), JSON.stringify({ generatedAt: plan.generatedAt, deleteTargets: plan.deleteTargets, storagePaths: plan.storagePaths }, null, 2));
+  writeFileSync(
+    join(backupDir, "backup-metadata.json"),
+    JSON.stringify(
+      {
+        generatedAt: plan.generatedAt,
+        deleteTargets: plan.deleteTargets,
+        storagePaths: plan.storagePaths,
+      },
+      null,
+      2,
+    ),
+  );
   writeFileSync(REPORT_PATH, renderReport(plan));
   return plan;
 }
@@ -338,14 +480,16 @@ function renderReport(plan: CleanupPlan, execution?: Row) {
   lines.push("", "## Dry-run delete targets", "");
   for (const [table, targets] of Object.entries(plan.deleteTargets)) {
     lines.push(`### ${table} (${targets.length})`, "");
-    for (const target of targets) lines.push(`- ${target.id}: ${target.reason}${targetMetadata(target)}`);
+    for (const target of targets)
+      lines.push(`- ${target.id}: ${target.reason}${targetMetadata(target)}`);
     lines.push("");
   }
   lines.push("## Storage", "");
   for (const path of plan.storagePaths) lines.push(`- ${path}`);
   if (plan.storagePaths.length === 0) lines.push("- none");
   lines.push("", "## Conflicts", "");
-  for (const conflict of plan.conflicts) lines.push(`- ${conflict.entity} ${conflict.id}: ${conflict.reason}`);
+  for (const conflict of plan.conflicts)
+    lines.push(`- ${conflict.entity} ${conflict.id}: ${conflict.reason}`);
   if (plan.conflicts.length === 0) lines.push("- none");
   lines.push("", "## Doubtful not deleted", "");
   for (const item of plan.doubtful) lines.push(`- ${item.entity} ${item.id}: ${item.reason}`);
@@ -372,9 +516,16 @@ async function executePlan(planPath: string) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY para ejecutar limpieza.");
   const plan = JSON.parse(readFileSync(planPath, "utf8")) as CleanupPlan;
-  if (plan.conflicts.length > 0) throw new Error(`Ejecucion bloqueada: dry-run tiene ${plan.conflicts.length} conflicto(s).`);
+  if (plan.conflicts.length > 0)
+    throw new Error(`Ejecucion bloqueada: dry-run tiene ${plan.conflicts.length} conflicto(s).`);
   const supabase = createClient(url, key, { auth: { persistSession: false } });
-  const execution: Row = { startedAt: new Date().toISOString(), deleted: {}, storageDeleted: [], storageErrors: [], errors: [] };
+  const execution: Row = {
+    startedAt: new Date().toISOString(),
+    deleted: {},
+    storageDeleted: [],
+    storageErrors: [],
+    errors: [],
+  };
 
   const deleteOrder: TableName[] = [
     "payment_records",
@@ -398,7 +549,8 @@ async function executePlan(planPath: string) {
     const deleted: string[] = [];
     for (const target of targets) {
       const { error } = await supabase.from(table).delete().eq("id", target.id);
-      if (error) (execution.errors as unknown[]).push({ table, id: target.id, error: error.message });
+      if (error)
+        (execution.errors as unknown[]).push({ table, id: target.id, error: error.message });
       else deleted.push(target.id);
     }
     (execution.deleted as Record<string, string[]>)[table] = deleted;
@@ -422,7 +574,19 @@ if (!arg("--dry-run") && !arg("--execute")) {
 
 if (arg("--dry-run")) {
   const plan = await buildPlan();
-  console.log(JSON.stringify({ reportPath: plan.reportPath, backupDir: plan.backupDir, totals: plan.totals, conflicts: plan.conflicts.length, doubtful: plan.doubtful.length }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        reportPath: plan.reportPath,
+        backupDir: plan.backupDir,
+        totals: plan.totals,
+        conflicts: plan.conflicts.length,
+        doubtful: plan.doubtful.length,
+      },
+      null,
+      2,
+    ),
+  );
 } else {
   const planArgIndex = process.argv.indexOf("--plan");
   const planPath = planArgIndex >= 0 ? process.argv[planArgIndex + 1] : latestPlanPath();
