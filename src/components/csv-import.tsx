@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
-import { Upload, X, CheckCircle2, AlertCircle, Loader2, FileText, Download } from "lucide-react";
+import { Upload, X, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { getAuthClient } from "@/lib/supabase";
 import ExcelJS from "exceljs";
 
-interface ParsedClient {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ParsedRow {
   name: string;
   dni: string;
   phone: string;
@@ -20,6 +22,8 @@ interface Props {
   onSuccess: () => void;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const COLORS = [
   "oklch(0.74 0.12 80)",
   "oklch(0.55 0.13 235)",
@@ -29,221 +33,312 @@ const COLORS = [
   "oklch(0.34 0.09 255)",
 ];
 
+// Accepted MIME types — .xls (legacy binary) is NOT supported by ExcelJS
+const ACCEPTED_EXTENSIONS = [".csv", ".xlsx"];
+const ACCEPTED_MIME = [
+  "text/csv",
+  "application/csv",
+  "text/plain",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+
+// Column alias map (lowercase, partial match)
+const COL_ALIASES: Record<string, string[]> = {
+  name: ["nombre", "name", "nombre completo", "full name", "cliente"],
+  dni: ["dni", "ruc", "documento", "cedula", "id"],
+  phone: ["telefono", "teléfono", "celular", "phone", "movil", "móvil", "tel"],
+  email: ["email", "correo", "mail", "correo electrónico", "e-mail"],
+  process_type: ["tipo", "proceso", "tipo de proceso", "materia", "process_type", "especialidad"],
+  status: ["estado", "status", "estado del cliente"],
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function normalizeStatus(raw: string): string {
+  const map: Record<string, string> = {
+    activo: "Activo",
+    active: "Activo",
+    si: "Activo",
+    yes: "Activo",
+    "1": "Activo",
+    "en espera": "En espera",
+    espera: "En espera",
+    waiting: "En espera",
+    pending: "En espera",
+    cerrado: "Cerrado",
+    closed: "Cerrado",
+    inactivo: "Cerrado",
+    no: "Cerrado",
+    "0": "Cerrado",
+  };
+  return map[(raw ?? "").trim().toLowerCase()] ?? "Activo";
+}
+
+function validateRow(row: Omit<ParsedRow, "valid" | "error">): string | undefined {
+  if (!row.name.trim()) return "Nombre requerido";
+  if (row.dni.length !== 8) return `DNI debe tener 8 dígitos (tiene ${row.dni.length})`;
+  if (row.phone.length !== 9) return `Teléfono debe tener 9 dígitos (tiene ${row.phone.length})`;
+  return undefined;
+}
+
+/** Detects the column index (0-based) for each field using the alias map. */
+function buildColIndex(headers: string[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [field, aliases] of Object.entries(COL_ALIASES)) {
+    const idx = headers.findIndex((h) => aliases.some((alias) => h.includes(alias)));
+    result[field] = idx; // -1 if not found
+  }
+  return result;
+}
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
+
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
   let cur = "";
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
+    const ch = line[i];
+    if (ch === '"') {
       if (inQuotes && line[i + 1] === '"') {
         cur += '"';
         i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
+      } else inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
       result.push(cur.trim());
       cur = "";
     } else {
-      cur += char;
+      cur += ch;
     }
   }
   result.push(cur.trim());
   return result;
 }
 
-function normalizeStatus(raw: string): string {
-  const statusMap: Record<string, string> = {
-    activo: "Activo",
-    active: "Activo",
-    "1": "Activo",
-    "en espera": "En espera",
-    espera: "En espera",
-    pending: "En espera",
-    cerrado: "Cerrado",
-    closed: "Cerrado",
-    "0": "Cerrado",
-  };
-  return statusMap[raw.toLowerCase()] ?? "Activo";
-}
-
-function validateRow(row: Omit<ParsedClient, "valid" | "error">): string | undefined {
-  if (!row.name) return "Nombre requerido";
-  if (row.dni.length !== 8) return `DNI debe tener 8 dígitos (tiene ${row.dni.length})`;
-  if (row.phone.length !== 9) return `Teléfono debe tener 9 dígitos (tiene ${row.phone.length})`;
-  return undefined;
-}
-
-function parseCSV(text: string): ParsedClient[] {
+function parseCSV(text: string): ParsedRow[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
-  const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, ""));
-
-  const colMap: Record<string, string[]> = {
-    name: ["nombre", "name", "nombre completo", "full name", "cliente"],
-    dni: ["dni", "ruc", "documento", "cedula", "id"],
-    phone: ["telefono", "teléfono", "celular", "phone", "movil", "móvil"],
-    email: ["email", "correo", "mail", "correo electrónico"],
-    process_type: ["tipo", "proceso", "tipo de proceso", "materia", "process_type", "especialidad"],
-    status: ["estado", "status", "estado del cliente"],
-  };
-
-  function findCol(key: string): number {
-    const aliases = colMap[key] ?? [key];
-    for (const alias of aliases) {
-      const idx = headers.findIndex((h) => h.includes(alias));
-      if (idx !== -1) return idx;
-    }
-    return -1;
-  }
-
-  const cols = {
-    name: findCol("name"),
-    dni: findCol("dni"),
-    phone: findCol("phone"),
-    email: findCol("email"),
-    process_type: findCol("process_type"),
-    status: findCol("status"),
-  };
+  const headerLine = parseCSVLine(lines[0]).map((h) =>
+    h.toLowerCase().replace(/^["'\s]+|["'\s]+$/g, ""),
+  );
+  const cols = buildColIndex(headerLine);
 
   return lines
     .slice(1)
     .filter((l) => l.trim())
-    .map((line) => {
-      const vals = parseCSVLine(line).map((v) => v.replace(/^["']|["']$/g, ""));
+    .map((line): ParsedRow => {
+      const vals = parseCSVLine(line).map((v) => v.replace(/^["']+|["']+$/g, "").trim());
 
-      const name = cols.name >= 0 ? (vals[cols.name] ?? "") : "";
-      const dni = cols.dni >= 0 ? (vals[cols.dni] ?? "").replace(/\D/g, "") : "";
-      const phone = cols.phone >= 0 ? (vals[cols.phone] ?? "").replace(/\D/g, "") : "";
-      const email = cols.email >= 0 ? (vals[cols.email] ?? "") : "";
-      const process_type =
-        cols.process_type >= 0
-          ? (vals[cols.process_type] ?? "Defensa penal — Otros")
-          : "Defensa penal — Otros";
-      const rawStatus = cols.status >= 0 ? (vals[cols.status] ?? "Activo") : "Activo";
-      const status = normalizeStatus(rawStatus);
+      const get = (field: string) => (cols[field] >= 0 ? (vals[cols[field]] ?? "") : "");
+
+      const name = get("name");
+      const dni = get("dni").replace(/\D/g, "");
+      const phone = get("phone").replace(/\D/g, "");
+      const email = get("email");
+      const process_type = get("process_type") || "Defensa penal — Otros";
+      const status = normalizeStatus(get("status"));
       const error = validateRow({ name, dni, phone, email, process_type, status });
 
       return { name, dni, phone, email, process_type, status, valid: !error, error };
     });
 }
 
-async function parseExcel(buffer: ArrayBuffer): Promise<ParsedClient[]> {
+// ─── Excel (.xlsx) Parser ─────────────────────────────────────────────────────
+
+/**
+ * Converts any ExcelJS cell value to a plain string.
+ * Handles: string, number, boolean, Date, RichText, CellErrorValue,
+ * formula results, null/undefined.
+ */
+function cellToString(value: ExcelJS.CellValue): string {
+  if (value === null || value === undefined) return "";
+
+  // Primitive types
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "1" : "0";
+
+  // Date
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+
+  // Formula cell — use the cached result
+  if (typeof value === "object" && "result" in value) {
+    return cellToString(value.result as ExcelJS.CellValue);
+  }
+
+  // Rich text  { richText: [{text: string}] }
+  if (typeof value === "object" && "richText" in value) {
+    const rt = value as ExcelJS.CellRichTextValue;
+    return rt.richText
+      .map((r) => r.text)
+      .join("")
+      .trim();
+  }
+
+  // Hyperlink { text: string, hyperlink: string }
+  if (typeof value === "object" && "text" in value) {
+    return String((value as { text: string }).text).trim();
+  }
+
+  // CellErrorValue e.g. { error: "#REF!" }
+  if (typeof value === "object" && "error" in value) return "";
+
+  return String(value).trim();
+}
+
+async function parseExcel(buffer: ArrayBuffer): Promise<ParsedRow[]> {
   const workbook = new ExcelJS.Workbook();
+
+  // ExcelJS.load throws for invalid/corrupt files — caller catches it
   await workbook.xlsx.load(buffer);
 
   const worksheet = workbook.worksheets[0];
-  if (!worksheet) return [];
+  if (!worksheet) throw new Error("El archivo Excel no contiene ninguna hoja de cálculo.");
 
-  // Read first row as headers
-  const headerRow = worksheet.getRow(1);
-  const headers: string[] = [];
-  headerRow.eachCell((cell) => {
-    headers.push(
-      String(cell.value ?? "")
-        .toLowerCase()
-        .trim(),
-    );
+  // Build header index from first non-empty row
+  let headerRowNum = 1;
+  let headers: string[] = [];
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    if (headers.length === 0) {
+      headerRowNum = rowNum;
+      headers = [];
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        headers.push(cellToString(cell.value).toLowerCase());
+      });
+    }
   });
 
-  const colMap: Record<string, string[]> = {
-    name: ["nombre", "name", "nombre completo", "full name", "cliente"],
-    dni: ["dni", "ruc", "documento", "cedula", "id"],
-    phone: ["telefono", "teléfono", "celular", "phone", "movil", "móvil"],
-    email: ["email", "correo", "mail", "correo electrónico"],
-    process_type: ["tipo", "proceso", "tipo de proceso", "materia", "process_type", "especialidad"],
-    status: ["estado", "status", "estado del cliente"],
-  };
+  if (headers.length === 0)
+    throw new Error("No se encontró una fila de encabezados en el archivo.");
 
-  function findCol(key: string): number {
-    const aliases = colMap[key] ?? [key];
-    for (const alias of aliases) {
-      const idx = headers.findIndex((h) => h.includes(alias));
-      if (idx !== -1) return idx + 1; // ExcelJS columns are 1-indexed
-    }
-    return -1;
-  }
+  // ExcelJS columns are 1-indexed; buildColIndex returns 0-based index into headers array
+  const cols = buildColIndex(headers);
 
-  const cols = {
-    name: findCol("name"),
-    dni: findCol("dni"),
-    phone: findCol("phone"),
-    email: findCol("email"),
-    process_type: findCol("process_type"),
-    status: findCol("status"),
-  };
+  const results: ParsedRow[] = [];
 
-  const results: ParsedClient[] = [];
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    if (rowNum <= headerRowNum) return;
 
-  worksheet.eachRow((row, rowNum) => {
-    if (rowNum === 1) return; // skip header
+    /** Get a cell value by its 0-based column index in the header array. */
+    const get = (field: string): string => {
+      const colIdx = cols[field];
+      if (colIdx < 0) return "";
+      // ExcelJS row cells are 1-based, but our index is 0-based relative to the header
+      // We need to find the actual column number in the worksheet
+      // The header was read with eachCell which gives cells from column 1 onward
+      const cell = row.getCell(colIdx + 1);
+      return cellToString(cell.value);
+    };
 
-    function getCellStr(colIdx: number): string {
-      if (colIdx < 1) return "";
-      const cell = row.getCell(colIdx);
-      const v = cell.value;
-      if (v === null || v === undefined) return "";
-      if (typeof v === "object" && "text" in v) return String((v as { text: string }).text);
-      return String(v).trim();
-    }
+    const name = get("name");
+    const dni = get("dni").replace(/\D/g, "");
+    const phone = get("phone").replace(/\D/g, "");
+    const email = get("email");
+    const process_type = get("process_type") || "Defensa penal — Otros";
+    const status = normalizeStatus(get("status"));
 
-    const name = getCellStr(cols.name);
-    const dni = getCellStr(cols.dni).replace(/\D/g, "");
-    const phone = getCellStr(cols.phone).replace(/\D/g, "");
-    const email = getCellStr(cols.email);
-    const process_type = getCellStr(cols.process_type) || "Defensa penal — Otros";
-    const status = normalizeStatus(getCellStr(cols.status));
+    // Skip rows that are completely empty (merged cells, blank separators, etc.)
+    if (!name && !dni && !phone && !email) return;
+
     const error = validateRow({ name, dni, phone, email, process_type, status });
-
-    // Skip completely empty rows
-    if (!name && !dni && !phone) return;
-
     results.push({ name, dni, phone, email, process_type, status, valid: !error, error });
   });
 
   return results;
 }
 
+// ─── File validation ──────────────────────────────────────────────────────────
+
+function validateFileType(f: File): { ok: boolean; error?: string } {
+  const name = f.name.toLowerCase();
+  const isCsv = name.endsWith(".csv");
+  const isXlsx = name.endsWith(".xlsx");
+  const mimeOk = ACCEPTED_MIME.includes(f.type) || f.type === "";
+
+  if (!isCsv && !isXlsx) {
+    // Detect .xls specifically to give a helpful message
+    if (name.endsWith(".xls")) {
+      return {
+        ok: false,
+        error:
+          "El formato .xls (Excel 97-2003) no está soportado. Guarda el archivo como .xlsx (Excel moderno) e inténtalo de nuevo.",
+      };
+    }
+    return {
+      ok: false,
+      error: `Formato no soportado: "${f.name}". Solo se aceptan archivos .csv o .xlsx.`,
+    };
+  }
+
+  if (!mimeOk && f.type !== "") {
+    // Some OS/browsers report unexpected MIME types — warn but allow
+    console.warn(`[CSVImport] MIME type inesperado: ${f.type} para ${f.name}`);
+  }
+
+  return { ok: true };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function CSVImport({ onClose, onSuccess }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ParsedClient[]>([]);
+  const [preview, setPreview] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
-  const [done, setDone] = useState<{ success: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    success: number;
+    failed: number;
+    errors: string[];
+  } | null>(null);
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
   const [parseError, setParseError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>("");
 
   async function handleFile(f: File) {
-    setFile(f);
     setParseError(null);
+
+    const validation = validateFileType(f);
+    if (!validation.ok) {
+      setParseError(validation.error!);
+      // Reset the input so the same file can be re-selected after fixing
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    setFileName(f.name);
+
     try {
       const isExcel =
-        f.name.endsWith(".xlsx") ||
-        f.name.endsWith(".xls") ||
-        f.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-        f.type === "application/vnd.ms-excel";
+        f.name.toLowerCase().endsWith(".xlsx") ||
+        f.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+      let parsed: ParsedRow[];
 
       if (isExcel) {
         const buffer = await f.arrayBuffer();
-        const parsed = await parseExcel(buffer);
-        setPreview(parsed);
-        setStep("preview");
+        parsed = await parseExcel(buffer);
       } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const text = e.target?.result as string;
-          const parsed = parseCSV(text);
-          setPreview(parsed);
-          setStep("preview");
-        };
-        reader.readAsText(f, "UTF-8");
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+          reader.readAsText(f, "UTF-8");
+        });
+        parsed = parseCSV(text);
       }
+
+      if (parsed.length === 0) {
+        setParseError("El archivo no contiene filas de datos (solo encabezados o está vacío).");
+        return;
+      }
+
+      setPreview(parsed);
+      setStep("preview");
     } catch (err) {
-      setParseError(
-        err instanceof Error ? err.message : "No se pudo leer el archivo. Verifica el formato.",
-      );
+      const msg = err instanceof Error ? err.message : "Error desconocido al leer el archivo.";
+      setParseError(`No se pudo procesar el archivo: ${msg}`);
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -255,11 +350,12 @@ export function CSVImport({ onClose, onSuccess }: Props) {
 
   async function handleImport() {
     const valid = preview.filter((r) => r.valid);
-    if (valid.length === 0) return;
+    if (valid.length === 0 || importing) return;
 
     setImporting(true);
     let success = 0;
     let failed = 0;
+    const errors: string[] = [];
 
     const db = await getAuthClient();
 
@@ -283,17 +379,36 @@ export function CSVImport({ onClose, onSuccess }: Props) {
           color,
         });
 
-        if (error) failed++;
-        else success++;
-      } catch {
+        if (error) {
+          failed++;
+          // Collect errors but cap at 5 to avoid flooding the UI
+          if (errors.length < 5) {
+            errors.push(`${row.name}: ${error.message}`);
+          }
+        } else {
+          success++;
+        }
+      } catch (err) {
         failed++;
+        if (errors.length < 5) {
+          errors.push(`${row.name}: ${err instanceof Error ? err.message : "Error desconocido"}`);
+        }
       }
     }
 
-    setDone({ success, failed });
+    setImportResult({ success, failed, errors });
     setStep("done");
     setImporting(false);
     if (success > 0) onSuccess();
+  }
+
+  function handleReset() {
+    setPreview([]);
+    setImportResult(null);
+    setParseError(null);
+    setFileName("");
+    setStep("upload");
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function downloadTemplate() {
@@ -301,8 +416,9 @@ export function CSVImport({ onClose, onSuccess }: Props) {
       "nombre,dni,telefono,email,proceso,estado",
       "Juan Pérez García,12345678,987654321,juan@mail.com,Defensa penal — Delitos comunes,Activo",
       "María López Torres,87654321,912345678,maria@mail.com,Familia — Divorcio,En espera",
+      "Carlos Ramírez Soto,45678901,945678123,,Laboral — Beneficios sociales,Activo",
     ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }); // BOM for Excel
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -319,44 +435,47 @@ export function CSVImport({ onClose, onSuccess }: Props) {
       <Card className="w-full max-w-2xl shadow-xl max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div>
-            <h3 className="text-base font-semibold">Importar clientes desde CSV o Excel</h3>
-            <p className="text-xs text-muted-foreground">
-              {step === "upload" && "Sube un archivo .csv o .xlsx con los datos de tus clientes"}
-              {step === "preview" && `${validCount} válidos · ${invalidCount} con errores`}
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold">Importar clientes</h3>
+            <p className="text-xs text-muted-foreground truncate">
+              {step === "upload" && "Sube un archivo .csv o .xlsx con los datos"}
+              {step === "preview" &&
+                (fileName ? `${fileName} · ` : "") +
+                  `${validCount} válidos · ${invalidCount} con errores`}
               {step === "done" && "Importación completada"}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+            className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60 ml-3 shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {/* ── Step: Upload ── */}
           {step === "upload" && (
             <div className="space-y-4">
-              {/* Drop zone */}
               <div
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => fileRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-3 h-40 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition"
+                className="flex flex-col items-center justify-center gap-3 h-40 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 cursor-pointer transition select-none"
               >
                 <Upload className="h-8 w-8 text-muted-foreground" />
                 <div className="text-sm text-center">
-                  <p className="font-medium">Arrastra tu archivo CSV o Excel aquí</p>
+                  <p className="font-medium">Arrastra tu archivo aquí</p>
                   <p className="text-muted-foreground text-xs mt-0.5">
-                    o haz clic para seleccionar · .csv, .xlsx
+                    o haz clic para seleccionar · <strong>.csv</strong> o <strong>.xlsx</strong>
                   </p>
                 </div>
               </div>
+              {/* Only .csv and .xlsx — .xls deliberately excluded */}
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -365,23 +484,23 @@ export function CSVImport({ onClose, onSuccess }: Props) {
               />
 
               {parseError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {parseError}
-                </p>
+                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+                  <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{parseError}</p>
+                </div>
               )}
 
-              {/* Template download */}
               <button
                 onClick={downloadTemplate}
                 className="w-full flex items-center justify-center gap-2 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
               >
-                <Download className="h-4 w-4" /> Descargar plantilla de ejemplo (.csv)
+                <Download className="h-4 w-4" /> Descargar plantilla CSV de ejemplo
               </button>
 
               <div className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
-                <p className="font-semibold text-foreground mb-1">Columnas reconocidas:</p>
+                <p className="font-semibold text-foreground mb-2">Columnas reconocidas:</p>
                 <p>
-                  • <strong>nombre</strong> — Nombre completo del cliente (requerido)
+                  • <strong>nombre</strong> — Nombre completo (requerido)
                 </p>
                 <p>
                   • <strong>dni</strong> — DNI de 8 dígitos (requerido)
@@ -398,15 +517,19 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                 <p>
                   • <strong>estado</strong> — Activo / En espera / Cerrado (opcional)
                 </p>
+                <p className="pt-1 text-amber-700 font-medium">
+                  ⚠ El formato .xls (Excel 97-2003) no está soportado. Usa .xlsx o .csv.
+                </p>
               </div>
             </div>
           )}
 
+          {/* ── Step: Preview ── */}
           {step === "preview" && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg">
-                  <CheckCircle2 className="h-4 w-4" /> {validCount} para importar
+                  <CheckCircle2 className="h-4 w-4" /> {validCount} listos para importar
                 </span>
                 {invalidCount > 0 && (
                   <span className="flex items-center gap-1.5 text-red-700 bg-red-50 px-3 py-1.5 rounded-lg">
@@ -415,15 +538,21 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                 )}
               </div>
 
+              {validCount === 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                  Ninguna fila es válida. Revisa el archivo y los encabezados.
+                </div>
+              )}
+
               <div className="rounded-xl border border-border overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-muted/50 text-left text-muted-foreground">
-                      <th className="py-2 pl-3 pr-2">Estado</th>
+                      <th className="py-2 pl-3 pr-2 w-8"></th>
                       <th className="py-2 px-2">Nombre</th>
                       <th className="py-2 px-2">DNI</th>
                       <th className="py-2 px-2">Teléfono</th>
-                      <th className="py-2 px-2">Proceso</th>
+                      <th className="py-2 px-2 hidden sm:table-cell">Proceso</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -441,12 +570,17 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-2 font-medium truncate max-w-[140px]">
-                          {r.name || "—"}
+                        <td className="py-2 px-2 font-medium truncate max-w-[130px]">
+                          {r.name || <span className="text-muted-foreground italic">vacío</span>}
+                          {!r.valid && r.error && (
+                            <div className="text-[10px] text-red-600 mt-0.5 font-normal">
+                              {r.error}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-2 font-mono">{r.dni || "—"}</td>
                         <td className="py-2 px-2 font-mono">{r.phone || "—"}</td>
-                        <td className="py-2 px-2 truncate max-w-[140px] text-muted-foreground">
+                        <td className="py-2 px-2 truncate max-w-[140px] text-muted-foreground hidden sm:table-cell">
                           {r.process_type}
                         </td>
                       </tr>
@@ -454,27 +588,59 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                   </tbody>
                 </table>
                 {preview.length > 20 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border">
-                    +{preview.length - 20} filas más
+                  <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border bg-muted/20">
+                    +{preview.length - 20} filas más (total: {preview.length})
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {step === "done" && done && (
+          {/* ── Step: Done ── */}
+          {step === "done" && importResult && (
             <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
               <div
-                className={`grid h-16 w-16 place-items-center rounded-full ${done.failed === 0 ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}
+                className={`grid h-16 w-16 place-items-center rounded-full ${
+                  importResult.failed === 0
+                    ? "bg-emerald-50 text-emerald-600"
+                    : importResult.success > 0
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-red-50 text-red-600"
+                }`}
               >
-                <CheckCircle2 className="h-8 w-8" />
-              </div>
-              <div>
-                <p className="text-lg font-bold">{done.success} clientes importados</p>
-                {done.failed > 0 && (
-                  <p className="text-sm text-muted-foreground">{done.failed} registros fallaron</p>
+                {importResult.failed === 0 || importResult.success > 0 ? (
+                  <CheckCircle2 className="h-8 w-8" />
+                ) : (
+                  <AlertCircle className="h-8 w-8" />
                 )}
               </div>
+              <div>
+                <p className="text-lg font-bold">
+                  {importResult.success} cliente{importResult.success !== 1 ? "s" : ""} importado
+                  {importResult.success !== 1 ? "s" : ""}
+                </p>
+                {importResult.failed > 0 && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {importResult.failed} registro{importResult.failed !== 1 ? "s" : ""} no se
+                    pudieron insertar
+                  </p>
+                )}
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="w-full rounded-lg border border-red-200 bg-red-50 p-3 text-left">
+                  <p className="text-xs font-semibold text-red-700 mb-1">Errores de inserción:</p>
+                  {importResult.errors.map((e, i) => (
+                    <p key={i} className="text-xs text-red-600">
+                      {e}
+                    </p>
+                  ))}
+                  {importResult.failed > importResult.errors.length && (
+                    <p className="text-xs text-red-500 mt-1">
+                      …y {importResult.failed - importResult.errors.length} más.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -489,13 +655,14 @@ export function CSVImport({ onClose, onSuccess }: Props) {
               Cancelar
             </button>
           )}
+
           {step === "preview" && (
             <>
               <button
-                onClick={() => setStep("upload")}
+                onClick={handleReset}
                 className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
               >
-                Atrás
+                ← Atrás
               </button>
               <button
                 onClick={handleImport}
@@ -508,11 +675,12 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                     Importando...
                   </>
                 ) : (
-                  <>Importar {validCount} clientes</>
+                  `Importar ${validCount} cliente${validCount !== 1 ? "s" : ""}`
                 )}
               </button>
             </>
           )}
+
           {step === "done" && (
             <button
               onClick={onClose}

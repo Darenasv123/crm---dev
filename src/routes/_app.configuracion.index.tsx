@@ -985,6 +985,8 @@ function SettingsPage() {
 
 function Toggle({ label, desc, storageKey }: { label: string; desc: string; storageKey: string }) {
   const [on, setOn] = useState(() => {
+    // SSR-safe: only access localStorage in the browser
+    if (typeof window === "undefined") return true;
     try {
       const saved = localStorage.getItem(`notification_pref_${storageKey}`);
       return saved !== null ? saved === "true" : true;
@@ -996,6 +998,8 @@ function Toggle({ label, desc, storageKey }: { label: string; desc: string; stor
   function toggle() {
     const next = !on;
     setOn(next);
+    // SSR-safe: only access localStorage in the browser
+    if (typeof window === "undefined") return;
     try {
       localStorage.setItem(`notification_pref_${storageKey}`, String(next));
     } catch {
