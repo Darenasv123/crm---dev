@@ -14,12 +14,37 @@ type ClientUpdate = Database["public"]["Tables"]["clients"]["Update"];
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
 type DocumentInsert = Database["public"]["Tables"]["documents"]["Insert"];
 
-type DbClient = {
-  from: (table: string) => any;
+type TableName = "clients" | "cases" | "documents";
+type DbError = { message: string; code?: string };
+type DbResult<T = unknown> = { data?: T | null; error?: DbError | null };
+
+type DbQuery = {
+  insert: (payload: unknown) => DbQuery;
+  update: (payload: unknown) => DbQuery;
+  select: (columns?: string) => DbQuery;
+  eq: (column: string, value: unknown) => DbQuery;
+  single: () => Promise<DbResult<{ id: string }>>;
+  maybeSingle: () => Promise<DbResult<{ id: string }>>;
+  then: <TResult1 = DbResult, TResult2 = never>(
+    onfulfilled?: ((value: DbResult) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ) => Promise<TResult1 | TResult2>;
 };
 
+type DbClient = {
+  from: (table: TableName) => unknown;
+};
+
+function fromDb(db: DbClient, table: TableName): DbQuery {
+  return db.from(table) as DbQuery;
+}
+
 type StorageBucket = {
-  upload: (path: string, body: Blob, options?: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+  upload: (
+    path: string,
+    body: Blob,
+    options?: Record<string, unknown>,
+  ) => Promise<{ error: { message: string } | null }>;
   remove: (paths: string[]) => Promise<{ error: { message: string } | null }>;
 };
 
@@ -48,18 +73,28 @@ export interface PersistZipCandidateResult {
 
 const PENDING_PROCESS_TYPE = "Pendiente de clasificacion";
 
-function ensureSupabaseData<T>(data: T | null | undefined, error: { message: string } | null | undefined, action: string): T {
+function ensureSupabaseData<T>(
+  data: T | null | undefined,
+  error: { message: string } | null | undefined,
+  action: string,
+): T {
   if (error) throw new Error(`${action}: ${error.message}`);
   if (!data) throw new Error(`${action}: Supabase no devolvio datos.`);
   return data;
 }
 
 function safeProcessType(value?: string | null): string {
-  return normalizeProcessType(value) ?? (value === PENDING_PROCESS_TYPE ? PENDING_PROCESS_TYPE : PENDING_PROCESS_TYPE);
+  return (
+    normalizeProcessType(value) ??
+    (value === PENDING_PROCESS_TYPE ? PENDING_PROCESS_TYPE : PENDING_PROCESS_TYPE)
+  );
 }
 
 function safeNamePart(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").slice(0, 120);
+  return name
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
 }
 
 function mimeTypeFor(ext: string): string {
@@ -121,7 +156,11 @@ function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
   ];
 }
 
-function provisionalExpediente(clientId: string, caseCandidate: ZipCaseCandidate, files: ZipFileEntry[]): string {
+function provisionalExpediente(
+  clientId: string,
+  caseCandidate: ZipCaseCandidate,
+  files: ZipFileEntry[],
+): string {
   const seed = files[0]?.checksum?.slice(0, 8) || caseCandidate.id.replace(/[^a-zA-Z0-9]/g, "");
   return `PENDIENTE-${clientId.slice(0, 8)}-${seed || "REVISION"}`;
 }
@@ -129,7 +168,9 @@ function provisionalExpediente(clientId: string, caseCandidate: ZipCaseCandidate
 async function createClient(params: PersistZipCandidateParams): Promise<string> {
   const { candidate, db, sourceFileName, buildInitials, randomColor } = params;
   const effectiveName = candidate.edits.proposedName ?? candidate.proposedName;
-  const processType = safeProcessType(candidate.edits.processType ?? candidate.detected.processType);
+  const processType = safeProcessType(
+    candidate.edits.processType ?? candidate.detected.processType,
+  );
   const payload: ClientInsert = {
     name: effectiveName,
     dni: candidate.edits.dni ?? candidate.detected.dni ?? "00000000",
@@ -144,9 +185,9 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
     color: randomColor(),
     notes: `Importado desde Google Drive ZIP: ${sourceFileName}`,
   };
-  let { data, error } = await db.from("clients").insert(payload).select("id").single();
+  let { data, error } = await fromDb(db, "clients").insert(payload).select("id").single();
 
-  if (isMissingSchemaFieldError(error)) {
+  if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: ClientInsert = {
       name: payload.name,
       dni: payload.dni,
@@ -157,7 +198,7 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
       initials: payload.initials,
       color: payload.color,
     };
-    ({ data, error } = await db.from("clients").insert(legacyPayload).select("id").single());
+    ({ data, error } = await fromDb(db, "clients").insert(legacyPayload).select("id").single());
   }
 
   return ensureSupabaseData<{ id: string }>(data, error, "Crear cliente").id;
@@ -168,9 +209,12 @@ async function updateExistingClient(candidate: ReviewCandidate, db: DbClient): P
   const updates: ClientUpdate = {};
   if (candidate.edits.phone) updates.phone = candidate.edits.phone;
   if (candidate.edits.email) updates.email = candidate.edits.email;
-  if (candidate.edits.processType) updates.process_type = safeProcessType(candidate.edits.processType);
+  if (candidate.edits.processType)
+    updates.process_type = safeProcessType(candidate.edits.processType);
   if (Object.keys(updates).length > 0) {
-    const { error } = await db.from("clients").update(updates).eq("id", candidate.existingClientId);
+    const { error } = await fromDb(db, "clients")
+      .update(updates)
+      .eq("id", candidate.existingClientId);
     if (error) throw new Error(`Actualizar cliente: ${error.message}`);
   }
   return candidate.existingClientId;
@@ -182,7 +226,8 @@ async function createCase(
   caseCandidate: ZipCaseCandidate,
   files: ZipFileEntry[],
 ): Promise<string> {
-  const expediente = caseCandidate.caseNumber ?? provisionalExpediente(clientId, caseCandidate, files);
+  const expediente =
+    caseCandidate.caseNumber ?? provisionalExpediente(clientId, caseCandidate, files);
   const processType = safeProcessType(caseCandidate.processType);
   const payload: CaseInsert = {
     client_id: clientId,
@@ -202,8 +247,8 @@ async function createCase(
     internal_code: caseCandidate.isProvisional ? expediente : null,
   };
 
-  let { data, error } = await db.from("cases").insert(payload).select("id").single();
-  if (isMissingSchemaFieldError(error)) {
+  let { data, error } = await fromDb(db, "cases").insert(payload).select("id").single();
+  if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: CaseInsert = {
       client_id: payload.client_id,
       expediente: payload.expediente,
@@ -214,19 +259,24 @@ async function createCase(
       demandante: payload.demandante,
       demandado: payload.demandado,
     };
-    ({ data, error } = await db.from("cases").insert(legacyPayload).select("id").single());
+    ({ data, error } = await fromDb(db, "cases").insert(legacyPayload).select("id").single());
   }
-  return ensureSupabaseData<{ id: string }>(data, error, `Crear expediente ${caseCandidate.title}`).id;
+  return ensureSupabaseData<{ id: string }>(data, error, `Crear expediente ${caseCandidate.title}`)
+    .id;
 }
 
-async function documentAlreadyExists(db: DbClient, clientId: string, checksum: string): Promise<boolean> {
-  const { data, error } = await db
-    .from("documents")
+async function documentAlreadyExists(
+  db: DbClient,
+  clientId: string,
+  checksum: string,
+): Promise<boolean> {
+  const { data, error } = await fromDb(db, "documents")
     .select("id")
     .eq("client_id", clientId)
     .eq("checksum", checksum)
     .maybeSingle();
-  if (error && !isMissingSchemaFieldError(error)) throw new Error(`Verificar duplicado: ${error.message}`);
+  if (error && !isMissingSchemaFieldError(error ?? null))
+    throw new Error(`Verificar duplicado: ${error.message}`);
   return Boolean(data?.id);
 }
 
@@ -259,8 +309,8 @@ async function insertDocument(
     verification_status: "pending",
   };
 
-  let { error } = await db.from("documents").insert(payload);
-  if (isMissingSchemaFieldError(error)) {
+  let { error } = await fromDb(db, "documents").insert(payload);
+  if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: DocumentInsert = {
       name: payload.name,
       type: payload.type,
@@ -269,12 +319,14 @@ async function insertDocument(
       client_id: payload.client_id,
       case_id: payload.case_id,
     };
-    ({ error } = await db.from("documents").insert(legacyPayload));
+    ({ error } = await fromDb(db, "documents").insert(legacyPayload));
   }
   if (error) throw new Error(`Registrar documento ${docFile.name}: ${error.message}`);
 }
 
-export async function persistZipCandidate(params: PersistZipCandidateParams): Promise<PersistZipCandidateResult> {
+export async function persistZipCandidate(
+  params: PersistZipCandidateParams,
+): Promise<PersistZipCandidateResult> {
   const { candidate, db, storageBucket, now = () => Date.now() } = params;
   const errors: string[] = [];
   const compensations: string[] = [];
@@ -283,14 +335,33 @@ export async function persistZipCandidate(params: PersistZipCandidateParams): Pr
   let clientId: string | undefined;
 
   try {
-    const action = candidate.duplicates.length > 0 ? (candidate.duplicateAction ?? "create_new") : "create_new";
+    const action =
+      candidate.duplicates.length > 0 ? (candidate.duplicateAction ?? "create_new") : "create_new";
     if (action === "skip") {
-      return { folderName: candidate.folderName, status: "skipped", documentsImported: 0, documentsSkipped: 0, errors, compensations };
+      return {
+        folderName: candidate.folderName,
+        status: "skipped",
+        documentsImported: 0,
+        documentsSkipped: 0,
+        errors,
+        compensations,
+      };
     }
-    clientId = action === "create_new" ? await createClient(params) : await updateExistingClient(candidate, db);
+    clientId =
+      action === "create_new"
+        ? await createClient(params)
+        : await updateExistingClient(candidate, db);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido";
-    return { folderName: candidate.folderName, status: "failed", error: msg, documentsImported: 0, documentsSkipped: 0, errors: [msg], compensations };
+    return {
+      folderName: candidate.folderName,
+      status: "failed",
+      error: msg,
+      documentsImported: 0,
+      documentsSkipped: 0,
+      errors: [msg],
+      compensations,
+    };
   }
 
   const documentCaseMap = buildDocumentCaseMap(candidate);
@@ -331,14 +402,16 @@ export async function persistZipCandidate(params: PersistZipCandidateParams): Pr
         errors.push(msg);
         if (uploaded) {
           const { error: removeError } = await storageBucket.remove([storagePath]);
-          if (removeError) compensations.push(`No se pudo retirar ${storagePath}: ${removeError.message}`);
+          if (removeError)
+            compensations.push(`No se pudo retirar ${storagePath}: ${removeError.message}`);
           else compensations.push(`Storage revertido: ${storagePath}`);
         }
       }
     }
   }
 
-  const status: PersistStatus = errors.length === 0 ? "success" : documentsImported > 0 ? "partial" : "failed";
+  const status: PersistStatus =
+    errors.length === 0 ? "success" : documentsImported > 0 ? "partial" : "failed";
   return {
     folderName: candidate.folderName,
     status,

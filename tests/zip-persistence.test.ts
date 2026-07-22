@@ -57,6 +57,19 @@ function makeCandidate(overrides: Partial<ReviewCandidate> = {}): ReviewCandidat
   };
 }
 
+type FakeChain = {
+  table: string;
+  payload: Record<string, unknown> | null;
+  insert: (payload: Record<string, unknown>) => FakeChain;
+  update: (payload: Record<string, unknown>) => FakeChain;
+  select: () => FakeChain;
+  eq: (column: string, value: unknown) => FakeChain;
+  single: () => Promise<{ data: { id: string } | null; error: { message: string } | null }>;
+  maybeSingle: () => Promise<{ data: { id: string } | null; error: { message: string } | null }>;
+  then: (
+    resolve: (value: { data: { id: string } | null; error: { message: string } | null }) => void,
+  ) => void;
+};
 type FakeOptions = {
   clientError?: string;
   caseError?: string;
@@ -70,7 +83,7 @@ function makeDb(options: FakeOptions = {}) {
   const filters: Array<{ table: string; column: string; value: unknown }> = [];
 
   function builder(table: string) {
-    const chain: any = {
+    const chain: FakeChain = {
       table,
       payload: null,
       insert(payload: Record<string, unknown>) {
@@ -91,8 +104,10 @@ function makeDb(options: FakeOptions = {}) {
         return this;
       },
       single: async () => {
-        if (table === "clients" && options.clientError) return { data: null, error: { message: options.clientError } };
-        if (table === "cases" && options.caseError) return { data: null, error: { message: options.caseError } };
+        if (table === "clients" && options.clientError)
+          return { data: null, error: { message: options.clientError } };
+        if (table === "cases" && options.caseError)
+          return { data: null, error: { message: options.caseError } };
         if (table === "clients") return { data: { id: "client-1" }, error: null };
         if (table === "cases") return { data: { id: "case-1" }, error: null };
         return { data: { id: "row-1" }, error: null };
@@ -101,7 +116,12 @@ function makeDb(options: FakeOptions = {}) {
         if (options.duplicate) return { data: { id: "doc-existing" }, error: null };
         return { data: null, error: null };
       },
-      then(resolve: (value: unknown) => void) {
+      then(
+        resolve: (value: {
+          data: { id: string } | null;
+          error: { message: string } | null;
+        }) => void,
+      ) {
         if (table === "documents" && options.documentError) {
           resolve({ data: null, error: { message: options.documentError } });
           return;
@@ -164,7 +184,9 @@ describe("persistZipCandidate", () => {
   });
 
   it("falla sin subir documentos si no puede crear cliente", async () => {
-    const { result, fakeStorage } = await run(makeCandidate(), { clientError: "permission denied" });
+    const { result, fakeStorage } = await run(makeCandidate(), {
+      clientError: "permission denied",
+    });
     expect(result.status).toBe("failed");
     expect(fakeStorage.uploads).toHaveLength(0);
   });
@@ -182,7 +204,9 @@ describe("persistZipCandidate", () => {
   });
 
   it("compensa Storage si falla el insert de documento", async () => {
-    const { result, fakeStorage } = await run(makeCandidate(), { documentError: "documents denied" });
+    const { result, fakeStorage } = await run(makeCandidate(), {
+      documentError: "documents denied",
+    });
     expect(result.status).toBe("failed");
     expect(fakeStorage.uploads).toHaveLength(1);
     expect(fakeStorage.removals).toEqual(fakeStorage.uploads);
@@ -194,7 +218,15 @@ describe("persistZipCandidate", () => {
     expect(result.status).toBe("success");
     expect(result.documentsSkipped).toBe(1);
     expect(fakeStorage.uploads).toHaveLength(0);
-    expect(fakeDb.filters).toContainEqual({ table: "documents", column: "client_id", value: "client-1" });
-    expect(fakeDb.filters).toContainEqual({ table: "documents", column: "checksum", value: "abc123" });
+    expect(fakeDb.filters).toContainEqual({
+      table: "documents",
+      column: "client_id",
+      value: "client-1",
+    });
+    expect(fakeDb.filters).toContainEqual({
+      table: "documents",
+      column: "checksum",
+      value: "abc123",
+    });
   });
 });

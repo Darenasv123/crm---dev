@@ -395,11 +395,13 @@ describe("parseZipFile", () => {
   });
 });
 
-
 describe("parseZipFile jerarquico", () => {
   it("detecta contenedor con multiples clientes sin crear cliente contenedor", async () => {
     const zipBuf = await buildZip([
-      { path: "A-EXPEDIENTES DE CLIENTES/YLLA NEGRON YENI/DEMANDA.txt", content: "DNI: 12345678 PROCESO: ALIMENTOS" },
+      {
+        path: "A-EXPEDIENTES DE CLIENTES/YLLA NEGRON YENI/DEMANDA.txt",
+        content: "DNI: 12345678 PROCESO: ALIMENTOS",
+      },
       { path: "A-EXPEDIENTES DE CLIENTES/GARCIA TORRES MANUEL/CARGO.pdf", content: "%PDF" },
     ]);
     const result = await parseZipFile(zipBuf);
@@ -407,7 +409,9 @@ describe("parseZipFile jerarquico", () => {
       "GARCIA TORRES MANUEL",
       "YLLA NEGRON YENI",
     ]);
-    expect(result.candidates.some((c) => c.proposedName === "A-EXPEDIENTES DE CLIENTES")).toBe(false);
+    expect(result.candidates.some((c) => c.proposedName === "A-EXPEDIENTES DE CLIENTES")).toBe(
+      false,
+    );
   });
 
   it("mantiene un unico folder de cliente como candidato", async () => {
@@ -421,7 +425,10 @@ describe("parseZipFile jerarquico", () => {
 
   it("soporta cliente anidado debajo de contenedor generico", async () => {
     const zipBuf = await buildZip([
-      { path: "Backup Google Drive/Clientes/LOPEZ MENDEZ ANA/documento.txt", content: "Telefono: 987654321" },
+      {
+        path: "Backup Google Drive/Clientes/LOPEZ MENDEZ ANA/documento.txt",
+        content: "Telefono: 987654321",
+      },
     ]);
     const result = await parseZipFile(zipBuf);
     expect(result.candidates).toHaveLength(1);
@@ -441,8 +448,14 @@ describe("parseZipFile jerarquico", () => {
 
   it("agrupa documentos por varios numeros de expediente", async () => {
     const zipBuf = await buildZip([
-      { path: "MENDOZA TORRES/EXP 01234-2024-0-JR-FC-01/demanda.txt", content: "Expediente 01234-2024-0-JR-FC-01" },
-      { path: "MENDOZA TORRES/EXP 05678-2023-0-JR-FC-02/cargo.txt", content: "Expediente 05678-2023-0-JR-FC-02" },
+      {
+        path: "MENDOZA TORRES/EXP 01234-2024-0-JR-FC-01/demanda.txt",
+        content: "Expediente 01234-2024-0-JR-FC-01",
+      },
+      {
+        path: "MENDOZA TORRES/EXP 05678-2023-0-JR-FC-02/cargo.txt",
+        content: "Expediente 05678-2023-0-JR-FC-02",
+      },
     ]);
     const result = await parseZipFile(zipBuf);
     expect(result.candidates[0].caseCandidates?.map((c) => c.caseNumber).sort()).toEqual([
@@ -452,8 +465,12 @@ describe("parseZipFile jerarquico", () => {
   });
 
   it("no convierte frases libres en tipo de proceso", () => {
-    expect(normalizeProcessType("recurro a su despacho a fin de solicitar a usted")).toBeUndefined();
-    expect(analyzeText("PROCESO: recurro a su despacho a fin de solicitar a usted").processType).toBeUndefined();
+    expect(
+      normalizeProcessType("recurro a su despacho a fin de solicitar a usted"),
+    ).toBeUndefined();
+    expect(
+      analyzeText("PROCESO: recurro a su despacho a fin de solicitar a usted").processType,
+    ).toBeUndefined();
   });
 
   it("detecta juzgado con patron corregido", () => {
@@ -473,4 +490,3 @@ describe("parseZipFile jerarquico", () => {
     expect(client?.subfolders).toContain("Contenedor/Cliente Uno/Expediente A");
   });
 });
-

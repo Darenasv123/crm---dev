@@ -140,7 +140,7 @@ function DuplicateActionSelector({
   return (
     <div className="mt-3 space-y-2">
       <p className="text-xs font-semibold text-amber-800">
-        âš  Se encontraron posibles clientes existentes:
+        Se encontraron posibles clientes existentes:
       </p>
       {matches.slice(0, 3).map((m) => (
         <div
@@ -280,10 +280,16 @@ function CandidateCard({
   const subfolders = candidate.subfolderPaths ?? [];
 
   return (
-    <div className={`rounded-xl border ${candidate.excluded ? "border-muted opacity-50" : "border-border"} bg-card`}>
+    <div
+      className={`rounded-xl border ${candidate.excluded ? "border-muted opacity-50" : "border-border"} bg-card`}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
         <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0">
-          {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          )}
         </button>
         <FolderOpen className="h-4 w-4 shrink-0 text-amber-500" />
         <div className="min-w-0 flex-1">
@@ -301,7 +307,11 @@ function CandidateCard({
           ) : (
             <div className="flex items-center gap-1.5">
               <span className="truncate text-sm font-semibold">{name}</span>
-              <button type="button" onClick={() => setEditingName(true)} className="shrink-0 text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                onClick={() => setEditingName(true)}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+              >
                 <Pencil className="h-3 w-3" />
               </button>
             </div>
@@ -322,7 +332,17 @@ function CandidateCard({
             onClick={() => onUpdate(index, { excluded: !candidate.excluded })}
             className={`rounded-lg border px-2 py-1 text-[10px] font-medium transition ${candidate.excluded ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"}`}
           >
-            {candidate.excluded ? <><Eye className="mr-0.5 inline h-3 w-3" />Incluir</> : <><EyeOff className="mr-0.5 inline h-3 w-3" />Excluir</>}
+            {candidate.excluded ? (
+              <>
+                <Eye className="mr-0.5 inline h-3 w-3" />
+                Incluir
+              </>
+            ) : (
+              <>
+                <EyeOff className="mr-0.5 inline h-3 w-3" />
+                Excluir
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -337,12 +357,16 @@ function CandidateCard({
               { label: "Juzgado", field: "juzgado" as const, value: eff.juzgado ?? d.juzgado },
             ].map(({ label, field, value }) => (
               <div key={field} className="rounded-lg bg-muted/30 p-2">
-                <dt className="text-[9px] font-semibold uppercase text-muted-foreground">{label}</dt>
+                <dt className="text-[9px] font-semibold uppercase text-muted-foreground">
+                  {label}
+                </dt>
                 <input
                   className="mt-0.5 w-full bg-transparent text-xs font-medium placeholder:text-muted-foreground/50 focus:outline-none"
                   value={value ?? ""}
                   placeholder="No detectado"
-                  onChange={(e) => onUpdate(index, { edits: { ...eff, [field]: e.target.value || undefined } })}
+                  onChange={(e) =>
+                    onUpdate(index, { edits: { ...eff, [field]: e.target.value || undefined } })
+                  }
                 />
               </div>
             ))}
@@ -351,7 +375,12 @@ function CandidateCard({
           {(candidate.evidence?.length ?? 0) > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {candidate.evidence?.map((item) => (
-                <span key={item} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{item}</span>
+                <span
+                  key={item}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600"
+                >
+                  {item}
+                </span>
               ))}
               {candidate.confidence !== undefined && (
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
@@ -363,7 +392,9 @@ function CandidateCard({
 
           {subfolders.length > 0 && (
             <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase text-muted-foreground">Subcarpetas</p>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                Subcarpetas
+              </p>
               <div className="flex flex-wrap gap-1.5">
                 {subfolders.map((folderPath) => (
                   <button
@@ -372,7 +403,8 @@ function CandidateCard({
                     onClick={() => toggleFolder(folderPath)}
                     className={`rounded-full border px-2 py-1 text-[10px] ${excludedFolders.has(folderPath) ? "border-red-200 bg-red-50 text-red-600" : "border-border bg-background text-muted-foreground"}`}
                   >
-                    {excludedFolders.has(folderPath) ? "Omitida" : "Activa"} · {folderPath.split("/").pop()}
+                    {excludedFolders.has(folderPath) ? "Omitida" : "Activa"} ·{" "}
+                    {folderPath.split("/").pop()}
                   </button>
                 ))}
               </div>
@@ -382,7 +414,10 @@ function CandidateCard({
           {candidate.warnings.length > 0 && (
             <div className="space-y-1">
               {candidate.warnings.map((w, i) => (
-                <div key={i} className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+                <div
+                  key={i}
+                  className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5"
+                >
                   <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-amber-600" />
                   <span className="text-[10px] text-amber-800">{w}</span>
                 </div>
@@ -402,40 +437,117 @@ function CandidateCard({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase text-muted-foreground">Expedientes del cliente</p>
-              <button type="button" onClick={addCase} className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2 text-[10px] font-medium hover:bg-muted/60">
+              <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                Expedientes del cliente
+              </p>
+              <button
+                type="button"
+                onClick={addCase}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2 text-[10px] font-medium hover:bg-muted/60"
+              >
                 <UserPlus className="h-3.5 w-3.5" /> Crear expediente
               </button>
             </div>
             {caseCandidates.map((caseCandidate) => {
-              const files = candidate.files.filter((file) => documentCaseMap[file.zipPath] === caseCandidate.id);
+              const files = candidate.files.filter(
+                (file) => documentCaseMap[file.zipPath] === caseCandidate.id,
+              );
               return (
-                <div key={caseCandidate.id} className="rounded-lg border border-border bg-background p-3">
+                <div
+                  key={caseCandidate.id}
+                  className="rounded-lg border border-border bg-background p-3"
+                >
                   <div className="grid gap-2 sm:grid-cols-4">
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.title} onChange={(e) => patchCase(caseCandidate.id, { title: e.target.value })} />
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs font-mono" value={caseCandidate.caseNumber ?? ""} placeholder="Expediente" onChange={(e) => patchCase(caseCandidate.id, { caseNumber: e.target.value || null, isProvisional: !e.target.value })} />
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.processType} onChange={(e) => patchCase(caseCandidate.id, { processType: e.target.value || "Pendiente de clasificacion" })} />
-                    <select className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.status} onChange={(e) => patchCase(caseCandidate.id, { status: e.target.value })}>
-                      {['Consulta','Documentacion','Demanda presentada','En proceso','Audiencia','Sentencia','Archivado'].map((status) => <option key={status}>{status}</option>)}
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.title}
+                      onChange={(e) => patchCase(caseCandidate.id, { title: e.target.value })}
+                    />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs font-mono"
+                      value={caseCandidate.caseNumber ?? ""}
+                      placeholder="Expediente"
+                      onChange={(e) =>
+                        patchCase(caseCandidate.id, {
+                          caseNumber: e.target.value || null,
+                          isProvisional: !e.target.value,
+                        })
+                      }
+                    />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.processType}
+                      onChange={(e) =>
+                        patchCase(caseCandidate.id, {
+                          processType: e.target.value || "Pendiente de clasificacion",
+                        })
+                      }
+                    />
+                    <select
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.status}
+                      onChange={(e) => patchCase(caseCandidate.id, { status: e.target.value })}
+                    >
+                      {[
+                        "Consulta",
+                        "Documentacion",
+                        "Demanda presentada",
+                        "En proceso",
+                        "Audiencia",
+                        "Sentencia",
+                        "Archivado",
+                      ].map((status) => (
+                        <option key={status}>{status}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.juzgado} placeholder="Juzgado" onChange={(e) => patchCase(caseCandidate.id, { juzgado: e.target.value })} />
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.demandante ?? ""} placeholder="Demandante" onChange={(e) => patchCase(caseCandidate.id, { demandante: e.target.value || undefined })} />
-                    <input className="h-8 rounded border border-border bg-card px-2 text-xs" value={caseCandidate.demandado ?? ""} placeholder="Demandado" onChange={(e) => patchCase(caseCandidate.id, { demandado: e.target.value || undefined })} />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.juzgado}
+                      placeholder="Juzgado"
+                      onChange={(e) => patchCase(caseCandidate.id, { juzgado: e.target.value })}
+                    />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.demandante ?? ""}
+                      placeholder="Demandante"
+                      onChange={(e) =>
+                        patchCase(caseCandidate.id, { demandante: e.target.value || undefined })
+                      }
+                    />
+                    <input
+                      className="h-8 rounded border border-border bg-card px-2 text-xs"
+                      value={caseCandidate.demandado ?? ""}
+                      placeholder="Demandado"
+                      onChange={(e) =>
+                        patchCase(caseCandidate.id, { demandado: e.target.value || undefined })
+                      }
+                    />
                   </div>
-                  {caseCandidate.warnings.length > 0 && <p className="mt-2 text-[10px] text-amber-700">{caseCandidate.warnings.join(" ")}</p>}
-                  <p className="mt-2 text-[10px] text-muted-foreground">{files.length} documento(s) asignado(s)</p>
+                  {caseCandidate.warnings.length > 0 && (
+                    <p className="mt-2 text-[10px] text-amber-700">
+                      {caseCandidate.warnings.join(" ")}
+                    </p>
+                  )}
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    {files.length} documento(s) asignado(s)
+                  </p>
                 </div>
               );
             })}
           </div>
 
           <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase text-muted-foreground">Documentos ({candidate.files.length})</p>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase text-muted-foreground">
+              Documentos ({candidate.files.length})
+            </p>
             <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
               {candidate.files.map((f) => (
-                <div key={f.zipPath} className={`grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition ${candidate.excludedFiles.has(f.zipPath) ? "border-muted bg-muted/20 opacity-50" : "border-border bg-background"}`}>
+                <div
+                  key={f.zipPath}
+                  className={`grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition ${candidate.excludedFiles.has(f.zipPath) ? "border-muted bg-muted/20 opacity-50" : "border-border bg-background"}`}
+                >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -443,16 +555,34 @@ function CandidateCard({
                     </div>
                     <p className="truncate pl-5 text-[10px] text-muted-foreground">{f.zipPath}</p>
                   </div>
-                  <select className="h-7 w-44 rounded border border-border bg-card px-2 text-[10px]" value={documentCaseMap[f.zipPath] ?? "__unclassified"} onChange={(e) => moveFile(f.zipPath, e.target.value)}>
+                  <select
+                    className="h-7 w-44 rounded border border-border bg-card px-2 text-[10px]"
+                    value={documentCaseMap[f.zipPath] ?? "__unclassified"}
+                    onChange={(e) => moveFile(f.zipPath, e.target.value)}
+                  >
                     <option value="__unclassified">Sin clasificar</option>
-                    {caseCandidates.map((caseCandidate) => <option key={caseCandidate.id} value={caseCandidate.id}>{caseCandidate.caseNumber ?? caseCandidate.title}</option>)}
+                    {caseCandidates.map((caseCandidate) => (
+                      <option key={caseCandidate.id} value={caseCandidate.id}>
+                        {caseCandidate.caseNumber ?? caseCandidate.title}
+                      </option>
+                    ))}
                   </select>
                   <span className="text-muted-foreground">{formatSize(f.size)}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">{f.docType}</span>
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">
+                      {f.docType}
+                    </span>
                     <ExtractionBadge status={f.extractionStatus} />
-                    <button type="button" onClick={() => toggleFile(f.zipPath)} className="text-muted-foreground hover:text-foreground">
-                      {candidate.excludedFiles.has(f.zipPath) ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    <button
+                      type="button"
+                      onClick={() => toggleFile(f.zipPath)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {candidate.excludedFiles.has(f.zipPath) ? (
+                        <Eye className="h-3.5 w-3.5" />
+                      ) : (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -568,7 +698,9 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     });
 
     if (toImport.length === 0) {
-      setParseError("No hay carpetas seleccionadas para importar. Asigna una accion a cada duplicado.");
+      setParseError(
+        "No hay carpetas seleccionadas para importar. Asigna una accion a cada duplicado.",
+      );
       return;
     }
 
@@ -646,7 +778,8 @@ export function ZipImport({ onClose, onSuccess }: Props) {
               {step === "review" &&
                 `${candidates.length} carpeta(s) detectada(s) Â· ${activeCount} seleccionada(s)`}
               {step === "importing" && importProgress}
-              {step === "done" && `${completedCount} importada(s) Â· ${partialCount} parcial(es) Â· ${failedCount} fallida(s)`}
+              {step === "done" &&
+                `${completedCount} importada(s) Â· ${partialCount} parcial(es) Â· ${failedCount} fallida(s)`}
             </p>
           </div>
           <button
@@ -865,12 +998,3 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-

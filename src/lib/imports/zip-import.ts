@@ -40,7 +40,7 @@ const DOC_TYPE_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
 const PATTERNS = {
   dni: /\b(?:DNI|D\.N\.I\.?)[\s.:N°º#-]*([0-9]{8})\b/gi,
   phone: /(?:(?:cel(?:ular)?|tel(?:e|é)fono|telf?\.?|movil|móvil)[\s.:]*)?(\b9[0-9]{8}\b)/gi,
-  email: /\b[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi,
+  email: /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/gi,
   expediente: /\b(?:EXP(?:EDIENTE)?\.?|N[°º]\.?)\s*([0-9]{4,5}-[0-9]{4}(?:-[A-Z0-9]+){0,8})\b/gi,
   expedienteAlt: /\b([0-9]{4,5}-[0-9]{4}(?:-[A-Z0-9]+){1,8})\b/g,
   court:
@@ -139,11 +139,7 @@ export interface DetectedData {
 }
 
 export type FolderClassification =
-  | "container"
-  | "possible_client"
-  | "possible_expediente"
-  | "documental"
-  | "unknown";
+  "container" | "possible_client" | "possible_expediente" | "documental" | "unknown";
 
 export interface FolderClassificationResult {
   kind: FolderClassification;
@@ -298,7 +294,9 @@ function normalizedText(value: string): string {
 function isGenericContainerName(name: string): boolean {
   const n = normalizedText(normalizeFolderName(name));
   if (!n) return false;
-  return GENERIC_CONTAINER_TERMS.some((term) => n === normalizedText(term) || n.includes(normalizedText(term)));
+  return GENERIC_CONTAINER_TERMS.some(
+    (term) => n === normalizedText(term) || n.includes(normalizedText(term)),
+  );
 }
 
 function looksLikePersonOrCompanyFolder(name: string): boolean {
@@ -319,7 +317,9 @@ function hasDirectLegalFiles(node: ZipTreeNode): boolean {
   return node.directFiles.some((path) => classifyDocument(path) !== "OTROS");
 }
 
-export function classifyFolderNode(node: Omit<ZipTreeNode, "classification">): FolderClassificationResult {
+export function classifyFolderNode(
+  node: Omit<ZipTreeNode, "classification">,
+): FolderClassificationResult {
   const evidence: string[] = [];
   const warnings: string[] = [];
   let kind: FolderClassification = "unknown";
@@ -335,14 +335,20 @@ export function classifyFolderNode(node: Omit<ZipTreeNode, "classification">): F
     kind = "container";
     confidence = Math.min(0.95, 0.65 + childCount * 0.05);
     evidence.push("Nombre generico de contenedor", `${childCount} subcarpeta(s)`);
-  } else if (looksLikeExpedienteFolder(node.name) && (directDocCount > 0 || node.totalDescendantDocs > 0)) {
+  } else if (
+    looksLikeExpedienteFolder(node.name) &&
+    (directDocCount > 0 || node.totalDescendantDocs > 0)
+  ) {
     kind = "possible_expediente";
     confidence = allMatches(node.name, PATTERNS.expedienteAlt).length > 0 ? 0.9 : 0.72;
     evidence.push("Nombre compatible con expediente o materia");
   } else if (looksLikePersonOrCompanyFolder(node.name) && node.totalDescendantDocs > 0) {
     kind = "possible_client";
     confidence = 0.72;
-    evidence.push("Nombre compatible con persona o empresa", `${node.totalDescendantDocs} documento(s)`);
+    evidence.push(
+      "Nombre compatible con persona o empresa",
+      `${node.totalDescendantDocs} documento(s)`,
+    );
     if (directDocCount > 0) evidence.push("Contiene documentos directos");
     if (childCount > 0) evidence.push("Contiene subcarpetas revisables");
   } else if (directDocCount > 0 && childCount === 0) {
@@ -531,7 +537,8 @@ export function buildZipTree(filePaths: string[]): ZipTreeNode[] {
           totalDescendantDocs: 0,
         });
         const parentNode = map.get(parent);
-        if (parentNode && !parentNode.subfolders.includes(current)) parentNode.subfolders.push(current);
+        if (parentNode && !parentNode.subfolders.includes(current))
+          parentNode.subfolders.push(current);
       }
     }
     return current;
@@ -569,7 +576,9 @@ function isAncestorPath(parent: string, child: string): boolean {
 }
 
 function hasSelectedAncestor(path: string, selected: string[]): boolean {
-  return selected.some((candidatePath) => candidatePath !== path && isAncestorPath(candidatePath, path));
+  return selected.some(
+    (candidatePath) => candidatePath !== path && isAncestorPath(candidatePath, path),
+  );
 }
 
 function selectClientNodes(tree: ZipTreeNode[]): ZipTreeNode[] {
@@ -579,7 +588,10 @@ function selectClientNodes(tree: ZipTreeNode[]): ZipTreeNode[] {
     if (node.classification.kind !== "possible_client") continue;
     const parent = node.parentPath ? findNode(tree, node.parentPath) : undefined;
     const parentIsClient = parent?.classification.kind === "possible_client";
-    const parentIsContainer = !parent || parent.classification.kind === "container" || parent.classification.kind === "unknown";
+    const parentIsContainer =
+      !parent ||
+      parent.classification.kind === "container" ||
+      parent.classification.kind === "unknown";
     if (!parentIsClient && parentIsContainer && !hasSelectedAncestor(node.path, candidates)) {
       candidates.push(node.path);
     }
@@ -588,7 +600,11 @@ function selectClientNodes(tree: ZipTreeNode[]): ZipTreeNode[] {
   if (candidates.length === 0) {
     for (const node of tree) {
       if (!node.path || node.totalDescendantDocs === 0) continue;
-      if (node.classification.kind === "container" || node.classification.kind === "possible_expediente") continue;
+      if (
+        node.classification.kind === "container" ||
+        node.classification.kind === "possible_expediente"
+      )
+        continue;
       if (!hasSelectedAncestor(node.path, candidates)) candidates.push(node.path);
     }
   }
@@ -606,7 +622,12 @@ function immediateSubfolderBelow(clientPath: string, filePath: string): string |
 }
 
 function extractExpedientesFromPath(path: string): string[] {
-  return Array.from(new Set([...allMatches(path, PATTERNS.expediente), ...allMatches(path, PATTERNS.expedienteAlt)]));
+  return Array.from(
+    new Set([
+      ...allMatches(path, PATTERNS.expediente),
+      ...allMatches(path, PATTERNS.expedienteAlt),
+    ]),
+  );
 }
 
 function buildCaseCandidates(
@@ -615,7 +636,10 @@ function buildCaseCandidates(
   files: ZipFileEntry[],
   detected: DetectedData,
 ): ZipCaseCandidate[] {
-  const groups = new Map<string, { originPath: string; files: ZipFileEntry[]; caseNumber: string | null }>();
+  const groups = new Map<
+    string,
+    { originPath: string; files: ZipFileEntry[]; caseNumber: string | null }
+  >();
 
   for (const file of files) {
     const fileExpedientes = file.detected?.expedientes.length
@@ -639,15 +663,20 @@ function buildCaseCandidates(
   const cases: ZipCaseCandidate[] = [];
   let pendingCount = 0;
   for (const [key, group] of groups) {
-    const perFileDetected = mergeDetected(group.files.map((file) => file.detected ?? emptyDetected()));
-    const processType = perFileDetected.processType ?? detected.processType ?? "Pendiente de clasificacion";
+    const perFileDetected = mergeDetected(
+      group.files.map((file) => file.detected ?? emptyDetected()),
+    );
+    const processType =
+      perFileDetected.processType ?? detected.processType ?? "Pendiente de clasificacion";
     const juzgado = perFileDetected.juzgado ?? detected.juzgado ?? "Por determinar";
     const isProvisional = !group.caseNumber;
     if (isProvisional) pendingCount++;
     const title = group.caseNumber
       ? `Expediente ${group.caseNumber}`
       : key.startsWith("folder:")
-        ? normalizeFolderName(group.originPath.split("/").pop() ?? "Expediente pendiente de clasificacion")
+        ? normalizeFolderName(
+            group.originPath.split("/").pop() ?? "Expediente pendiente de clasificacion",
+          )
         : "Expediente pendiente de clasificacion";
     cases.push({
       id: group.caseNumber ? `exp-${group.caseNumber}` : `pending-${pendingCount}`,
@@ -731,7 +760,9 @@ export async function parseZipFile(
   try {
     zip = await JSZip.loadAsync(zipBuffer);
   } catch {
-    throw new Error("No se pudo leer el archivo ZIP. Puede estar corrupto o en un formato no compatible.");
+    throw new Error(
+      "No se pudo leer el archivo ZIP. Puede estar corrupto o en un formato no compatible.",
+    );
   }
 
   const ignoredPaths: string[] = [];
@@ -756,7 +787,13 @@ export async function parseZipFile(
       return;
     }
 
-    rawFiles.push({ zipPath: relativePath, name: fileName, ext, folderPath: folderPathFromZipPath(relativePath), zipFile });
+    rawFiles.push({
+      zipPath: relativePath,
+      name: fileName,
+      ext,
+      folderPath: folderPathFromZipPath(relativePath),
+      zipFile,
+    });
   });
 
   const tree = buildZipTree(rawFiles.map((file) => file.zipPath));
@@ -773,8 +810,10 @@ export async function parseZipFile(
       try {
         const processed = await processRawFile(raw);
         processedFiles.push(processed);
-        if (processed.extractionStatus === "empty") warnings.push(`Archivo vacio: ${processed.name}`);
-        if (processed.extractionStatus === "error") warnings.push(`No se pudo extraer texto de: ${processed.name}`);
+        if (processed.extractionStatus === "empty")
+          warnings.push(`Archivo vacio: ${processed.name}`);
+        if (processed.extractionStatus === "error")
+          warnings.push(`No se pudo extraer texto de: ${processed.name}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Error desconocido";
         parseErrors.push({ path: raw.zipPath, error: msg });
@@ -785,13 +824,19 @@ export async function parseZipFile(
     const detected = mergeDetected(processedFiles.map((file) => file.detected ?? emptyDetected()));
     const caseCandidates = buildCaseCandidates(clientNode, tree, processedFiles, detected);
 
-    if (processedFiles.length === 0) warnings.push("La carpeta no contiene archivos con formatos reconocidos.");
+    if (processedFiles.length === 0)
+      warnings.push("La carpeta no contiene archivos con formatos reconocidos.");
     if (detected.expedientes.length > 1) {
-      warnings.push(`Se detectaron ${detected.expedientes.length} expedientes diferentes. Revisa si corresponden a procesos separados.`);
+      warnings.push(
+        `Se detectaron ${detected.expedientes.length} expedientes diferentes. Revisa si corresponden a procesos separados.`,
+      );
     }
     const ocrPending = processedFiles.filter((f) => f.extractionStatus === "ocr_required").length;
     if (ocrPending > 0) warnings.push(`${ocrPending} archivo(s) requieren OCR para extraer texto.`);
-    if (caseCandidates.some((c) => c.isProvisional)) warnings.push("Hay documentos sin numero de expediente; se agruparon como pendiente de clasificacion.");
+    if (caseCandidates.some((c) => c.isProvisional))
+      warnings.push(
+        "Hay documentos sin numero de expediente; se agruparon como pendiente de clasificacion.",
+      );
 
     const documentCaseMap = Object.fromEntries(
       caseCandidates.flatMap((caseCandidate) =>
@@ -813,7 +858,9 @@ export async function parseZipFile(
       subfolderPaths: clientNode.subfolders,
       caseCandidates: caseCandidates.map((caseCandidate) => ({
         ...caseCandidate,
-        documentPaths: caseCandidate.documentPaths.filter((path) => documentCaseMap[path] === caseCandidate.id),
+        documentPaths: caseCandidate.documentPaths.filter(
+          (path) => documentCaseMap[path] === caseCandidate.id,
+        ),
       })),
     });
   }
@@ -911,8 +958,3 @@ function nameSimilarity(a: string, b: string): number {
   for (const t of tokensA) if (tokensB.has(t)) common++;
   return (common * 2) / (tokensA.size + tokensB.size);
 }
-
-
-
-
-
