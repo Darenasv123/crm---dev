@@ -258,6 +258,14 @@ function validateFileType(f: File): { ok: boolean; error?: string } {
   const mimeOk = ACCEPTED_MIME.includes(f.type) || f.type === "";
 
   if (!isCsv && !isXlsx) {
+    // ZIP → redirige al importador correcto
+    if (name.endsWith(".zip")) {
+      return {
+        ok: false,
+        error:
+          'Este archivo contiene carpetas y documentos. Utiliza la opción "Importar desde Google Drive/ZIP" en el módulo Importaciones.',
+      };
+    }
     // Detect .xls specifically to give a helpful message
     if (name.endsWith(".xls")) {
       return {

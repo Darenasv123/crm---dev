@@ -48,11 +48,7 @@ function normalizeStatus(raw: string): string {
   return map[(raw ?? "").trim().toLowerCase()] ?? "Activo";
 }
 
-function validateRow(row: {
-  name: string;
-  dni: string;
-  phone: string;
-}): string | undefined {
+function validateRow(row: { name: string; dni: string; phone: string }): string | undefined {
   if (!row.name.trim()) return "Nombre requerido";
   if (row.dni.length !== 8) return `DNI debe tener 8 dígitos (tiene ${row.dni.length})`;
   if (row.phone.length !== 9) return `Teléfono debe tener 9 dígitos (tiene ${row.phone.length})`;
@@ -153,7 +149,9 @@ describe("normalizeStatus", () => {
 
 describe("validateRow", () => {
   it("passes a valid row", () => {
-    expect(validateRow({ name: "Juan Pérez", dni: "12345678", phone: "987654321" })).toBeUndefined();
+    expect(
+      validateRow({ name: "Juan Pérez", dni: "12345678", phone: "987654321" }),
+    ).toBeUndefined();
   });
 
   it("rejects empty name", () => {
@@ -207,10 +205,7 @@ describe("parseCSV", () => {
   });
 
   it("handles different header aliases", () => {
-    const csv = [
-      "cliente,documento,celular",
-      "Ana Torres,45678901,945678123",
-    ].join("\n");
+    const csv = ["cliente,documento,celular", "Ana Torres,45678901,945678123"].join("\n");
     const rows = parseCSV(csv);
     expect(rows[0].name).toBe("Ana Torres");
     expect(rows[0].dni).toBe("45678901");
@@ -219,10 +214,7 @@ describe("parseCSV", () => {
   });
 
   it("strips non-digit chars from DNI and phone", () => {
-    const csv = [
-      "nombre,dni,telefono",
-      "Pedro Ruiz,12.345.678,987-654-321",
-    ].join("\n");
+    const csv = ["nombre,dni,telefono", "Pedro Ruiz,12.345.678,987-654-321"].join("\n");
     const rows = parseCSV(csv);
     expect(rows[0].dni).toBe("12345678");
     expect(rows[0].phone).toBe("987654321");
