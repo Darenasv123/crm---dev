@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { exportClientsExcel } from "@/lib/export-excel";
 import { CSVImport } from "@/components/csv-import";
 import { Search, Download, Upload, Plus, ChevronDown, Eye, X, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/_app/clientes/")({
   head: () => ({
@@ -15,7 +15,6 @@ export const Route = createFileRoute("/_app/clientes/")({
 });
 
 const STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
-const SPECIALTY_OPTIONS = ["Todos", "Penal", "Familia"];
 
 function ClientsPage() {
   const { data: clients = [], isLoading, refetch } = useClients();
@@ -25,6 +24,19 @@ function ClientsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [specialtyFilter, setSpecialtyFilter] = useState("Todos");
+
+  // Build dynamic specialty options from real process_type values
+  const specialtyOptions = useMemo(() => {
+    const types = new Set<string>();
+    for (const c of clients) {
+      if (c.process_type) {
+        // Normalize: grab first word or segment before " — " or "-"
+        const base = c.process_type.split(/\s*[—-]\s*/)[0].trim();
+        if (base) types.add(base);
+      }
+    }
+    return ["Todos", ...Array.from(types).sort()];
+  }, [clients]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [form, setForm] = useState({
@@ -156,7 +168,7 @@ function ClientsPage() {
           <FilterSelect
             value={specialtyFilter}
             onChange={setSpecialtyFilter}
-            options={SPECIALTY_OPTIONS}
+            options={specialtyOptions}
           />
           <FilterSelect
             value={statusFilter}

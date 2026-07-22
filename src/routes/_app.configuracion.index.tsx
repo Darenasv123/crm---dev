@@ -654,25 +654,25 @@ function SettingsPage() {
                   {
                     l: "Audiencias próximas",
                     d: "Recibir alerta 24h antes de cada audiencia.",
-                    on: true,
+                    key: "audiencias",
                   },
                   {
                     l: "Pagos vencidos",
                     d: "Aviso diario de cuentas por cobrar vencidas.",
-                    on: false,
+                    key: "pagos",
                   },
                   {
                     l: "Nuevos documentos",
                     d: "Notificar cuando se cargue un documento al caso.",
-                    on: true,
+                    key: "documentos",
                   },
                   {
                     l: "Resumen semanal",
                     d: "Reporte ejecutivo cada lunes a las 8 a. m.",
-                    on: true,
+                    key: "resumen",
                   },
-                ].map((n, i) => (
-                  <Toggle key={i} label={n.l} desc={n.d} initial={n.on} />
+                ].map((n) => (
+                  <Toggle key={n.key} label={n.l} desc={n.d} storageKey={n.key} />
                 ))}
               </div>
             </Card>
@@ -983,8 +983,26 @@ function SettingsPage() {
   );
 }
 
-function Toggle({ label, desc, initial }: { label: string; desc: string; initial: boolean }) {
-  const [on, setOn] = useState(initial);
+function Toggle({ label, desc, storageKey }: { label: string; desc: string; storageKey: string }) {
+  const [on, setOn] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`notification_pref_${storageKey}`);
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  function toggle() {
+    const next = !on;
+    setOn(next);
+    try {
+      localStorage.setItem(`notification_pref_${storageKey}`, String(next));
+    } catch {
+      /* silencioso si localStorage no disponible */
+    }
+  }
+
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border last:border-0">
       <div className="min-w-0">
@@ -992,7 +1010,8 @@ function Toggle({ label, desc, initial }: { label: string; desc: string; initial
         <p className="text-xs text-muted-foreground">{desc}</p>
       </div>
       <button
-        onClick={() => setOn(!on)}
+        onClick={toggle}
+        aria-label={on ? "Desactivar" : "Activar"}
         className={`relative h-6 w-11 rounded-full transition ${on ? "bg-primary" : "bg-muted"}`}
       >
         <span

@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Upload, X, CheckCircle2, AlertCircle, Loader2, FileText, Download } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { getAuthClient } from "@/lib/supabase";
+import ExcelJS from "exceljs";
 
 interface ParsedClient {
   name: string;
@@ -52,13 +53,34 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
+function normalizeStatus(raw: string): string {
+  const statusMap: Record<string, string> = {
+    activo: "Activo",
+    active: "Activo",
+    "1": "Activo",
+    "en espera": "En espera",
+    espera: "En espera",
+    pending: "En espera",
+    cerrado: "Cerrado",
+    closed: "Cerrado",
+    "0": "Cerrado",
+  };
+  return statusMap[raw.toLowerCase()] ?? "Activo";
+}
+
+function validateRow(row: Omit<ParsedClient, "valid" | "error">): string | undefined {
+  if (!row.name) return "Nombre requerido";
+  if (row.dni.length !== 8) return `DNI debe tener 8 dígitos (tiene ${row.dni.length})`;
+  if (row.phone.length !== 9) return `Teléfono debe tener 9 dígitos (tiene ${row.phone.length})`;
+  return undefined;
+}
+
 function parseCSV(text: string): ParsedClient[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
   const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/['"]/g, ""));
 
-  // Map common header names
   const colMap: Record<string, string[]> = {
     name: ["nombre", "name", "nombre completo", "full name", "cliente"],
     dni: ["dni", "ruc", "documento", "cedula", "id"],
@@ -101,29 +123,87 @@ function parseCSV(text: string): ParsedClient[] {
           ? (vals[cols.process_type] ?? "Defensa penal — Otros")
           : "Defensa penal — Otros";
       const rawStatus = cols.status >= 0 ? (vals[cols.status] ?? "Activo") : "Activo";
-
-      // Normalize status
-      const statusMap: Record<string, string> = {
-        activo: "Activo",
-        active: "Activo",
-        "1": "Activo",
-        "en espera": "En espera",
-        espera: "En espera",
-        pending: "En espera",
-        cerrado: "Cerrado",
-        closed: "Cerrado",
-        "0": "Cerrado",
-      };
-      const status = statusMap[rawStatus.toLowerCase()] ?? "Activo";
-
-      // Validate
-      let error: string | undefined;
-      if (!name) error = "Nombre requerido";
-      else if (dni.length !== 8) error = `DNI debe tener 8 dígitos (tiene ${dni.length})`;
-      else if (phone.length !== 9) error = `Teléfono debe tener 9 dígitos (tiene ${phone.length})`;
+      const status = normalizeStatus(rawStatus);
+      const error = validateRow({ name, dni, phone, email, process_type, status });
 
       return { name, dni, phone, email, process_type, status, valid: !error, error };
     });
+}
+
+async function parseExcel(buffer: ArrayBuffer): Promise<ParsedClient[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+
+  // Read first row as headers
+  const headerRow = worksheet.getRow(1);
+  const headers: string[] = [];
+  headerRow.eachCell((cell) => {
+    headers.push(
+      String(cell.value ?? "")
+        .toLowerCase()
+        .trim(),
+    );
+  });
+
+  const colMap: Record<string, string[]> = {
+    name: ["nombre", "name", "nombre completo", "full name", "cliente"],
+    dni: ["dni", "ruc", "documento", "cedula", "id"],
+    phone: ["telefono", "teléfono", "celular", "phone", "movil", "móvil"],
+    email: ["email", "correo", "mail", "correo electrónico"],
+    process_type: ["tipo", "proceso", "tipo de proceso", "materia", "process_type", "especialidad"],
+    status: ["estado", "status", "estado del cliente"],
+  };
+
+  function findCol(key: string): number {
+    const aliases = colMap[key] ?? [key];
+    for (const alias of aliases) {
+      const idx = headers.findIndex((h) => h.includes(alias));
+      if (idx !== -1) return idx + 1; // ExcelJS columns are 1-indexed
+    }
+    return -1;
+  }
+
+  const cols = {
+    name: findCol("name"),
+    dni: findCol("dni"),
+    phone: findCol("phone"),
+    email: findCol("email"),
+    process_type: findCol("process_type"),
+    status: findCol("status"),
+  };
+
+  const results: ParsedClient[] = [];
+
+  worksheet.eachRow((row, rowNum) => {
+    if (rowNum === 1) return; // skip header
+
+    function getCellStr(colIdx: number): string {
+      if (colIdx < 1) return "";
+      const cell = row.getCell(colIdx);
+      const v = cell.value;
+      if (v === null || v === undefined) return "";
+      if (typeof v === "object" && "text" in v) return String((v as { text: string }).text);
+      return String(v).trim();
+    }
+
+    const name = getCellStr(cols.name);
+    const dni = getCellStr(cols.dni).replace(/\D/g, "");
+    const phone = getCellStr(cols.phone).replace(/\D/g, "");
+    const email = getCellStr(cols.email);
+    const process_type = getCellStr(cols.process_type) || "Defensa penal — Otros";
+    const status = normalizeStatus(getCellStr(cols.status));
+    const error = validateRow({ name, dni, phone, email, process_type, status });
+
+    // Skip completely empty rows
+    if (!name && !dni && !phone) return;
+
+    results.push({ name, dni, phone, email, process_type, status, valid: !error, error });
+  });
+
+  return results;
 }
 
 export function CSVImport({ onClose, onSuccess }: Props) {
@@ -133,23 +213,44 @@ export function CSVImport({ onClose, onSuccess }: Props) {
   const [importing, setImporting] = useState(false);
   const [done, setDone] = useState<{ success: number; failed: number } | null>(null);
   const [step, setStep] = useState<"upload" | "preview" | "done">("upload");
+  const [parseError, setParseError] = useState<string | null>(null);
 
-  function handleFile(f: File) {
+  async function handleFile(f: File) {
     setFile(f);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const parsed = parseCSV(text);
-      setPreview(parsed);
-      setStep("preview");
-    };
-    reader.readAsText(f, "UTF-8");
+    setParseError(null);
+    try {
+      const isExcel =
+        f.name.endsWith(".xlsx") ||
+        f.name.endsWith(".xls") ||
+        f.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        f.type === "application/vnd.ms-excel";
+
+      if (isExcel) {
+        const buffer = await f.arrayBuffer();
+        const parsed = await parseExcel(buffer);
+        setPreview(parsed);
+        setStep("preview");
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const text = e.target?.result as string;
+          const parsed = parseCSV(text);
+          setPreview(parsed);
+          setStep("preview");
+        };
+        reader.readAsText(f, "UTF-8");
+      }
+    } catch (err) {
+      setParseError(
+        err instanceof Error ? err.message : "No se pudo leer el archivo. Verifica el formato.",
+      );
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
-    if (f && (f.name.endsWith(".csv") || f.type === "text/csv")) handleFile(f);
+    if (f) handleFile(f);
   }
 
   async function handleImport() {
@@ -219,9 +320,9 @@ export function CSVImport({ onClose, onSuccess }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div>
-            <h3 className="text-base font-semibold">Importar clientes desde CSV</h3>
+            <h3 className="text-base font-semibold">Importar clientes desde CSV o Excel</h3>
             <p className="text-xs text-muted-foreground">
-              {step === "upload" && "Sube un archivo CSV con los datos de tus clientes"}
+              {step === "upload" && "Sube un archivo .csv o .xlsx con los datos de tus clientes"}
               {step === "preview" && `${validCount} válidos · ${invalidCount} con errores`}
               {step === "done" && "Importación completada"}
             </p>
@@ -246,16 +347,16 @@ export function CSVImport({ onClose, onSuccess }: Props) {
               >
                 <Upload className="h-8 w-8 text-muted-foreground" />
                 <div className="text-sm text-center">
-                  <p className="font-medium">Arrastra tu archivo CSV aquí</p>
+                  <p className="font-medium">Arrastra tu archivo CSV o Excel aquí</p>
                   <p className="text-muted-foreground text-xs mt-0.5">
-                    o haz clic para seleccionar
+                    o haz clic para seleccionar · .csv, .xlsx
                   </p>
                 </div>
               </div>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -263,12 +364,18 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                 }}
               />
 
+              {parseError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {parseError}
+                </p>
+              )}
+
               {/* Template download */}
               <button
                 onClick={downloadTemplate}
                 className="w-full flex items-center justify-center gap-2 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
               >
-                <Download className="h-4 w-4" /> Descargar plantilla de ejemplo
+                <Download className="h-4 w-4" /> Descargar plantilla de ejemplo (.csv)
               </button>
 
               <div className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground space-y-1">
