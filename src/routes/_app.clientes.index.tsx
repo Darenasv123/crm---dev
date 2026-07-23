@@ -5,7 +5,18 @@ import { useCases } from "@/hooks/use-cases";
 import { useAuth } from "@/hooks/use-auth";
 import { exportClientsExcel } from "@/lib/export-excel";
 import { CSVImport } from "@/components/csv-import";
-import { Search, Download, Upload, Plus, ChevronDown, Eye, X, Loader2 } from "lucide-react";
+import { ZipImport } from "@/components/zip-import";
+import {
+  Search,
+  Download,
+  Plus,
+  ChevronDown,
+  Eye,
+  X,
+  Loader2,
+  FolderArchive,
+  FileSpreadsheet,
+} from "lucide-react";
 import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/_app/clientes/")({
@@ -47,6 +58,7 @@ function ClientsPage() {
   }, [cases]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showZipImportModal, setShowZipImportModal] = useState(false);
   const [form, setForm] = useState({
     name: "",
     dni: "",
@@ -152,21 +164,25 @@ function ClientsPage() {
       actions={
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <>
-              <button
-                onClick={() => exportClientsExcel(clients)}
-                className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
-              >
-                <Download className="h-4 w-4" /> Excel
-              </button>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
-              >
-                <Upload className="h-4 w-4" /> Importar
-              </button>
-            </>
+            <button
+              onClick={() => exportClientsExcel(clients)}
+              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+            >
+              <Download className="h-4 w-4" /> Excel
+            </button>
           )}
+          <button
+            onClick={() => setShowZipImportModal(true)}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+          >
+            <FolderArchive className="h-4 w-4" /> Importar cliente desde ZIP
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+          >
+            <FileSpreadsheet className="h-4 w-4" /> Importar lista CSV/XLSX
+          </button>
           <button
             onClick={() => setShowModal(true)}
             className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 transition shadow-soft"
@@ -466,6 +482,16 @@ function ClientsPage() {
       {showImportModal && (
         <CSVImport
           onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            refetch();
+          }}
+        />
+      )}
+
+      {/* ZIP Import Modal */}
+      {showZipImportModal && (
+        <ZipImport
+          onClose={() => setShowZipImportModal(false)}
           onSuccess={() => {
             refetch();
           }}

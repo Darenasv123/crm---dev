@@ -5,6 +5,8 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { saveAgendaGoogleIds, useAgendaEvents } from "@/hooks/use-agenda";
+import { useImportJobsFilter } from "@/hooks/use-ai-findings";
+import { MassImportDryRun } from "@/components/mass-import-dry-run";
 import {
   exportFullBackup,
   exportClientsExcel,
@@ -40,6 +42,10 @@ import {
   Briefcase,
   CreditCard,
   CalendarDays,
+  FolderArchive,
+  History,
+  Wrench,
+  Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/configuracion/")({
@@ -50,6 +56,7 @@ export const Route = createFileRoute("/_app/configuracion/")({
 const TABS = [
   { id: "usuarios", label: "Usuarios y roles", icon: Shield },
   { id: "backup", label: "Backup / Exportar", icon: Database },
+  { id: "herramientas", label: "Herramientas administrativas", icon: FolderArchive },
   { id: "google-calendar", label: "Google Calendar", icon: Calendar },
   { id: "notificaciones", label: "Notificaciones", icon: Bell },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
@@ -517,6 +524,8 @@ function SettingsPage() {
             </div>
           )}
 
+          {tab === "herramientas" && <AdministrativeImportToolsPanel />}
+
           {/* ── GOOGLE CALENDAR TAB ── */}
           {tab === "google-calendar" && (
             <Card className="p-6">
@@ -980,6 +989,136 @@ function SettingsPage() {
         </div>
       )}
     </AppLayout>
+  );
+}
+
+function AdministrativeImportToolsPanel() {
+  const { data: importJobs = [], isLoading } = useImportJobsFilter();
+  const latestJobs = importJobs.slice(0, 8);
+
+  function statusTone(status: string): "default" | "success" | "warning" | "danger" | "info" {
+    const value = status.toLowerCase();
+    if (["completed", "success", "done"].includes(value)) return "success";
+    if (["failed", "error"].includes(value)) return "danger";
+    if (["processing", "running", "pending"].includes(value)) return "warning";
+    return "default";
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary/10 text-primary shrink-0">
+            <History className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold">Historial de importaciones</h3>
+            <p className="text-xs text-muted-foreground">
+              Trabajos administrativos registrados en Supabase para revisar estado, documentos
+              procesados y errores.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-x-auto rounded-lg border border-border">
+          <table className="min-w-[760px] w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="py-3 pl-4 pr-3 font-semibold">Importación</th>
+                <th className="py-3 px-3 font-semibold">Estado</th>
+                <th className="py-3 px-3 font-semibold">Documentos</th>
+                <th className="py-3 px-3 font-semibold">Detección</th>
+                <th className="py-3 pr-4 font-semibold">Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
+                  </td>
+                </tr>
+              ) : latestJobs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    No hay trabajos de importación registrados.
+                  </td>
+                </tr>
+              ) : (
+                latestJobs.map((job) => (
+                  <tr key={job.id} className="border-t border-border hover:bg-muted/30">
+                    <td className="py-3 pl-4 pr-3">
+                      <div className="font-semibold">{job.name}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {job.provider} · {job.total_folders} carpeta
+                        {job.total_folders !== 1 ? "s" : ""}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <StatusBadge tone={statusTone(job.status)}>{job.status}</StatusBadge>
+                    </td>
+                    <td className="py-3 px-3 text-xs text-muted-foreground">
+                      {job.processed_documents}/{job.total_documents} procesados
+                      {job.failed_documents > 0 && (
+                        <span className="ml-1 text-red-600">· {job.failed_documents} fallidos</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-xs text-muted-foreground">
+                      {job.detected_clients} clientes · {job.detected_cases} expedientes
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-muted-foreground">
+                      {new Date(job.created_at).toLocaleString("es-PE", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div>
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Wrench className="h-4 w-4 text-primary" /> Diagnóstico
+        </div>
+        <MassImportDryRun />
+      </div>
+
+      <Card className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="grid h-12 w-12 place-items-center rounded-xl bg-red-50 text-red-600 shrink-0">
+            <Trash2 className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold">Limpieza segura</h3>
+            <p className="text-xs text-muted-foreground">
+              La limpieza de importaciones de prueba se ejecuta fuera de la interfaz para exigir
+              revisión previa y evitar borrados accidentales.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 text-xs md:grid-cols-2">
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <p className="font-semibold text-foreground">Vista previa obligatoria</p>
+            <code className="mt-2 block rounded bg-background px-2 py-1 font-mono text-[11px]">
+              npm run cleanup:test-imports -- --dry-run
+            </code>
+          </div>
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="font-semibold text-red-700">Ejecución confirmada</p>
+            <code className="mt-2 block rounded bg-background px-2 py-1 font-mono text-[11px] text-red-700">
+              npm run cleanup:test-imports -- --execute
+            </code>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 

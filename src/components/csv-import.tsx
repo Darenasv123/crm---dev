@@ -263,7 +263,7 @@ function validateFileType(f: File): { ok: boolean; error?: string } {
       return {
         ok: false,
         error:
-          'Este archivo contiene carpetas y documentos. Utiliza la opción "Importar desde Google Drive/ZIP" en el módulo Importaciones.',
+          'Este archivo contiene carpetas y documentos. Utiliza la opción "Importar cliente desde ZIP" en Clientes.',
       };
     }
     // Detect .xls specifically to give a helpful message
