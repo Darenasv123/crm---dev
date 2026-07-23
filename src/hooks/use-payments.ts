@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 type Payment = Database["public"]["Tables"]["payments"]["Row"];
 type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
@@ -79,7 +80,8 @@ export function useCreatePayment() {
       if (error) throw new Error(error.message);
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["payments"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data?.client_id, caseId: data?.case_id }),
   });
 }
 
@@ -111,9 +113,6 @@ export function useRegisterPayment() {
         .eq("id", paymentId);
       if (updError) throw new Error(updError.message);
     },
-    onSuccess: (_data, { paymentId }) => {
-      qc.invalidateQueries({ queryKey: ["payments"] });
-      qc.invalidateQueries({ queryKey: ["payment_records", paymentId] });
-    },
+    onSuccess: (_data, { paymentId }) => invalidateCrmQueries(qc, { paymentId }),
   });
 }

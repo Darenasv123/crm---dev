@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 type Case = Database["public"]["Tables"]["cases"]["Row"];
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
@@ -81,7 +82,7 @@ export function useCreateCase() {
       if (error) throw new Error(error.message);
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["cases"] }),
+    onSuccess: (data) => invalidateCrmQueries(qc, { caseId: data?.id, clientId: data?.client_id }),
   });
 }
 
@@ -119,9 +120,7 @@ export function useUpdateCase() {
       if (error) throw new Error(error.message);
       return data;
     },
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: ["cases"] });
-      qc.invalidateQueries({ queryKey: ["cases", id] });
-    },
+    onSuccess: (data, { id }) =>
+      invalidateCrmQueries(qc, { caseId: id, clientId: data?.client_id }),
   });
 }

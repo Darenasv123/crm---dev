@@ -9,6 +9,7 @@ import {
   fetchGCalEvents,
   parseGCalStart,
 } from "@/lib/google-calendar";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 type AgendaEvent = Database["public"]["Tables"]["agenda_events"]["Row"];
 type AgendaEventInsert = Database["public"]["Tables"]["agenda_events"]["Insert"];
@@ -91,7 +92,8 @@ export function useCreateAgendaEvent() {
       }
       return row;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_events"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data.client_id, caseId: data.case_id }),
   });
 }
 
@@ -141,7 +143,8 @@ export function useUpdateAgendaEvent() {
       }
       return row;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_events"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data.client_id, caseId: data.case_id }),
   });
 }
 
@@ -164,7 +167,7 @@ export function useDeleteAgendaEvent() {
         }
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_events"] }),
+    onSuccess: () => invalidateCrmQueries(qc),
   });
 }
 
@@ -293,6 +296,6 @@ export function useImportFromGoogleCalendar() {
 
       return { imported, restored, deleted, updated };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agenda_events"] }),
+    onSuccess: () => invalidateCrmQueries(qc),
   });
 }

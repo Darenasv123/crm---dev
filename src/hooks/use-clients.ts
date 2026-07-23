@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 type Client = Database["public"]["Tables"]["clients"]["Row"];
 type ClientInsert = Database["public"]["Tables"]["clients"]["Insert"];
@@ -99,7 +100,7 @@ export function useCreateClient() {
       if (error) throw new Error(error.message);
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+    onSuccess: (data) => invalidateCrmQueries(qc, { clientId: data?.id }),
   });
 }
 
@@ -147,10 +148,7 @@ export function useUpdateClient() {
       if (error) throw new Error(error.message);
       return data;
     },
-    onSuccess: (_data, { id }) => {
-      qc.invalidateQueries({ queryKey: ["clients"] });
-      qc.invalidateQueries({ queryKey: ["clients", id] });
-    },
+    onSuccess: (_data, { id }) => invalidateCrmQueries(qc, { clientId: id }),
   });
 }
 
@@ -162,8 +160,6 @@ export function useDeleteClient() {
       const { error } = await db.from("clients").delete().eq("id", id);
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["clients"] });
-    },
+    onSuccess: (_data, id) => invalidateCrmQueries(qc, { clientId: id }),
   });
 }

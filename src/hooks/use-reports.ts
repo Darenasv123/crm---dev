@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 export type ReportCategory =
   "Reporte" | "Noticia" | "Seguimiento" | "Alerta" | "Estado" | "Observacion";
@@ -74,6 +75,7 @@ export function useCreateClientReport() {
       if (error) throw new Error(error.message);
       return data as ClientReportWithRelations;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client_reports"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data.client_id, caseId: data.case_id }),
   });
 }

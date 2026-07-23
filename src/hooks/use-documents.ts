@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthClient, supabase } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
+import { invalidateCrmQueries } from "@/lib/query-invalidation";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
 type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
@@ -157,7 +158,8 @@ export function useUploadDocument() {
 
       return data as DocumentWithClient;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data.client_id, caseId: data.case_id }),
   });
 }
 
@@ -170,7 +172,7 @@ export function useDeleteDocument() {
       const { error } = await db.from("documents").delete().eq("id", id);
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => invalidateCrmQueries(qc),
   });
 }
 
@@ -206,7 +208,8 @@ export function useUpdateDocument() {
       if (error) throw new Error(error.message);
       return data as DocumentWithClient;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: (data) =>
+      invalidateCrmQueries(qc, { clientId: data.client_id, caseId: data.case_id }),
   });
 }
 
