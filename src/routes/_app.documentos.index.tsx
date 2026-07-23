@@ -126,6 +126,7 @@ function DocsPage() {
       subtitle="Explorador de archivos del estudio"
       actions={
         <button
+          type="button"
           onClick={() => {
             setShowUpload(true);
             setUploadError(null);
@@ -144,6 +145,7 @@ function DocsPage() {
           </div>
           <div className="space-y-0.5">
             <button
+              type="button"
               onClick={() => setActiveType("all")}
               className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition ${activeType === "all" ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
             >
@@ -154,6 +156,7 @@ function DocsPage() {
             {DOC_TYPES.map((t) => (
               <button
                 key={t}
+                type="button"
                 onClick={() => setActiveType(t)}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition ${activeType === t ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
               >
@@ -221,6 +224,14 @@ function DocsPage() {
                     <tr
                       key={d.id}
                       onClick={() => setSelectedId(d.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedId(d.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
                       className={`border-t border-border cursor-pointer transition ${selected?.id === d.id ? "bg-primary/5" : "hover:bg-muted/30"}`}
                     >
                       <td className="py-2.5 pl-4">
@@ -273,27 +284,32 @@ function DocsPage() {
                       <td className="py-2.5 pr-4 text-right">
                         <div className="inline-flex items-center gap-0.5">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleOpen(d);
                             }}
                             className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
                             title="Abrir"
+                            aria-label={`Abrir ${d.name}`}
                           >
                             <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDownload(d);
                             }}
                             className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
                             title="Descargar"
+                            aria-label={`Descargar ${d.name}`}
                           >
                             <Download className="h-3.5 w-3.5 text-muted-foreground" />
                           </button>
                           {isAdmin && (
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (
@@ -306,6 +322,7 @@ function DocsPage() {
                               }}
                               className="h-7 w-7 grid place-items-center rounded hover:bg-red-50 hover:text-red-600"
                               title="Eliminar"
+                              aria-label={`Eliminar ${d.name}`}
                             >
                               <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                             </button>
@@ -340,8 +357,10 @@ function DocsPage() {
                 <p className="text-xs text-muted-foreground">Sube un documento al estudio</p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowUpload(false)}
                 className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+                aria-label="Cerrar subida de documento"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -614,6 +633,7 @@ function PreviewPanel({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => onOpen(selected)}
                   className="mt-1 h-8 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 inline-flex items-center gap-1.5"
                 >
@@ -654,12 +674,14 @@ function PreviewPanel({
           {/* Actions */}
           <div className="mt-3 flex gap-2">
             <button
+              type="button"
               onClick={() => onOpen(selected)}
               className="flex-1 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 inline-flex items-center justify-center gap-1"
             >
               <Eye className="h-3 w-3" /> Abrir
             </button>
             <button
+              type="button"
               onClick={() => onDownload(selected)}
               className="h-8 px-3 rounded-lg border border-border text-xs font-semibold hover:bg-muted/60 inline-flex items-center gap-1"
             >

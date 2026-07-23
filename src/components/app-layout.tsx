@@ -10,7 +10,6 @@ import {
   Settings,
   Bell,
   Scale,
-  ChevronDown,
   LogOut,
   Menu,
   X,
@@ -153,8 +152,10 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             </div>
           </div>
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(false)}
             className="h-8 w-8 grid place-items-center rounded-lg hover:bg-sidebar-accent/60 shrink-0"
+            aria-label="Cerrar menu"
           >
             <X className="h-4 w-4 text-sidebar-foreground/70" />
           </button>
@@ -192,9 +193,11 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               <div className="text-[11px] text-sidebar-foreground/60">{role}</div>
             </div>
             <button
+              type="button"
               onClick={handleSignOut}
               title="Cerrar sesión"
               className="h-8 w-8 grid place-items-center rounded-lg hover:bg-red-500/20 text-sidebar-foreground/60 hover:text-red-400 transition"
+              aria-label="Cerrar sesion"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -209,6 +212,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14 lg:h-16">
             {/* Hamburger — mobile only */}
             <button
+              type="button"
               onClick={() => setMobileMenuOpen(true)}
               className="lg:hidden h-9 w-9 grid place-items-center rounded-lg hover:bg-muted/60 shrink-0"
               aria-label="Abrir menú"
@@ -222,8 +226,10 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               {/* Notifications bell */}
               <div className="relative">
                 <button
+                  type="button"
                   onClick={() => setNotifOpen((v) => !v)}
                   className="relative grid place-items-center h-9 w-9 rounded-lg bg-muted/60 hover:bg-muted transition"
+                  aria-label="Ver notificaciones"
                 >
                   <Bell className="h-[18px] w-[18px] text-foreground/70" />
                   {totalCount > 0 && (
@@ -239,7 +245,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               </div>
 
               {/* User menu — desktop only */}
-              <button className="hidden lg:flex items-center gap-2 h-10 pl-1 pr-2 rounded-lg hover:bg-muted/60 transition">
+              <div className="hidden lg:flex items-center gap-2 h-10 pl-1 pr-2 rounded-lg">
                 <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-white text-xs font-bold">
                   {initials}
                 </div>
@@ -247,14 +253,15 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                   <div className="text-xs font-semibold">{displayName}</div>
                   <div className="text-[10px] text-muted-foreground">{role}</div>
                 </div>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </button>
+              </div>
 
               {/* Logout — desktop only */}
               <button
+                type="button"
                 onClick={handleSignOut}
                 title="Cerrar sesión"
                 className="hidden lg:grid place-items-center h-10 w-10 rounded-lg bg-muted/60 hover:bg-red-50 hover:text-red-600 transition"
+                aria-label="Cerrar sesion"
               >
                 <LogOut className="h-[18px] w-[18px]" />
               </button>
