@@ -716,7 +716,7 @@ function AgendaPage() {
               </div>
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Caso / expediente (opcional)
+                  Expediente (opcional)
                 </label>
                 <select
                   value={form.case_id}

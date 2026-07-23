@@ -247,8 +247,8 @@ async function createReportJpg(data: ReportExportData) {
     ["Teléfono", data.phone],
     ["Correo", data.email],
     ["Proceso", data.processType],
-    ["Caso", data.caseExpediente],
-    ["Estado del caso", data.caseStatus],
+    ["Expediente", data.caseExpediente],
+    ["Estado del expediente", data.caseStatus],
     ["Tipo de reporte", data.category],
   ];
 
@@ -429,7 +429,7 @@ ${docxParagraph(`DNI: ${data.dni}`)}
 ${docxParagraph(`Teléfono: ${data.phone}`)}
 ${docxParagraph(`Correo: ${data.email}`)}
 ${docxParagraph(`Proceso: ${data.processType}`)}
-${docxParagraph("Caso relacionado", "heading")}
+${docxParagraph("Expediente relacionado", "heading")}
 ${docxParagraph(`Expediente: ${data.caseExpediente}`)}
 ${docxParagraph(`Materia: ${data.caseProcess}`)}
 ${docxParagraph(`Estado: ${data.caseStatus}`)}
@@ -555,7 +555,7 @@ function ReportsPage() {
   return (
     <AppLayout
       title="Reportes"
-      subtitle="Ficha integral del cliente, casos y bitácora compartida del estudio"
+      subtitle="Ficha integral del cliente, expedientes y bitácora compartida del estudio"
     >
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
         <Card className="p-4 h-fit xl:sticky xl:top-24">
@@ -648,7 +648,7 @@ function ReportsPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 lg:min-w-[320px]">
-                  <MiniStat label="Casos" value={clientCases.length} />
+                  <MiniStat label="Expedientes" value={clientCases.length} />
                   <MiniStat label="Activos" value={activeCases.length} />
                   <MiniStat label="Reportes" value={clientReports.length} />
                 </div>
@@ -830,7 +830,7 @@ function CasesBlock({
   return (
     <Card className="p-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <SectionHeader icon={Briefcase} title="Casos del Cliente" />
+        <SectionHeader icon={Briefcase} title="Expedientes del Cliente" />
         {cases.length > 1 && (
           <select
             value={selectedCaseId}
@@ -847,9 +847,9 @@ function CasesBlock({
       </div>
       <div className="space-y-3 mt-4">
         {cases.length === 0 ? (
-          <EmptyText text="Este cliente no tiene casos registrados." />
+          <EmptyText text="Este cliente no tiene expedientes registrados." />
         ) : !selectedCase ? (
-          <EmptyText text="Selecciona un caso para ver el detalle." />
+          <EmptyText text="Selecciona un expediente para ver el detalle." />
         ) : (
           <div className="rounded-lg border border-border p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -895,7 +895,7 @@ function CasesBlock({
               params={{ id: selectedCase.id } as never}
               className="inline-flex mt-3 text-xs font-semibold text-primary hover:underline"
             >
-              Abrir caso completo
+              Abrir expediente completo
             </Link>
           </div>
         )}
@@ -948,7 +948,7 @@ function ReportComposer({
           </div>
           <div>
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Caso relacionado
+              Expediente relacionado
             </label>
             <select
               value={form.case_id}
@@ -976,7 +976,7 @@ function ReportComposer({
           onChange={(e) => setForm((current) => ({ ...current, body: e.target.value }))}
           required
           rows={5}
-          placeholder="Resumen claro para el cliente: estado del caso, avances, próximos pasos o recomendaciones..."
+          placeholder="Resumen claro para el cliente: estado del expediente, avances, próximos pasos o recomendaciones..."
           className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary resize-y"
         />
         {error && (

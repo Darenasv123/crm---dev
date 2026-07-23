@@ -457,8 +457,8 @@ function SettingsPage() {
                   <div>
                     <h3 className="text-base font-semibold">Backup completo</h3>
                     <p className="text-xs text-muted-foreground">
-                      Descarga un archivo Excel (.xlsx) con todos los datos: clientes, casos, pagos
-                      y agenda. Guárdalo en un lugar seguro como respaldo.
+                      Descarga un archivo Excel (.xlsx) con todos los datos: clientes, expedientes,
+                      pagos y agenda. Guárdalo en un lugar seguro como respaldo.
                     </p>
                   </div>
                 </div>
@@ -488,7 +488,7 @@ function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
                     { key: "clientes", label: "Clientes", icon: Users, count: clients.length },
-                    { key: "casos", label: "Casos", icon: Briefcase, count: cases.length },
+                    { key: "casos", label: "Expedientes", icon: Briefcase, count: cases.length },
                     { key: "pagos", label: "Pagos", icon: CreditCard, count: payments.length },
                     {
                       key: "agenda",
@@ -672,7 +672,7 @@ function SettingsPage() {
                   },
                   {
                     l: "Nuevos documentos",
-                    d: "Notificar cuando se cargue un documento al caso.",
+                    d: "Notificar cuando se cargue un documento al expediente.",
                     key: "documentos",
                   },
                   {

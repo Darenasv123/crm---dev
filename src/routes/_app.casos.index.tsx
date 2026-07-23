@@ -212,7 +212,7 @@ function CasesPage() {
       expediente &&
       cases.find((item) => item.expediente.trim().toLowerCase() === expediente.toLowerCase());
     if (duplicate) {
-      setFormError(`Ya existe un caso con el expediente ${form.expediente}.`);
+      setFormError(`Ya existe un expediente con el numero ${form.expediente}.`);
       return;
     }
     setSaving(true);

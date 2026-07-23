@@ -575,7 +575,7 @@ function ClientDetail() {
                   <thead>
                     <tr className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                       <th className="py-3 px-4">Expediente</th>
-                      <th className="py-3 px-4">Proceso</th>
+                      <th className="py-3 px-4">Materia</th>
                       <th className="py-3 px-4">Estado</th>
                       <th className="py-3 px-4">Prioridad</th>
                       <th className="py-3 px-4">Próx. audiencia</th>

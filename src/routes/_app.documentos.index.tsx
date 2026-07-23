@@ -208,7 +208,7 @@ function DocsPage() {
                     <th className="py-2 pl-4">Nombre</th>
                     <th className="py-2 px-3">Tipo</th>
                     <th className="py-2 px-3">Cliente</th>
-                    <th className="py-2 px-3">Caso</th>
+                    <th className="py-2 px-3">Expediente</th>
                     <th className="py-2 px-3">Fuente</th>
                     <th className="py-2 px-3">Análisis</th>
                     <th className="py-2 px-3">Verificación</th>
@@ -435,7 +435,7 @@ function DocsPage() {
 
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Caso / expediente (opcional)
+                  Expediente (opcional)
                 </label>
                 <div className="relative mt-1.5">
                   <select
@@ -634,7 +634,7 @@ function PreviewPanel({
             )}
             {selected.cases && (
               <div className="text-xs text-muted-foreground">
-                Caso: <span className="font-mono">{selected.cases.expediente}</span>
+                Expediente: <span className="font-mono">{selected.cases.expediente}</span>
               </div>
             )}
             <div className="text-xs text-muted-foreground">

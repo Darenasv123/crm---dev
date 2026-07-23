@@ -112,7 +112,8 @@ export function MassImportDryRun() {
                   className="rounded-lg border border-border bg-background p-3"
                 >
                   <summary className="cursor-pointer text-sm font-semibold">
-                    {item.client.name} · {item.documents.length} docs · {item.cases.length} casos
+                    {item.client.name} · {item.documents.length} docs · {item.cases.length}{" "}
+                    expedientes
                   </summary>
                   <div className="mt-3 grid gap-3 text-xs text-muted-foreground lg:grid-cols-2">
                     <InfoBlock
@@ -126,7 +127,7 @@ export function MassImportDryRun() {
                       values={item.storagePaths}
                     />
                     <InfoBlock
-                      title="Casos que se incluirian"
+                      title="Expedientes que se incluirian"
                       values={item.cases.map(
                         (caseRow) =>
                           `${caseRow.id} · ${caseRow.case_number ?? caseRow.expediente ?? caseRow.case_name ?? "Sin numero"}`,

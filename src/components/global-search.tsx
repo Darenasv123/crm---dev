@@ -346,7 +346,7 @@ export function GlobalSearch() {
 
   const labels = {
     client: "Cliente",
-    case: "Caso",
+    case: "Expediente",
     document: "Documento",
     report: "Reporte",
     event: "Agenda",

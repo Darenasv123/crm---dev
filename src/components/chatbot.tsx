@@ -17,7 +17,7 @@ interface Message {
 
 const QUICK_PROMPTS = [
   "¿Qué audiencias tengo hoy?",
-  "Resume los casos activos",
+  "Resume los expedientes activos",
   "Redacta un correo de recordatorio de audiencia",
   "¿Cuántos clientes activos hay?",
 ];
@@ -27,7 +27,7 @@ const WELCOME_CONFIGURED = `¡Hola! Soy tu asistente jurídico 👋
 Puedo ayudarte con:
 • Consultar tu agenda y audiencias
 • Redactar correos y comunicaciones
-• Información sobre clientes y casos
+• Información sobre clientes y expedientes
 • Programar citas y recordatorios
 
 ¿En qué te puedo ayudar hoy?`;

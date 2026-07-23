@@ -120,14 +120,14 @@ function CaseDetail() {
 
   if (!item) {
     return (
-      <AppLayout title="Caso no encontrado" subtitle="">
+      <AppLayout title="Expediente no encontrado" subtitle="">
         <div className="text-center py-32">
-          <p className="text-muted-foreground mb-4">El caso no existe o fue eliminado.</p>
+          <p className="text-muted-foreground mb-4">El expediente no existe o fue eliminado.</p>
           <Link
             to={"/casos" as never}
             className="text-primary hover:underline text-sm font-semibold"
           >
-            Volver a casos
+            Volver a expedientes
           </Link>
         </div>
       </AppLayout>
@@ -483,7 +483,7 @@ function CaseDetail() {
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-semibold flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" /> Documentos del caso
+                  <FileText className="h-4 w-4 text-primary" /> Documentos del expediente
                 </h3>
                 <button
                   onClick={() => setShowUpload(true)}
@@ -494,7 +494,7 @@ function CaseDetail() {
               </div>
               {otherDocs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No hay documentos adicionales asociados a este caso.
+                  No hay documentos adicionales asociados a este expediente.
                 </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -859,7 +859,7 @@ function CaseDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Subir documento al caso</h3>
+              <h3 className="text-base font-semibold">Subir documento al expediente</h3>
               <button
                 onClick={() => setShowUpload(false)}
                 className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
