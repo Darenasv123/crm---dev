@@ -4,6 +4,7 @@ import type { Database } from "@/lib/database.types";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
+type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
 
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_DOCUMENT_EXTENSIONS = new Set([
@@ -146,6 +147,42 @@ export function useDeleteDocument() {
       const db = await getAuthClient();
       const { error } = await db.from("documents").delete().eq("id", id);
       if (error) throw new Error(error.message);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+  });
+}
+
+export function useUpdateDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: DocumentUpdate }) => {
+      const db = await getAuthClient();
+      let { data, error } = await db
+        .from("documents")
+        .update(updates)
+        .eq("id", id)
+        .select("*, clients(name), cases(expediente, process_type)")
+        .single();
+
+      if (isMissingSchemaFieldError(error)) {
+        const legacyUpdates: DocumentUpdate = {
+          ...(updates.name !== undefined && { name: updates.name }),
+          ...(updates.type !== undefined && { type: updates.type }),
+          ...(updates.size !== undefined && { size: updates.size }),
+          ...(updates.storage_path !== undefined && { storage_path: updates.storage_path }),
+          ...(updates.client_id !== undefined && { client_id: updates.client_id }),
+          ...(updates.case_id !== undefined && { case_id: updates.case_id }),
+        };
+        ({ data, error } = await db
+          .from("documents")
+          .update(legacyUpdates)
+          .eq("id", id)
+          .select("*, clients(name), cases(expediente, process_type)")
+          .single());
+      }
+
+      if (error) throw new Error(error.message);
+      return data as DocumentWithClient;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
   });

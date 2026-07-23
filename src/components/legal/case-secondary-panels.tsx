@@ -13,25 +13,31 @@ import { Card, StatusBadge } from "@/components/app-layout";
 import type { Database } from "@/lib/database.types";
 import type { ClientReportWithRelations } from "@/hooks/use-reports";
 import type { DocumentWithClient } from "@/hooks/use-documents";
+import { displayCaseNumber } from "@/lib/case-validation";
 import { formatPeruDate } from "@/lib/peru-time";
 
 type PaymentRow = Database["public"]["Tables"]["payments"]["Row"];
 type CaseRow = Database["public"]["Tables"]["cases"]["Row"];
+type CaseOption = Pick<CaseRow, "id" | "expediente" | "case_number" | "process_type">;
 
 export function CaseDocumentsPanel({
   documents,
   canDelete,
+  caseOptions = [],
   onUpload,
   onOpen,
   onDownload,
   onDelete,
+  onAssignCase,
 }: {
   documents: DocumentWithClient[];
   canDelete: boolean;
+  caseOptions?: CaseOption[];
   onUpload: () => void;
   onOpen: (document: DocumentWithClient) => void;
   onDownload: (document: DocumentWithClient) => void;
   onDelete: (id: string, storagePath: string) => void;
+  onAssignCase?: (documentId: string, caseId: string | null) => void;
 }) {
   return (
     <Card className="p-5">
@@ -85,6 +91,26 @@ export function CaseDocumentsPanel({
                     : "Sin analizar"}
                 </StatusBadge>
               </div>
+              {onAssignCase && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <label className="text-[10px] font-semibold uppercase text-muted-foreground">
+                    Expediente asignado
+                  </label>
+                  <select
+                    value={document.case_id ?? ""}
+                    onChange={(event) => onAssignCase(document.id, event.target.value || null)}
+                    className="mt-1 h-8 w-full rounded-lg border border-border bg-card px-2 text-xs outline-none"
+                  >
+                    <option value="">Sin expediente</option>
+                    {caseOptions.map((caseItem) => (
+                      <option key={caseItem.id} value={caseItem.id}>
+                        {displayCaseNumber(caseItem.expediente, caseItem.case_number)} ·{" "}
+                        {caseItem.process_type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="mt-3 flex gap-1 border-t border-border pt-3">
                 <button
                   type="button"
@@ -230,7 +256,7 @@ export function CaseHistoryPanel({
         <HistoryItem
           date={item.created_at}
           title="Expediente registrado en el CRM"
-          detail={item.internal_code || item.expediente}
+          detail={item.internal_code || displayCaseNumber(item.expediente, item.case_number)}
         />
         {reports.map((report) => (
           <HistoryItem

@@ -5,13 +5,18 @@ import { useClients } from "@/hooks/use-clients";
 import { useUploadDocument } from "@/hooks/use-documents";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
-import { supabase } from "@/lib/supabase";
+import {
+  CASE_STATUS_OPTIONS,
+  displayCaseNumber,
+  normalizeCaseStatus,
+  validateCaseForm,
+  type CaseStatus,
+} from "@/lib/case-validation";
 import { formatPeruDate, peruDateTimeToISO } from "@/lib/peru-time";
 import {
   Plus,
   Filter,
   CalendarClock,
-  AlertTriangle,
   Search,
   ChevronDown,
   X,
@@ -26,27 +31,17 @@ export const Route = createFileRoute("/_app/casos/")({
   component: CasesPage,
 });
 
-const CASE_STATUSES = [
-  "Consulta",
-  "Documentación",
-  "Demanda presentada",
-  "En proceso",
-  "Audiencia",
-  "Sentencia",
-  "Archivado",
-] as const;
-type CaseStatus = (typeof CASE_STATUSES)[number];
-
 const statusTone: Record<
   CaseStatus,
   "default" | "info" | "warning" | "navy" | "gold" | "danger" | "success"
 > = {
-  Consulta: "default",
-  Documentación: "info",
-  "Demanda presentada": "gold",
-  "En proceso": "navy",
-  Audiencia: "warning",
-  Sentencia: "success",
+  "Pendiente de clasificacion": "default",
+  "En preparacion": "info",
+  Presentado: "gold",
+  "En tramite": "navy",
+  "En audiencia": "warning",
+  "En ejecucion": "danger",
+  Concluido: "success",
   Archivado: "default",
 };
 
@@ -81,7 +76,7 @@ function CasesPage() {
     expediente: "",
     process_type: "",
     priority: "Media" as "Alta" | "Media" | "Baja",
-    status: "Consulta" as CaseStatus,
+    status: "Pendiente de clasificacion" as CaseStatus,
     juzgado: "",
     next_hearing: "",
     internal_code: "",
@@ -123,7 +118,7 @@ function CasesPage() {
       c.expediente.toLowerCase().includes(search.toLowerCase()) ||
       (c.internal_code ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (c.next_action ?? "").toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !statusFilter || c.status === statusFilter;
+    const matchStatus = !statusFilter || normalizeCaseStatus(c.status) === statusFilter;
     const matchPriority = !priorityFilter || c.priority === priorityFilter;
     const matchMatter = !matterFilter || (c.legal_area || c.process_type) === matterFilter;
     const matchClient = !clientFilter || c.client_id === clientFilter;
@@ -159,10 +154,17 @@ function CasesPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
-    const expediente = form.expediente.trim();
-    const duplicate = cases.find(
-      (item) => item.expediente.trim().toLowerCase() === expediente.toLowerCase(),
-    );
+    let values: ReturnType<typeof validateCaseForm>;
+    try {
+      values = validateCaseForm(form);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : "Revisa los datos del expediente.");
+      return;
+    }
+    const expediente = values.expediente;
+    const duplicate =
+      expediente &&
+      cases.find((item) => item.expediente.trim().toLowerCase() === expediente.toLowerCase());
     if (duplicate) {
       setFormError(`Ya existe un caso con el expediente ${form.expediente}.`);
       return;
@@ -170,17 +172,18 @@ function CasesPage() {
     setSaving(true);
     try {
       const newCase = await createCase.mutateAsync({
-        ...form,
+        ...values,
         expediente,
-        internal_code: form.internal_code.trim() || expediente,
-        case_number: expediente,
-        case_name: form.process_type.trim(),
-        case_type: form.process_type.trim(),
-        court: form.juzgado,
-        responsible_user_id: form.responsible_user_id || null,
+        internal_code: values.internal_code || expediente || null,
+        case_number: expediente || null,
+        case_name: values.process_type,
+        case_type: values.process_type,
+        court: values.juzgado || null,
+        juzgado: values.juzgado || "Por determinar",
+        responsible_user_id: values.responsible_user_id || null,
         demandante: "",
         demandado: "",
-        next_hearing: peruDateTimeToISO(form.next_hearing),
+        next_hearing: peruDateTimeToISO(values.next_hearing || ""),
       });
 
       // Upload expediente file if provided
@@ -189,7 +192,7 @@ function CasesPage() {
           file: expedienteFile,
           type: "Expediente",
           caseId: newCase.id,
-          clientId: form.client_id,
+          clientId: values.client_id,
         });
       }
 
@@ -202,7 +205,7 @@ function CasesPage() {
         expediente: "",
         process_type: "",
         priority: "Media",
-        status: "Consulta",
+        status: "Pendiente de clasificacion",
         juzgado: "",
         next_hearing: "",
         internal_code: "",
@@ -275,7 +278,7 @@ function CasesPage() {
               className="h-9 pl-3 pr-8 rounded-lg bg-card border border-border text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
             >
               <option value="">Todos los estados</option>
-              {CASE_STATUSES.map((s) => (
+              {CASE_STATUS_OPTIONS.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -376,100 +379,106 @@ function CasesPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : (
-            <table className="min-w-[1120px] w-full text-sm">
+            <table className="min-w-[1180px] w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                  <th className="py-3 pl-5 pr-3 font-semibold">Expediente</th>
+                  <th className="py-3 pl-5 pr-3 font-semibold">Numero/ref.</th>
                   <th className="py-3 px-3 font-semibold">Cliente</th>
-                  <th className="py-3 px-3 font-semibold">Proceso</th>
+                  <th className="py-3 px-3 font-semibold">Materia</th>
                   <th className="py-3 px-3 font-semibold">Responsable</th>
+                  <th className="py-3 px-3 font-semibold">Contraparte</th>
                   <th className="py-3 px-3 font-semibold">Juzgado</th>
-                  <th className="py-3 px-3 font-semibold">Prioridad</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
-                  <th className="py-3 px-3 font-semibold">Próx. audiencia</th>
+                  <th className="py-3 px-3 font-semibold">Proxima accion</th>
+                  <th className="py-3 px-3 font-semibold">Actualizado</th>
                   <th className="py-3 pr-5 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">
                       {search
                         ? "No se encontraron expedientes."
                         : "Aún no hay expedientes registrados."}
                     </td>
                   </tr>
                 ) : (
-                  paginated.map((c) => (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/30 transition">
-                      <td className="py-3 pl-5 pr-3 font-mono text-xs text-muted-foreground">
-                        {c.expediente}
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold text-white shrink-0"
-                            style={{ background: c.clients?.color ?? "oklch(0.55 0.13 235)" }}
-                          >
-                            {c.clients?.initials ?? "??"}
+                  paginated.map((c) => {
+                    const status = normalizeCaseStatus(c.status);
+                    const opposingParty = c.demandado || c.demandante || "—";
+                    return (
+                      <tr
+                        key={c.id}
+                        className="border-t border-border hover:bg-muted/30 transition"
+                      >
+                        <td className="py-3 pl-5 pr-3 font-mono text-xs text-muted-foreground">
+                          {displayCaseNumber(c.expediente, c.case_number)}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="grid h-7 w-7 place-items-center rounded-full text-[10px] font-bold text-white shrink-0"
+                              style={{ background: c.clients?.color ?? "oklch(0.55 0.13 235)" }}
+                            >
+                              {c.clients?.initials ?? "??"}
+                            </div>
+                            <span className="font-semibold truncate">{c.clients?.name ?? "—"}</span>
                           </div>
-                          <span className="font-semibold truncate">{c.clients?.name ?? "—"}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-muted-foreground">{c.process_type}</td>
-                      <td className="py-3 px-3 text-xs text-muted-foreground">
-                        {profiles.find((profile) => profile.id === c.responsible_user_id)
-                          ?.full_name ?? "—"}
-                      </td>
-                      <td className="py-3 px-3 text-xs text-muted-foreground max-w-[160px] truncate">
-                        {c.juzgado}
-                      </td>
-                      <td className="py-3 px-3">
-                        <StatusBadge
-                          tone={
-                            c.priority === "Alta"
-                              ? "danger"
-                              : c.priority === "Media"
-                                ? "warning"
-                                : "info"
-                          }
-                        >
-                          {c.priority === "Alta" && <AlertTriangle className="h-2.5 w-2.5" />}
-                          {c.priority}
-                        </StatusBadge>
-                      </td>
-                      <td className="py-3 px-3">
-                        <StatusBadge tone={statusTone[c.status as CaseStatus]}>
-                          {c.status}
-                        </StatusBadge>
-                      </td>
-                      <td className="py-3 px-3">
-                        {!c.next_hearing ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <div className="flex items-center gap-1 text-xs">
-                            <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>
-                              {formatPeruDate(c.next_hearing, {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              })}
+                        </td>
+                        <td className="py-3 px-3 text-muted-foreground">{c.process_type}</td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground">
+                          {profiles.find((profile) => profile.id === c.responsible_user_id)
+                            ?.full_name ?? "—"}
+                        </td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground max-w-[150px] truncate">
+                          {opposingParty}
+                        </td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground max-w-[160px] truncate">
+                          {c.juzgado}
+                        </td>
+                        <td className="py-3 px-3">
+                          <StatusBadge tone={statusTone[status]}>{status}</StatusBadge>
+                        </td>
+                        <td className="py-3 px-3">
+                          {c.next_action ? (
+                            <span className="line-clamp-2 text-xs text-muted-foreground">
+                              {c.next_action}
                             </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 pr-5 text-right">
-                        <Link
-                          to={"/casos/$id" as never}
-                          params={{ id: c.id } as never}
-                          className="inline-flex items-center gap-1 h-8 px-3 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
-                        >
-                          Ver expediente
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                          ) : c.next_hearing ? (
+                            <div className="flex items-center gap-1 text-xs">
+                              <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span>
+                                {formatPeruDate(c.next_hearing, {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground">
+                          {formatPeruDate(c.updated_at || c.created_at, {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </td>
+                        <td className="py-3 pr-5 text-right">
+                          <Link
+                            to={"/casos/$id" as never}
+                            params={{ id: c.id } as never}
+                            className="inline-flex items-center gap-1 h-8 px-3 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
+                          >
+                            Ver / editar
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -617,14 +626,13 @@ function CasesPage() {
               {/* Expediente number + file attachment */}
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  N° Expediente *
+                  N° Expediente
                 </label>
                 <input
                   type="text"
                   value={form.expediente}
                   onChange={(e) => setForm((f) => ({ ...f, expediente: e.target.value }))}
-                  required
-                  placeholder="Ej: 01234-2024-0-1801-JR-PE-01"
+                  placeholder="Puede quedar vacio si aun no existe numero judicial"
                   className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm font-mono"
                 />
                 {/* Expediente file */}
@@ -721,7 +729,7 @@ function CasesPage() {
                     }
                     className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
                   >
-                    {CASE_STATUSES.map((s) => (
+                    {CASE_STATUS_OPTIONS.map((s) => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>

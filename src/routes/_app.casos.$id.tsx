@@ -1,7 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useCase, useUpdateCase } from "@/hooks/use-cases";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
+import { useCase, useCases, useUpdateCase } from "@/hooks/use-cases";
+import {
+  useDocuments,
+  useUploadDocument,
+  useDeleteDocument,
+  useUpdateDocument,
+} from "@/hooks/use-documents";
 import { usePayments } from "@/hooks/use-payments";
 import { useClientReports } from "@/hooks/use-reports";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,12 +14,18 @@ import { CasePartiesPanel } from "@/components/legal/case-parties-panel";
 import { CaseTimelinePanel } from "@/components/legal/case-timeline-panel";
 import { CaseTasksPanel } from "@/components/legal/case-tasks-panel";
 import {
-  CaseAnalysisPanel,
   CaseDocumentsPanel,
   CaseHistoryPanel,
   CasePaymentsPanel,
 } from "@/components/legal/case-secondary-panels";
 import { supabase } from "@/lib/supabase";
+import {
+  CASE_STATUS_OPTIONS,
+  displayCaseNumber,
+  normalizeCaseStatus,
+  validateCaseForm,
+  type CaseStatus,
+} from "@/lib/case-validation";
 import {
   formatPeruDate,
   formatPeruTime,
@@ -38,6 +49,9 @@ import {
   Trash2,
   ChevronDown,
   Eye,
+  CalendarPlus,
+  Landmark,
+  Archive,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
@@ -45,25 +59,14 @@ export const Route = createFileRoute("/_app/casos/$id")({
   component: CaseDetail,
 });
 
-const CASE_STATUSES = [
-  "Consulta",
-  "Documentación",
-  "Demanda presentada",
-  "En proceso",
-  "Audiencia",
-  "Sentencia",
-  "Archivado",
-] as const;
-type CaseStatus = (typeof CASE_STATUSES)[number];
 const DOC_TYPES = ["DNI", "Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
 const CASE_TABS = [
   "Resumen",
   "Partes",
   "Documentos",
-  "Línea de tiempo",
-  "Tareas",
+  "Agenda y plazos",
   "Pagos",
-  "Análisis jurídico",
+  "Notas",
   "Historial",
 ] as const;
 type CaseTab = (typeof CASE_TABS)[number];
@@ -71,6 +74,7 @@ type CaseTab = (typeof CASE_TABS)[number];
 function CaseDetail() {
   const { id } = Route.useParams();
   const { data: item, isLoading } = useCase(id);
+  const { data: allCases = [] } = useCases();
   const { data: allDocs = [] } = useDocuments();
   const { data: allPayments = [] } = usePayments();
   const { data: allReports = [] } = useClientReports();
@@ -78,6 +82,7 @@ function CaseDetail() {
   const updateCase = useUpdateCase();
   const uploadDoc = useUploadDocument();
   const deleteDoc = useDeleteDocument();
+  const updateDoc = useUpdateDocument();
 
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<CaseTab>("Resumen");
@@ -130,7 +135,10 @@ function CaseDetail() {
   }
 
   const caseDocs = allDocs.filter((d) => d.case_id === id || d.client_id === item.client_id);
+  const siblingCases = allCases.filter((caseItem) => caseItem.client_id === item.client_id);
   const isAdmin = profile?.role === "Administrador";
+  const caseNumber = displayCaseNumber(item.expediente, item.case_number);
+  const currentStatus = normalizeCaseStatus(item.status);
   // Separate the main expediente file (type "Expediente") from the rest
   const expedienteDoc = caseDocs.find((d) => d.type === "Expediente");
   const otherDocs = caseDocs.filter((d) => d.type !== "Expediente");
@@ -138,27 +146,19 @@ function CaseDetail() {
   const caseReports = allReports.filter((report) => report.case_id === id);
 
   // Build status timeline
-  const statusOrder: CaseStatus[] = [
-    "Consulta",
-    "Documentación",
-    "Demanda presentada",
-    "En proceso",
-    "Audiencia",
-    "Sentencia",
-    "Archivado",
-  ];
-  const currentIdx = statusOrder.indexOf(item.status as CaseStatus);
+  const statusOrder: CaseStatus[] = [...CASE_STATUS_OPTIONS];
+  const currentIdx = statusOrder.indexOf(currentStatus);
 
   function startEdit() {
     if (!item) return;
     setEditForm({
       expediente: item.expediente,
-      internal_code: item.internal_code ?? item.expediente,
+      internal_code: item.internal_code ?? caseNumber,
       process_type: item.process_type,
       legal_area: item.legal_area ?? "",
       case_stage: item.case_stage ?? "",
       priority: item.priority,
-      status: item.status,
+      status: currentStatus,
       juzgado: item.juzgado,
       judicial_district: item.judicial_district ?? "",
       judge_or_prosecutor: item.judge_or_prosecutor ?? "",
@@ -177,31 +177,51 @@ function CaseDetail() {
 
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault();
+    if (!item) return;
     setSaving(true);
     setEditError(null);
     try {
+      const values = validateCaseForm({
+        client_id: item.client_id,
+        expediente: editForm.expediente,
+        process_type: editForm.process_type,
+        priority: editForm.priority,
+        status: editForm.status,
+        juzgado: editForm.juzgado,
+        next_hearing: editForm.next_hearing,
+        internal_code: editForm.internal_code,
+        legal_area: editForm.legal_area,
+        case_stage: editForm.case_stage,
+        responsible_user_id: "",
+        next_action: editForm.next_action,
+        filing_date: editForm.filing_date,
+        judicial_district: editForm.judicial_district,
+        judge_or_prosecutor: editForm.judge_or_prosecutor,
+        current_summary: editForm.current_summary,
+        current_status_description: editForm.current_status_description,
+      });
       await updateCase.mutateAsync({
         id,
         updates: {
-          expediente: editForm.expediente,
-          internal_code: editForm.internal_code || null,
-          case_number: editForm.expediente,
-          case_name: editForm.process_type,
-          case_type: editForm.process_type,
-          process_type: editForm.process_type,
-          legal_area: editForm.legal_area || null,
-          case_stage: editForm.case_stage || null,
-          priority: editForm.priority as "Alta" | "Media" | "Baja",
-          status: editForm.status as CaseStatus,
-          juzgado: editForm.juzgado,
-          court: editForm.juzgado,
-          judicial_district: editForm.judicial_district || null,
-          judge_or_prosecutor: editForm.judge_or_prosecutor || null,
-          filing_date: editForm.filing_date || null,
-          current_summary: editForm.current_summary || null,
-          current_status_description: editForm.current_status_description || null,
-          next_action: editForm.next_action || null,
-          next_hearing: peruDateTimeToISO(editForm.next_hearing),
+          expediente: values.expediente,
+          internal_code: values.internal_code || values.expediente || null,
+          case_number: values.expediente || null,
+          case_name: values.process_type,
+          case_type: values.process_type,
+          process_type: values.process_type,
+          legal_area: values.legal_area || null,
+          case_stage: values.case_stage || null,
+          priority: values.priority,
+          status: values.status,
+          juzgado: values.juzgado || "Por determinar",
+          court: values.juzgado || null,
+          judicial_district: values.judicial_district || null,
+          judge_or_prosecutor: values.judge_or_prosecutor || null,
+          filing_date: values.filing_date || null,
+          current_summary: values.current_summary || null,
+          current_status_description: values.current_status_description || null,
+          next_action: values.next_action || null,
+          next_hearing: peruDateTimeToISO(values.next_hearing || ""),
         },
       });
       setEditing(false);
@@ -265,10 +285,28 @@ function CaseDetail() {
     }
   }
 
+  function assignDocumentToCase(documentId: string, caseId: string | null) {
+    if (!item) return;
+    updateDoc.mutate({
+      id: documentId,
+      updates: {
+        case_id: caseId,
+        client_id: item.client_id,
+      },
+    });
+  }
+
+  function archiveCase() {
+    if (!window.confirm("¿Archivar este expediente? Podras cambiar el estado mas adelante.")) {
+      return;
+    }
+    updateCase.mutate({ id, updates: { status: "Archivado" } });
+  }
+
   return (
     <AppLayout
       title={item.process_type}
-      subtitle={item.expediente}
+      subtitle={caseNumber}
       actions={
         <>
           <Link
@@ -288,6 +326,28 @@ function CaseDetail() {
             className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 shadow-soft"
           >
             <FileUp className="h-4 w-4" /> Subir documento
+          </button>
+          <Link
+            to={"/agenda" as never}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+          >
+            <CalendarPlus className="h-4 w-4" /> Agendar
+          </Link>
+          {isAdmin && (
+            <Link
+              to={"/pagos" as never}
+              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+            >
+              <Landmark className="h-4 w-4" /> Registrar pago
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={archiveCase}
+            disabled={currentStatus === "Archivado"}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 disabled:opacity-50"
+          >
+            <Archive className="h-4 w-4" /> Archivar
           </button>
         </>
       }
@@ -354,10 +414,10 @@ function CaseDetail() {
             <Card className="p-6">
               <div className="flex items-start justify-between mb-4">
                 <h3 className="text-base font-semibold">Información general</h3>
-                <StatusBadge tone="navy">{item.status}</StatusBadge>
+                <StatusBadge tone="navy">{currentStatus}</StatusBadge>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <Field k="Expediente" v={item.expediente} mono />
+                <Field k="Expediente" v={caseNumber} mono />
                 <Field k="Código interno" v={item.internal_code || "—"} mono />
                 <Field k="Juzgado" v={item.juzgado} />
                 <Field k="Proceso" v={item.process_type} />
@@ -585,16 +645,47 @@ function CaseDetail() {
         <CaseDocumentsPanel
           documents={caseDocs}
           canDelete={isAdmin}
+          caseOptions={siblingCases}
           onUpload={() => setShowUpload(true)}
           onOpen={handleOpen}
           onDownload={handleDownload}
           onDelete={confirmDeleteDoc}
+          onAssignCase={assignDocumentToCase}
         />
       )}
-      {activeTab === "Línea de tiempo" && <CaseTimelinePanel caseId={id} documents={caseDocs} />}
-      {activeTab === "Tareas" && <CaseTasksPanel caseId={id} clientId={item.client_id} />}
+      {activeTab === "Agenda y plazos" && (
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <CaseTimelinePanel caseId={id} documents={caseDocs} />
+          <CaseTasksPanel caseId={id} clientId={item.client_id} />
+        </div>
+      )}
       {activeTab === "Pagos" && <CasePaymentsPanel payments={casePayments} />}
-      {activeTab === "Análisis jurídico" && <CaseAnalysisPanel item={item} />}
+      {activeTab === "Notas" && (
+        <Card className="p-5">
+          <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
+            <StickyNote className="h-4 w-4 text-gold" /> Notas internas
+          </h3>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Agregar nota interna..."
+            className="w-full rounded-lg border border-border bg-card p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+            rows={10}
+          />
+          <button
+            onClick={saveNotes}
+            disabled={savingNotes}
+            className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {savingNotes ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            {notesSaved ? "Guardado" : savingNotes ? "Guardando..." : "Guardar nota"}
+          </button>
+        </Card>
+      )}
       {activeTab === "Historial" && <CaseHistoryPanel item={item} reports={caseReports} />}
 
       {/* Edit Modal */}
@@ -612,10 +703,10 @@ function CaseDetail() {
             </div>
             <form onSubmit={saveEdit} className="space-y-4">
               <CF
-                label="N° Expediente *"
+                label="N° Expediente"
                 v={editForm.expediente}
                 set={(v) => setEditForm((f) => ({ ...f, expediente: v }))}
-                required
+                placeholder="Puede quedar vacio si aun no existe numero judicial"
               />
               <CF
                 label="Proceso *"
@@ -669,7 +760,7 @@ function CaseDetail() {
                       onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
                       className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
                     >
-                      {CASE_STATUSES.map((s) => (
+                      {CASE_STATUS_OPTIONS.map((s) => (
                         <option key={s}>{s}</option>
                       ))}
                     </select>
@@ -678,10 +769,10 @@ function CaseDetail() {
                 </div>
               </div>
               <CF
-                label="Juzgado *"
+                label="Juzgado"
                 v={editForm.juzgado}
                 set={(v) => setEditForm((f) => ({ ...f, juzgado: v }))}
-                required
+                placeholder="Por determinar"
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <CF

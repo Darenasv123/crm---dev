@@ -6,6 +6,11 @@ import {
   validateClientForm,
   type ClientRow,
 } from "../src/lib/client-validation";
+import {
+  displayCaseNumber,
+  normalizeCaseStatus,
+  validateCaseForm,
+} from "../src/lib/case-validation";
 
 describe("document upload validation", () => {
   it("accepts supported documents within the size limit", () => {
@@ -181,5 +186,36 @@ describe("client validation", () => {
         existing,
       )[0]?.reason,
     ).toMatch(/DNI\/RUC/);
+  });
+});
+
+describe("case validation", () => {
+  it("normalizes legacy statuses to the current workflow", () => {
+    expect(normalizeCaseStatus("Consulta")).toBe("Pendiente de clasificacion");
+    expect(normalizeCaseStatus("Documentacion")).toBe("En preparacion");
+    expect(normalizeCaseStatus("En proceso")).toBe("En tramite");
+    expect(normalizeCaseStatus("Sentencia")).toBe("Concluido");
+  });
+
+  it("allows provisional cases without an expediente number", () => {
+    expect(
+      validateCaseForm({
+        client_id: "client-1",
+        expediente: "",
+        process_type: "Alimentos",
+        priority: "Media",
+        status: "Consulta",
+        juzgado: "",
+        next_hearing: "",
+        internal_code: "",
+        legal_area: "",
+        case_stage: "",
+        responsible_user_id: "",
+        next_action: "",
+        filing_date: "",
+      }).expediente,
+    ).toBe("");
+
+    expect(displayCaseNumber("", null)).toBe("Sin numero");
   });
 });
