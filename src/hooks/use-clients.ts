@@ -71,7 +71,7 @@ export function useCreateClient() {
         initials,
         color,
         email: input.email?.trim() || null,
-        address: null,
+        address: input.address?.trim() || null,
         birthdate: null,
         civil_status: null,
       };

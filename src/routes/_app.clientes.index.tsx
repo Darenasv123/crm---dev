@@ -1,7 +1,10 @@
-﻿import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useClients, useCreateClient } from "@/hooks/use-clients";
+import { useClients, useCreateClient, useUpdateClient } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
+import { usePayments } from "@/hooks/use-payments";
+import { useAgendaEvents } from "@/hooks/use-agenda";
+import { useProfiles } from "@/hooks/use-profiles";
 import { useAuth } from "@/hooks/use-auth";
 import { exportClientsExcel } from "@/lib/export-excel";
 import { CSVImport } from "@/components/csv-import";
@@ -16,27 +19,89 @@ import {
   Loader2,
   FolderArchive,
   FileSpreadsheet,
+  Pencil,
+  Briefcase,
+  FileUp,
+  CreditCard,
+  CalendarClock,
+  AlertTriangle,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  buildClientInitials,
+  CLIENT_STATUS_OPTIONS,
+  DOCUMENT_TYPE_OPTIONS,
+  findClientDuplicates,
+  normalizeDigits,
+  validateClientForm,
+  type ClientDuplicateMatch,
+  type ClientFormValues,
+  type ClientRow,
+} from "@/lib/client-validation";
 
 export const Route = createFileRoute("/_app/clientes/")({
   head: () => ({
-    meta: [{ title: "Clientes â€” Estudio JurÃ­dico" }],
+    meta: [{ title: "Clientes - Estudio Juridico" }],
   }),
   component: ClientsPage,
 });
 
-const STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
+const EMPTY_FORM: ClientFormValues = {
+  name: "",
+  document_type: "DNI",
+  document_number: "",
+  phone: "",
+  whatsapp: "",
+  email: "",
+  occupation: "",
+  process_type: "",
+  status: "Activo",
+  address: "",
+  notes: "",
+};
+
+const PAGE_SIZE = 10;
 
 function ClientsPage() {
-  const { data: clients = [], isLoading, refetch } = useClients();
+  const navigate = useNavigate();
+  const { data: clients = [], isLoading, isError, error, refetch } = useClients();
   const { data: cases = [] } = useCases();
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
+  const { data: payments = [] } = usePayments({ enabled: isAdmin });
+  const { data: agendaEvents = [] } = useAgendaEvents();
+  const { data: profiles = [] } = useProfiles();
   const createClient = useCreateClient();
+  const updateClient = useUpdateClient();
+
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
+  const [caseFilter, setCaseFilter] = useState("Todos");
   const [specialtyFilter, setSpecialtyFilter] = useState("Todos");
+  const [responsibleFilter, setResponsibleFilter] = useState("Todos");
+  const [page, setPage] = useState(1);
+  const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showZipImportModal, setShowZipImportModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
+  const [form, setForm] = useState<ClientFormValues>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [duplicatesAcknowledged, setDuplicatesAcknowledged] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  const profilesById = useMemo(
+    () => new Map(profiles.map((item) => [item.id, item.full_name] as const)),
+    [profiles],
+  );
 
   const casesByClient = useMemo(() => {
     const map = new Map<string, typeof cases>();
@@ -48,110 +113,205 @@ function ClientsPage() {
     return map;
   }, [cases]);
 
+  const paymentsByClient = useMemo(() => {
+    const map = new Map<string, typeof payments>();
+    for (const payment of payments) {
+      const current = map.get(payment.client_id) ?? [];
+      current.push(payment);
+      map.set(payment.client_id, current);
+    }
+    return map;
+  }, [payments]);
+
   const specialtyOptions = useMemo(() => {
     const types = new Set<string>();
     for (const item of cases) {
-      const base = (item.process_type || item.case_type || "").split(/\s*[—-]\s*/)[0].trim();
+      const base = (item.legal_area || item.process_type || item.case_type || "")
+        .split(/\s*[—-]\s*/)[0]
+        .trim();
       if (base && base !== "Pendiente de clasificacion") types.add(base);
     }
     return ["Todos", ...Array.from(types).sort()];
   }, [cases]);
-  const [showModal, setShowModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showZipImportModal, setShowZipImportModal] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    dni: "",
-    document_type: "DNI",
-    phone: "",
-    whatsapp: "",
-    email: "",
-    occupation: "",
-    process_type: "",
-    status: "Activo" as const,
-  });
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
-  const filtered = clients.filter((c) => {
-    const matchSearch =
-      !search ||
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.dni.includes(search) ||
-      (c.email ?? "").toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "Todos" || c.status === statusFilter;
-    const clientCases = casesByClient.get(c.id) ?? [];
-    const matchSpecialty =
-      specialtyFilter === "Todos" ||
-      clientCases.some((item) =>
-        (item.process_type || item.case_type || "")
-          .toLowerCase()
-          .includes(specialtyFilter.toLowerCase()),
+  const responsibleOptions = useMemo(
+    () => [
+      "Todos",
+      "Sin asignar",
+      ...profiles
+        .filter((item) => item.status === "Activo")
+        .map((item) => item.full_name)
+        .sort(),
+    ],
+    [profiles],
+  );
+
+  const duplicateMatches = useMemo(
+    () => findClientDuplicates(form, clients, editingClient?.id),
+    [clients, editingClient?.id, form],
+  );
+
+  const getNextActivity = useCallback(
+    (clientId: string, clientCases = casesByClient.get(clientId) ?? []) => {
+      const caseIds = new Set(clientCases.map((item) => item.id));
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+      return agendaEvents
+        .filter((event) => event.client_id === clientId || caseIds.has(event.case_id ?? ""))
+        .filter((event) => event.event_date >= today)
+        .sort((a, b) =>
+          `${a.event_date} ${a.event_time}`.localeCompare(`${b.event_date} ${b.event_time}`),
+        )[0];
+    },
+    [agendaEvents, casesByClient],
+  );
+
+  const getResponsibleLabel = useCallback(
+    (client: ClientRow, clientCases = casesByClient.get(client.id) ?? []) => {
+      const responsibleId =
+        clientCases.find((item) => item.responsible_user_id)?.responsible_user_id ??
+        client.created_by;
+      return responsibleId ? (profilesById.get(responsibleId) ?? "Asignado") : "Sin asignar";
+    },
+    [casesByClient, profilesById],
+  );
+
+  const filtered = useMemo(() => {
+    return clients.filter((client) => {
+      const documentNumber = normalizeDigits(client.document_number || client.dni);
+      const clientCases = casesByClient.get(client.id) ?? [];
+      const clientPayments = paymentsByClient.get(client.id) ?? [];
+      const nextActivity = getNextActivity(client.id, clientCases);
+      const responsible = getResponsibleLabel(client, clientCases);
+      const pendingBalance = clientPayments.reduce(
+        (sum, payment) => sum + Math.max(0, Number(payment.fees) - Number(payment.paid)),
+        0,
       );
-    return matchSearch && matchStatus && matchSpecialty;
-  });
-  function getCaseSummary(clientId: string) {
-    const clientCases = casesByClient.get(clientId) ?? [];
-    if (clientCases.length === 0) {
-      return { title: "Pendiente de clasificacion", detail: "Sin expediente vinculado" };
-    }
-    const main = clientCases[0];
-    return {
-      title: `${clientCases.length} expediente${clientCases.length === 1 ? "" : "s"}`,
-      detail: main.case_number || main.expediente || main.case_name || "Expediente sin numero",
-    };
+
+      const q = search.toLowerCase();
+      const matchSearch =
+        !q ||
+        client.name.toLowerCase().includes(q) ||
+        documentNumber.includes(q) ||
+        client.phone.includes(q) ||
+        (client.whatsapp ?? "").includes(q) ||
+        (client.email ?? "").toLowerCase().includes(q);
+      const matchStatus = statusFilter === "Todos" || client.status === statusFilter;
+      const matchSpecialty =
+        specialtyFilter === "Todos" ||
+        clientCases.some((item) =>
+          (item.legal_area || item.process_type || item.case_type || "")
+            .toLowerCase()
+            .includes(specialtyFilter.toLowerCase()),
+        );
+      const matchResponsible =
+        responsibleFilter === "Todos" ||
+        (responsibleFilter === "Sin asignar" && responsible === "Sin asignar") ||
+        responsible === responsibleFilter;
+      const matchCaseFilter =
+        caseFilter === "Todos" ||
+        (caseFilter === "Con expedientes" && clientCases.length > 0) ||
+        (caseFilter === "Sin expediente" && clientCases.length === 0) ||
+        (caseFilter === "Con pagos pendientes" && pendingBalance > 0) ||
+        (caseFilter === "Con proxima actividad" && !!nextActivity);
+
+      return matchSearch && matchStatus && matchSpecialty && matchResponsible && matchCaseFilter;
+    });
+  }, [
+    caseFilter,
+    casesByClient,
+    clients,
+    getNextActivity,
+    getResponsibleLabel,
+    paymentsByClient,
+    responsibleFilter,
+    search,
+    specialtyFilter,
+    statusFilter,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingClient(null);
+    setFormError(null);
+    setDuplicatesAcknowledged(false);
   }
-  async function handleCreate(e: React.FormEvent) {
+
+  function openCreate() {
+    resetForm();
+    setShowModal(true);
+  }
+
+  function openEdit(client: ClientRow) {
+    setEditingClient(client);
+    setForm({
+      name: client.name,
+      document_type: client.document_type || "DNI",
+      document_number: client.document_number || client.dni,
+      phone: client.phone,
+      whatsapp: client.whatsapp ?? "",
+      email: client.email ?? "",
+      occupation: client.occupation ?? "",
+      process_type: client.process_type,
+      status: client.status,
+      address: client.address ?? "",
+      notes: client.notes ?? "",
+    });
+    setFormError(null);
+    setDuplicatesAcknowledged(false);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    resetForm();
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
 
-    // Validar DNI y telÃ©fono
-    if (form.dni.length > 0 && form.dni.length !== 8) {
-      setFormError("El DNI debe tener exactamente 8 dÃ­gitos.");
-      return;
-    }
-    if (form.phone.length !== 9) {
-      setFormError("El telÃ©fono debe tener exactamente 9 dÃ­gitos.");
-      return;
-    }
-    const existingClient = form.dni ? clients.find((client) => client.dni === form.dni) : null;
-    if (existingClient) {
-      setFormError(
-        `Ya existe un cliente registrado con el DNI ${form.dni}: ${existingClient.name}.`,
-      );
+    let normalized: ClientFormValues;
+    try {
+      normalized = validateClientForm(form);
+      if (duplicateMatches.length > 0 && !duplicatesAcknowledged) {
+        setFormError("Revisa los posibles duplicados y confirma si deseas continuar.");
+        return;
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Datos incompletos o invalidos.");
       return;
     }
 
     setSaving(true);
     try {
-      await createClient.mutateAsync({
-        ...form,
-        initials:
-          form.name
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase() || "CL",
-        document_number: form.dni || null,
-        whatsapp: form.whatsapp || form.phone,
-      });
-      setShowModal(false);
-      setForm({
-        name: "",
-        dni: "",
-        document_type: "DNI",
-        phone: "",
-        whatsapp: "",
-        email: "",
-        occupation: "",
-        process_type: "",
-        status: "Activo",
-      });
+      const payload = {
+        name: normalized.name,
+        initials: buildClientInitials(normalized.name),
+        dni: normalized.document_number,
+        document_type: normalized.document_type,
+        document_number: normalized.document_number,
+        phone: normalized.phone,
+        whatsapp: normalized.whatsapp || normalized.phone,
+        email: normalized.email || null,
+        occupation: normalized.occupation || null,
+        address: normalized.address || null,
+        notes: normalized.notes || null,
+        process_type: normalized.process_type,
+        status: normalized.status,
+      };
+
+      if (editingClient) {
+        await updateClient.mutateAsync({ id: editingClient.id, updates: payload });
+      } else {
+        await createClient.mutateAsync(payload);
+      }
+      closeModal();
     } catch (err: unknown) {
-      // Mostrar el mensaje real de Supabase
-      const msg = err instanceof Error ? err.message : String(err);
-      setFormError(msg || "Error al guardar. Intenta de nuevo.");
+      setFormError(err instanceof Error ? err.message : "Error al guardar. Intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -159,8 +319,8 @@ function ClientsPage() {
 
   return (
     <AppLayout
-      title="GestiÃ³n de Clientes"
-      subtitle={`${clients.length} clientes registrados Â· Penal & Familia`}
+      title="Clientes"
+      subtitle={`${clients.length} clientes registrados · Penal & Familia`}
       actions={
         <div className="flex items-center gap-2">
           {isAdmin && (
@@ -184,129 +344,230 @@ function ClientsPage() {
             <FileSpreadsheet className="h-4 w-4" /> Importar lista CSV/XLSX
           </button>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={openCreate}
             className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 transition shadow-soft"
           >
-            <Plus className="h-4 w-4" /> Nuevo Cliente
+            <Plus className="h-4 w-4" /> Nuevo cliente
           </button>
         </div>
       }
     >
-      {/* Filters */}
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre o DNI..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Buscar cliente, DNI/RUC, telefono o correo..."
               className="w-full h-10 pl-10 pr-3 rounded-lg bg-muted/40 border border-border focus:bg-card focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm"
             />
           </div>
           <FilterSelect
+            value={caseFilter}
+            onChange={(value) => {
+              setCaseFilter(value);
+              setPage(1);
+            }}
+            options={[
+              "Todos",
+              "Con expedientes",
+              "Sin expediente",
+              "Con pagos pendientes",
+              "Con proxima actividad",
+            ]}
+          />
+          <FilterSelect
             value={specialtyFilter}
-            onChange={setSpecialtyFilter}
+            onChange={(value) => {
+              setSpecialtyFilter(value);
+              setPage(1);
+            }}
             options={specialtyOptions}
           />
           <FilterSelect
+            value={responsibleFilter}
+            onChange={(value) => {
+              setResponsibleFilter(value);
+              setPage(1);
+            }}
+            options={responsibleOptions}
+          />
+          <FilterSelect
             value={statusFilter}
-            onChange={setStatusFilter}
-            options={["Todos", ...STATUS_OPTIONS]}
+            onChange={(value) => {
+              setStatusFilter(value);
+              setPage(1);
+            }}
+            options={["Todos", ...CLIENT_STATUS_OPTIONS]}
           />
         </div>
       </Card>
 
-      {/* Table */}
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4" />
+              {error instanceof Error ? error.message : "No se pudieron cargar los clientes."}
+            </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="min-w-[1120px] w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="py-3 pl-5 pr-3 font-semibold">Cliente</th>
-                  <th className="py-3 px-3 font-semibold">DNI</th>
-                  <th className="py-3 px-3 font-semibold">TelÃ©fono</th>
+                  <th className="py-3 px-3 font-semibold">DNI/RUC</th>
+                  <th className="py-3 px-3 font-semibold">Contacto</th>
                   <th className="py-3 px-3 font-semibold">Expedientes</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
-                  <th className="py-3 px-3 font-semibold">Registro</th>
+                  <th className="py-3 px-3 font-semibold">Responsable</th>
+                  <th className="py-3 px-3 font-semibold">Proxima actividad</th>
                   <th className="py-3 pr-5 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
-                      {search ? "No se encontraron clientes." : "AÃºn no hay clientes registrados."}
+                    <td colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
+                      {search
+                        ? "No se encontraron clientes con esos filtros."
+                        : "Aun no hay clientes registrados."}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => {
-                    const caseSummary = getCaseSummary(c.id);
+                  paginated.map((client) => {
+                    const clientCases = casesByClient.get(client.id) ?? [];
+                    const activeCases = clientCases.filter(
+                      (item) => !["Archivado", "Concluido", "Sentencia"].includes(item.status),
+                    );
+                    const nextActivity = getNextActivity(client.id, clientCases);
+                    const responsible = getResponsibleLabel(client, clientCases);
                     return (
                       <tr
-                        key={c.id}
+                        key={client.id}
                         className="border-t border-border hover:bg-muted/30 transition"
                       >
                         <td className="py-3 pl-5 pr-3">
                           <div className="flex items-center gap-3">
                             <div
                               className="grid h-9 w-9 place-items-center rounded-full text-xs font-bold text-white shrink-0"
-                              style={{ background: c.color }}
+                              style={{ background: client.color }}
                             >
-                              {c.initials}
+                              {client.initials}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-semibold truncate">{c.name}</div>
+                              <div className="font-semibold truncate">{client.name}</div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {c.email ?? "â€”"}
+                                {client.email ?? "Sin correo"}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs">{c.dni}</td>
-                        <td className="py-3 px-3 text-muted-foreground">{c.phone}</td>
                         <td className="py-3 px-3">
-                          <span className="text-xs text-muted-foreground">
-                            {c.process_type || "â€”"}
-                          </span>
+                          <div className="font-mono text-xs">
+                            {client.document_number || client.dni}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {client.document_type || "DNI"}
+                          </div>
                         </td>
                         <td className="py-3 px-3">
-                          <StatusBadge
-                            tone={
-                              c.status === "Activo"
-                                ? "success"
-                                : c.status === "En espera"
-                                  ? "warning"
-                                  : "default"
-                            }
-                          >
+                          <div className="font-mono text-xs">{client.phone}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {client.whatsapp ? `Alt. ${client.whatsapp}` : "Sin alternativo"}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="font-semibold">{clientCases.length}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {activeCases.length} activos
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <StatusBadge tone={statusTone(client.status)}>
                             <span
-                              className={`h-1.5 w-1.5 rounded-full ${c.status === "Activo" ? "bg-emerald-500" : c.status === "En espera" ? "bg-amber-500" : "bg-muted-foreground"}`}
+                              className={`h-1.5 w-1.5 rounded-full ${client.status === "Activo" ? "bg-emerald-500" : client.status === "En espera" ? "bg-amber-500" : "bg-muted-foreground"}`}
                             />
-                            {c.status}
+                            {client.status}
                           </StatusBadge>
                         </td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground">{responsible}</td>
                         <td className="py-3 px-3 text-xs text-muted-foreground">
-                          {new Date(c.registered_at).toLocaleDateString("es-PE", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          {nextActivity ? (
+                            <>
+                              <div className="font-semibold text-foreground">
+                                {nextActivity.title}
+                              </div>
+                              <div>
+                                {new Date(
+                                  `${nextActivity.event_date}T00:00:00-05:00`,
+                                ).toLocaleDateString("es-PE", {
+                                  day: "2-digit",
+                                  month: "short",
+                                })}{" "}
+                                · {String(nextActivity.event_time).slice(0, 5)}
+                              </div>
+                            </>
+                          ) : (
+                            "Sin actividad"
+                          )}
                         </td>
-                        <td className="py-3 pr-5 text-right">
-                          <Link
-                            to={"/clientes/$id" as never}
-                            params={{ id: c.id } as never}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
-                          >
-                            <Eye className="h-3.5 w-3.5" /> Ver ficha
-                          </Link>
-                        </td>{" "}
+                        <td className="py-3 pr-5">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Link
+                              to={"/clientes/$id" as never}
+                              params={{ id: client.id } as never}
+                              className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
+                            >
+                              <Eye className="h-3.5 w-3.5" /> Ver
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(client)}
+                              className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/60"
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigate({ to: "/casos" as never })}
+                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
+                              title="Crear expediente"
+                            >
+                              <Briefcase className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => navigate({ to: "/documentos" as never })}
+                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
+                              title="Subir documento"
+                            >
+                              <FileUp className="h-3.5 w-3.5" />
+                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => navigate({ to: "/pagos" as never })}
+                                className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
+                                title="Registrar pago"
+                              >
+                                <CreditCard className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => navigate({ to: "/agenda" as never })}
+                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
+                              title="Agendar actividad"
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
@@ -315,170 +576,52 @@ function ClientsPage() {
             </table>
           )}
         </div>
-        {!isLoading && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-border text-xs text-muted-foreground">
+        {!isLoading && !isError && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-border text-xs text-muted-foreground">
             <span>
-              Mostrando {filtered.length} de {clients.length} clientes
+              Mostrando {paginated.length} de {filtered.length} resultados · {clients.length}{" "}
+              clientes
             </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+                className="h-8 rounded-lg border border-border px-3 disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <span>
+                Pagina {currentPage} de {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                className="h-8 rounded-lg border border-border px-3 disabled:opacity-40"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </Card>
 
-      {/* New Client Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="text-base font-semibold">Nuevo cliente</h3>
-                <p className="text-xs text-muted-foreground">Penal Â· Familia</p>
-              </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <MF
-                label="Nombre completo *"
-                value={form.name}
-                onChange={(v) => setForm((f) => ({ ...f, name: v }))}
-                required
-              />
-              <div className="grid grid-cols-2 gap-4">
-                {/* DNI: solo 8 dÃ­gitos numÃ©ricos */}
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    DNI (opcional)
-                  </label>
-                  <input
-                    inputMode="numeric"
-                    pattern="([0-9]{8})?"
-                    maxLength={8}
-                    value={form.dni}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "").slice(0, 8) }))
-                    }
-                    placeholder="12345678"
-                    className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm font-mono"
-                  />
-                  {form.dni.length > 0 && form.dni.length < 8 && (
-                    <p className="text-[11px] text-amber-600 mt-0.5">
-                      Faltan {8 - form.dni.length} dÃ­gitos
-                    </p>
-                  )}
-                </div>
-                {/* TelÃ©fono: solo 9 dÃ­gitos numÃ©ricos */}
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    TelÃ©fono *
-                  </label>
-                  <input
-                    inputMode="numeric"
-                    pattern="[0-9]{9}"
-                    maxLength={9}
-                    value={form.phone}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        phone: e.target.value.replace(/\D/g, "").slice(0, 9),
-                      }))
-                    }
-                    required
-                    placeholder="987654321"
-                    className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm font-mono"
-                  />
-                  {form.phone.length > 0 && form.phone.length < 9 && (
-                    <p className="text-[11px] text-amber-600 mt-0.5">
-                      Faltan {9 - form.phone.length} dÃ­gitos
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <MF
-                  label="Tipo de documento"
-                  value={form.document_type}
-                  onChange={(v) => setForm((f) => ({ ...f, document_type: v }))}
-                />
-                <MF
-                  label="WhatsApp"
-                  value={form.whatsapp}
-                  onChange={(v) =>
-                    setForm((f) => ({ ...f, whatsapp: v.replace(/\D/g, "").slice(0, 9) }))
-                  }
-                />
-              </div>
-              <MF
-                label="Correo electrÃ³nico"
-                value={form.email}
-                onChange={(v) => setForm((f) => ({ ...f, email: v }))}
-                type="email"
-              />
-              <MF
-                label="OcupaciÃ³n"
-                value={form.occupation}
-                onChange={(v) => setForm((f) => ({ ...f, occupation: v }))}
-              />
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Proceso *
-                </label>
-                <input
-                  type="text"
-                  value={form.process_type}
-                  onChange={(e) => setForm((f) => ({ ...f, process_type: e.target.value }))}
-                  required
-                  placeholder="Ej: Defensa penal por robo agravado"
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Estado *
-                </label>
-                <select
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, status: e.target.value as typeof form.status }))
-                  }
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-                >
-                  {STATUS_OPTIONS.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </div>
-              {formError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {formError}
-                </p>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {saving ? "Guardando..." : "Guardar cliente"}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
+        <ClientFormModal
+          form={form}
+          setForm={setForm}
+          isEditing={!!editingClient}
+          onSubmit={handleSubmit}
+          onClose={closeModal}
+          saving={saving}
+          error={formError}
+          duplicateMatches={duplicateMatches}
+          duplicatesAcknowledged={duplicatesAcknowledged}
+          setDuplicatesAcknowledged={setDuplicatesAcknowledged}
+        />
       )}
 
-      {/* CSV Import Modal */}
       {showImportModal && (
         <CSVImport
           onClose={() => setShowImportModal(false)}
@@ -488,7 +631,6 @@ function ClientsPage() {
         />
       )}
 
-      {/* ZIP Import Modal */}
       {showZipImportModal && (
         <ZipImport
           onClose={() => setShowZipImportModal(false)}
@@ -499,6 +641,12 @@ function ClientsPage() {
       )}
     </AppLayout>
   );
+}
+
+function statusTone(status: string): "default" | "success" | "warning" {
+  if (status === "Activo") return "success";
+  if (status === "En espera") return "warning";
+  return "default";
 }
 
 function FilterSelect({
@@ -526,18 +674,237 @@ function FilterSelect({
   );
 }
 
-function MF({
+function ClientFormModal({
+  form,
+  setForm,
+  isEditing,
+  onSubmit,
+  onClose,
+  saving,
+  error,
+  duplicateMatches,
+  duplicatesAcknowledged,
+  setDuplicatesAcknowledged,
+}: {
+  form: ClientFormValues;
+  setForm: React.Dispatch<React.SetStateAction<ClientFormValues>>;
+  isEditing: boolean;
+  onSubmit: (event: React.FormEvent) => void;
+  onClose: () => void;
+  saving: boolean;
+  error: string | null;
+  duplicateMatches: ClientDuplicateMatch[];
+  duplicatesAcknowledged: boolean;
+  setDuplicatesAcknowledged: (value: boolean) => void;
+}) {
+  const documentType = form.document_type.toUpperCase();
+  const documentMaxLength = documentType === "RUC" ? 11 : documentType === "DNI" ? 8 : 15;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <Card className="w-full max-w-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-base font-semibold">
+              {isEditing ? "Editar cliente" : "Nuevo cliente"}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Datos reales sincronizados con Clientes y Expedientes
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <InputField
+            label="Nombre completo o razon social *"
+            value={form.name}
+            onChange={(value) => setForm((current) => ({ ...current, name: value }))}
+            required
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <SelectField
+              label="Tipo de documento *"
+              value={form.document_type}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  document_type: value,
+                  document_number: normalizeDigits(current.document_number).slice(
+                    0,
+                    value === "RUC" ? 11 : value === "DNI" ? 8 : 15,
+                  ),
+                }))
+              }
+              options={[...DOCUMENT_TYPE_OPTIONS]}
+            />
+            <div className="sm:col-span-2">
+              <InputField
+                label="DNI/RUC *"
+                value={form.document_number}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    document_number: normalizeDigits(value).slice(0, documentMaxLength),
+                  }))
+                }
+                inputMode="numeric"
+                required
+              />
+              {form.document_number.length > 0 &&
+                ((documentType === "DNI" && form.document_number.length < 8) ||
+                  (documentType === "RUC" && form.document_number.length < 11)) && (
+                  <p className="mt-1 text-[11px] text-amber-600">
+                    Faltan {(documentType === "RUC" ? 11 : 8) - form.document_number.length}{" "}
+                    digitos.
+                  </p>
+                )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <InputField
+              label="Telefono principal *"
+              value={form.phone}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  phone: normalizeDigits(value).slice(0, 9),
+                }))
+              }
+              inputMode="numeric"
+              required
+            />
+            <InputField
+              label="Telefono alternativo"
+              value={form.whatsapp}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  whatsapp: normalizeDigits(value).slice(0, 9),
+                }))
+              }
+              inputMode="numeric"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <InputField
+              label="Correo"
+              value={form.email}
+              onChange={(value) => setForm((current) => ({ ...current, email: value }))}
+              type="email"
+            />
+            <InputField
+              label="Ocupacion"
+              value={form.occupation}
+              onChange={(value) => setForm((current) => ({ ...current, occupation: value }))}
+            />
+          </div>
+
+          <InputField
+            label="Direccion"
+            value={form.address}
+            onChange={(value) => setForm((current) => ({ ...current, address: value }))}
+          />
+
+          <InputField
+            label="Materia o proceso principal *"
+            value={form.process_type}
+            onChange={(value) => setForm((current) => ({ ...current, process_type: value }))}
+            required
+            placeholder="Ej: Defensa penal por robo agravado"
+          />
+
+          <TextAreaField
+            label="Observaciones"
+            value={form.notes}
+            onChange={(value) => setForm((current) => ({ ...current, notes: value }))}
+          />
+
+          <SelectField
+            label="Estado *"
+            value={form.status}
+            onChange={(value) => setForm((current) => ({ ...current, status: value }))}
+            options={[...CLIENT_STATUS_OPTIONS]}
+          />
+
+          {duplicateMatches.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="text-sm font-semibold text-amber-900">Posibles duplicados</p>
+              <div className="mt-2 space-y-1">
+                {duplicateMatches.slice(0, 4).map((match) => (
+                  <div key={match.clientId} className="text-xs text-amber-800">
+                    <span className="font-semibold">{match.clientName}</span> · {match.reason}
+                    {match.strength === "approximate" && " (aproximado)"}
+                  </div>
+                ))}
+              </div>
+              <label className="mt-3 flex items-start gap-2 text-xs text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={duplicatesAcknowledged}
+                  onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
+                  className="mt-0.5"
+                />
+                Confirmo que revise estos clientes y deseo continuar sin sobrescribir datos
+                existentes.
+              </label>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? "Guardando..." : isEditing ? "Guardar cambios" : "Guardar cliente"}
+            </button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+function InputField({
   label,
   value,
   onChange,
   required,
   type = "text",
+  inputMode,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -546,11 +913,66 @@ function MF({
       </label>
       <input
         type={type}
+        inputMode={inputMode}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
+        placeholder={placeholder}
         className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
       />
+    </div>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary"
+      />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  return (
+    <div>
+      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
+      >
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
+      </select>
     </div>
   );
 }

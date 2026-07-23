@@ -1,14 +1,23 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useClient, useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
+import { useClient, useClients, useUpdateClient, useDeleteClient } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
 import { useAuth } from "@/hooks/use-auth";
+import { useProfiles } from "@/hooks/use-profiles";
 import { useClientReports } from "@/hooks/use-reports";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
 import { supabase } from "@/lib/supabase";
+import {
+  buildClientInitials,
+  CLIENT_STATUS_OPTIONS,
+  DOCUMENT_TYPE_OPTIONS,
+  findClientDuplicates,
+  normalizeDigits,
+  validateClientForm,
+} from "@/lib/client-validation";
 import {
   ArrowLeft,
   Edit3,
@@ -24,11 +33,11 @@ import {
   Loader2,
   Trash2,
   Save,
-  MessageSquareText,
   History,
   CheckSquare,
   AlertTriangle,
   CalendarClock,
+  Plus,
 } from "lucide-react";
 import { useState, useRef } from "react";
 
@@ -36,18 +45,9 @@ export const Route = createFileRoute("/_app/clientes/$id")({
   component: ClientDetail,
 });
 
-const TABS = [
-  "Resumen",
-  "Expedientes",
-  "Documentos sin clasificar",
-  "Pagos",
-  "Agenda",
-  "Reportes",
-  "Historial",
-] as const;
+const TABS = ["Resumen", "Expedientes", "Documentos", "Pagos", "Agenda", "Historial"] as const;
 type Tab = (typeof TABS)[number];
 
-const STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
 const DOC_TYPES = ["DNI", "Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
 
 function currency(n: number) {
@@ -63,11 +63,13 @@ function ClientDetail() {
   const navigate = useNavigate();
 
   const { data: client, isLoading: loadingClient } = useClient(id);
+  const { data: allClients = [] } = useClients();
   const { data: allCases = [] } = useCases();
   const { data: allPayments = [] } = usePayments();
   const { data: allDocs = [] } = useDocuments();
   const { data: allReports = [] } = useClientReports();
   const { data: allAgendaEvents = [] } = useAgendaEvents();
+  const { data: profiles = [] } = useProfiles();
   const clientCaseIds = allCases.filter((item) => item.client_id === id).map((item) => item.id);
   const { data: clientTasks = [] } = useCaseTasks({ clientId: id });
   const { data: clientEvents = [] } = useCaseEvents(clientCaseIds);
@@ -82,6 +84,7 @@ function ClientDetail() {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [duplicatesAcknowledged, setDuplicatesAcknowledged] = useState(false);
 
   // Upload doc state
   const fileRef = useRef<HTMLInputElement>(null);
@@ -126,6 +129,43 @@ function ClientDetail() {
     (event) => event.client_id === id || clientCaseIds.includes(event.case_id ?? ""),
   );
   const isAdmin = profile?.role === "Administrador";
+  const profilesById = new Map(profiles.map((item) => [item.id, item.full_name] as const));
+  const responsibleId =
+    clientCases.find((item) => item.responsible_user_id)?.responsible_user_id ??
+    loadedClient.created_by;
+  const responsibleName = responsibleId
+    ? (profilesById.get(responsibleId) ?? "Asignado")
+    : "Sin asignar";
+  const latestDocument = [...clientDocs].sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  )[0];
+  const nextAgendaEvent = [...clientAgendaEvents]
+    .filter(
+      (event) =>
+        event.event_date >= new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }),
+    )
+    .sort((a, b) =>
+      `${a.event_date} ${a.event_time}`.localeCompare(`${b.event_date} ${b.event_time}`),
+    )[0];
+  const editDuplicateMatches = editing
+    ? findClientDuplicates(
+        {
+          name: editForm.name ?? "",
+          document_type: editForm.document_type ?? "DNI",
+          document_number: editForm.document_number ?? "",
+          phone: editForm.phone ?? "",
+          whatsapp: editForm.whatsapp ?? "",
+          email: editForm.email ?? "",
+          occupation: editForm.occupation ?? "",
+          process_type: editForm.process_type ?? "",
+          status: editForm.status ?? "Activo",
+          address: editForm.address ?? "",
+          notes: editForm.notes ?? "",
+        },
+        allClients,
+        id,
+      )
+    : [];
   const pendingTasks = clientTasks.filter(
     (task) => !["completed", "cancelled"].includes(task.status),
   );
@@ -179,31 +219,60 @@ function ClientDetail() {
       document_number: loadedClient.document_number ?? loadedClient.dni,
       whatsapp: loadedClient.whatsapp ?? loadedClient.phone,
       occupation: loadedClient.occupation ?? "",
+      address: loadedClient.address ?? "",
       notes: loadedClient.notes ?? "",
     });
     setEditing(true);
     setEditError(null);
+    setDuplicatesAcknowledged(false);
   }
 
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setEditError(null);
+
+    let normalized;
+    try {
+      normalized = validateClientForm({
+        name: editForm.name ?? "",
+        document_type: editForm.document_type ?? "DNI",
+        document_number: editForm.document_number ?? "",
+        phone: editForm.phone ?? "",
+        whatsapp: editForm.whatsapp ?? "",
+        email: editForm.email ?? "",
+        occupation: editForm.occupation ?? "",
+        process_type: editForm.process_type ?? "",
+        status: editForm.status ?? "Activo",
+        address: editForm.address ?? "",
+        notes: editForm.notes ?? "",
+      });
+      if (editDuplicateMatches.length > 0 && !duplicatesAcknowledged) {
+        setEditError("Revisa los posibles duplicados y confirma si deseas continuar.");
+        return;
+      }
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : "Datos incompletos o invalidos.");
+      return;
+    }
+
+    setSaving(true);
     try {
       await updateClient.mutateAsync({
         id,
         updates: {
-          name: editForm.name,
-          dni: editForm.dni,
-          phone: editForm.phone,
-          email: editForm.email || null,
-          process_type: editForm.process_type,
-          status: editForm.status as typeof loadedClient.status,
-          document_type: editForm.document_type,
-          document_number: editForm.document_number || null,
-          whatsapp: editForm.whatsapp || null,
-          occupation: editForm.occupation || null,
-          notes: editForm.notes || null,
+          name: normalized.name,
+          initials: buildClientInitials(normalized.name),
+          dni: normalized.document_number,
+          phone: normalized.phone,
+          email: normalized.email || null,
+          process_type: normalized.process_type,
+          status: normalized.status,
+          document_type: normalized.document_type,
+          document_number: normalized.document_number,
+          whatsapp: normalized.whatsapp || normalized.phone,
+          occupation: normalized.occupation || null,
+          address: normalized.address || null,
+          notes: normalized.notes || null,
         },
       });
       setEditing(false);
@@ -242,12 +311,48 @@ function ClientDetail() {
       title={client.name}
       subtitle={`Cliente desde ${new Date(client.registered_at).toLocaleDateString("es-PE", { month: "long", year: "numeric" })}`}
       actions={
-        <Link
-          to={"/clientes" as never}
-          className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-        >
-          <ArrowLeft className="h-4 w-4" /> Volver
-        </Link>
+        <>
+          <Link
+            to={"/clientes" as never}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+          >
+            <ArrowLeft className="h-4 w-4" /> Volver
+          </Link>
+          <button
+            type="button"
+            onClick={startEdit}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+          >
+            <Edit3 className="h-4 w-4" /> Editar cliente
+          </button>
+          <Link
+            to={"/casos" as never}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+          >
+            <Plus className="h-4 w-4" /> Nuevo expediente
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowUpload(true)}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+          >
+            <FileUp className="h-4 w-4" /> Subir documento
+          </button>
+          {isAdmin && (
+            <Link
+              to={"/pagos" as never}
+              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+            >
+              <CreditCard className="h-4 w-4" /> Registrar pago
+            </Link>
+          )}
+          <Link
+            to={"/agenda" as never}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110"
+          >
+            <CalendarClock className="h-4 w-4" /> Agendar actividad
+          </Link>
+        </>
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
@@ -330,9 +435,14 @@ function ClientDetail() {
               Contacto
             </h3>
             <ul className="space-y-3 text-sm">
-              <InfoRow icon={Phone} label="Teléfono" value={client.phone} />
+              <InfoRow icon={Phone} label="Telefono principal" value={client.phone} />
+              <InfoRow icon={Phone} label="Telefono alternativo" value={client.whatsapp ?? "—"} />
               <InfoRow icon={Mail} label="Correo" value={client.email ?? "—"} />
-              <InfoRow icon={IdCard} label="DNI" value={client.dni} />
+              <InfoRow
+                icon={IdCard}
+                label={client.document_type || "DNI/RUC"}
+                value={client.document_number || client.dni}
+              />
             </ul>
           </Card>
         </div>
@@ -360,19 +470,21 @@ function ClientDetail() {
                 <h4 className="text-sm font-semibold mb-3">Datos generales</h4>
                 <dl className="space-y-0">
                   <DataRow k="Nombre completo" v={client.name} />
-                  <DataRow k="DNI" v={client.dni} />
+                  <DataRow k="Responsable" v={responsibleName} />
                   <DataRow k="Tipo de documento" v={client.document_type || "DNI"} />
                   <DataRow k="N.º de documento" v={client.document_number || client.dni || "—"} />
                   <DataRow k="Teléfono" v={client.phone} />
                   <DataRow k="WhatsApp" v={client.whatsapp || client.phone || "—"} />
                   <DataRow k="Correo" v={client.email ?? "—"} />
+                  <DataRow k="Dirección" v={client.address || "—"} />
                   <DataRow k="Ocupación" v={client.occupation || "—"} />
-                  <DataRow k="Tipo de proceso" v={client.process_type} />
+                  <DataRow k="Materia principal" v={client.process_type} />
                   <DataRow k="Estado" v={client.status} />
                   <DataRow
                     k="Registrado"
                     v={new Date(client.registered_at).toLocaleDateString("es-PE")}
                   />
+                  <DataRow k="Observaciones" v={client.notes || "—"} />
                 </dl>
               </Card>
               <Card className="p-5">
@@ -393,11 +505,29 @@ function ClientDetail() {
                 </h4>
                 <dl className="mt-4 space-y-3">
                   <DataRow
-                    k="Próxima acción"
+                    k="Próxima actividad"
+                    v={
+                      nextAgendaEvent
+                        ? `${nextAgendaEvent.event_date} · ${nextAgendaEvent.title}`
+                        : nextTask?.title ||
+                          clientCases.find((item) => item.next_action)?.next_action ||
+                          "Sin actividad definida"
+                    }
+                  />
+                  <DataRow
+                    k="Próxima acción procesal"
                     v={
                       nextTask?.title ||
                       clientCases.find((item) => item.next_action)?.next_action ||
                       "Sin acción definida"
+                    }
+                  />
+                  <DataRow
+                    k="Último documento"
+                    v={
+                      latestDocument
+                        ? `${latestDocument.name} · ${new Date(latestDocument.created_at).toLocaleDateString("es-PE")}`
+                        : "Sin documentos"
                     }
                   />
                   <DataRow
@@ -561,7 +691,7 @@ function ClientDetail() {
             </Card>
           )}
 
-          {tab === "Documentos sin clasificar" && (
+          {tab === "Documentos" && (
             <div>
               <div className="flex justify-end mb-3">
                 <button
@@ -571,50 +701,58 @@ function ClientDetail() {
                   <FileUp className="h-3.5 w-3.5" /> Subir documento
                 </button>
               </div>
-              {unclassifiedClientDocs.length === 0 ? (
+              {clientDocs.length === 0 ? (
                 <Card className="py-12 text-center text-sm text-muted-foreground">
-                  No hay documentos sin clasificar para este cliente.
+                  No hay documentos registrados para este cliente.
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {unclassifiedClientDocs.map((d) => (
-                    <Card key={d.id} className="p-4 flex items-center gap-3 group">
-                      <div className="grid h-10 w-10 place-items-center rounded-lg bg-red-50 text-red-600 shrink-0">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate">{d.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {d.type} · {d.size} ·{" "}
-                          {new Date(d.uploaded_at).toLocaleDateString("es-PE")}
+                  {clientDocs.map((d) => {
+                    const caseItem = clientCases.find((item) => item.id === d.case_id);
+                    return (
+                      <Card key={d.id} className="p-4 flex items-center gap-3 group">
+                        <div className="grid h-10 w-10 place-items-center rounded-lg bg-red-50 text-red-600 shrink-0">
+                          <FileText className="h-5 w-5" />
                         </div>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button
-                          onClick={() => handleDownload(d)}
-                          className="h-8 w-8 grid place-items-center rounded-md hover:bg-muted/60"
-                        >
-                          <Download className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                        {isAdmin && (
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold truncate">{d.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {d.type} · {d.size} ·{" "}
+                            {new Date(d.uploaded_at).toLocaleDateString("es-PE")}
+                          </div>
+                          <div className="mt-1 text-[10px] text-muted-foreground">
+                            {caseItem
+                              ? `Expediente: ${caseItem.expediente}`
+                              : "Sin expediente asignado"}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
                           <button
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `¿Eliminar "${d.name}"? Esta acción no se puede deshacer.`,
-                                )
-                              ) {
-                                deleteDoc.mutate({ id: d.id, storagePath: d.storage_path });
-                              }
-                            }}
-                            className="h-8 w-8 grid place-items-center rounded-md hover:bg-red-50 hover:text-red-600"
+                            onClick={() => handleDownload(d)}
+                            className="h-8 w-8 grid place-items-center rounded-md hover:bg-muted/60"
                           >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            <Download className="h-4 w-4 text-muted-foreground" />
                           </button>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
+                          {isAdmin && (
+                            <button
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `¿Eliminar "${d.name}"? Esta acción no se puede deshacer.`,
+                                  )
+                                ) {
+                                  deleteDoc.mutate({ id: d.id, storagePath: d.storage_path });
+                                }
+                              }}
+                              className="h-8 w-8 grid place-items-center rounded-md hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </button>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -665,33 +803,6 @@ function ClientDetail() {
                       ))}
                   </tbody>
                 </table>
-              )}
-            </Card>
-          )}
-          {tab === "Reportes" && (
-            <Card className="p-5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <MessageSquareText className="h-4 w-4 text-primary" /> Reportes del cliente
-              </h3>
-              {clientReports.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  No hay comunicaciones registradas para este cliente.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {clientReports.map((report) => (
-                    <article key={report.id} className="rounded-lg border border-border p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <StatusBadge tone="navy">{report.category}</StatusBadge>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(report.created_at).toLocaleString("es-PE")}
-                        </span>
-                      </div>
-                      <h4 className="mt-3 text-sm font-semibold">{report.title}</h4>
-                      <p className="mt-1 line-clamp-3 text-sm text-foreground/80">{report.body}</p>
-                    </article>
-                  ))}
-                </div>
               )}
             </Card>
           )}
@@ -748,46 +859,73 @@ function ClientDetail() {
                 set={(v) => setEditForm((f) => ({ ...f, name: v }))}
                 required
               />
-              <div className="grid grid-cols-2 gap-4">
-                <EF
-                  label="DNI *"
-                  v={editForm.dni}
-                  set={(v) => setEditForm((f) => ({ ...f, dni: v }))}
-                  required
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <ES
+                  label="Tipo de documento *"
+                  v={editForm.document_type}
+                  set={(v) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      document_type: v,
+                      document_number: normalizeDigits(f.document_number).slice(
+                        0,
+                        v === "RUC" ? 11 : v === "DNI" ? 8 : 15,
+                      ),
+                    }))
+                  }
+                  options={[...DOCUMENT_TYPE_OPTIONS]}
                 />
                 <EF
-                  label="Teléfono *"
-                  v={editForm.phone}
-                  set={(v) => setEditForm((f) => ({ ...f, phone: v }))}
+                  label="DNI/RUC *"
+                  v={editForm.document_number}
+                  set={(v) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      document_number: normalizeDigits(v).slice(
+                        0,
+                        f.document_type === "RUC" ? 11 : f.document_type === "DNI" ? 8 : 15,
+                      ),
+                    }))
+                  }
                   required
                 />
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <EF
-                  label="Tipo de documento"
-                  v={editForm.document_type}
-                  set={(v) => setEditForm((f) => ({ ...f, document_type: v }))}
+                  label="Teléfono principal *"
+                  v={editForm.phone}
+                  set={(v) => setEditForm((f) => ({ ...f, phone: normalizeDigits(v).slice(0, 9) }))}
+                  required
                 />
                 <EF
-                  label="N.º de documento"
-                  v={editForm.document_number}
-                  set={(v) => setEditForm((f) => ({ ...f, document_number: v, dni: v }))}
+                  label="Teléfono alternativo"
+                  v={editForm.whatsapp}
+                  set={(v) =>
+                    setEditForm((f) => ({ ...f, whatsapp: normalizeDigits(v).slice(0, 9) }))
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <EF
+                  label="Correo"
+                  v={editForm.email}
+                  set={(v) => setEditForm((f) => ({ ...f, email: v }))}
+                  type="email"
+                />
+                <EF
+                  label="Ocupación"
+                  v={editForm.occupation}
+                  set={(v) => setEditForm((f) => ({ ...f, occupation: v }))}
                 />
               </div>
               <EF
-                label="WhatsApp"
-                v={editForm.whatsapp}
-                set={(v) => setEditForm((f) => ({ ...f, whatsapp: v }))}
-              />
-              <EF
-                label="Correo"
-                v={editForm.email}
-                set={(v) => setEditForm((f) => ({ ...f, email: v }))}
-                type="email"
+                label="Dirección"
+                v={editForm.address}
+                set={(v) => setEditForm((f) => ({ ...f, address: v }))}
               />
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Proceso *
+                  Materia o proceso principal *
                 </label>
                 <input
                   type="text"
@@ -798,11 +936,6 @@ function ClientDetail() {
                   className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
                 />
               </div>
-              <EF
-                label="Ocupación"
-                v={editForm.occupation}
-                set={(v) => setEditForm((f) => ({ ...f, occupation: v }))}
-              />
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Observaciones
@@ -818,8 +951,31 @@ function ClientDetail() {
                 label="Estado *"
                 v={editForm.status}
                 set={(v) => setEditForm((f) => ({ ...f, status: v }))}
-                options={[...STATUS_OPTIONS]}
+                options={[...CLIENT_STATUS_OPTIONS]}
               />
+              {editDuplicateMatches.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <p className="text-sm font-semibold text-amber-900">Posibles duplicados</p>
+                  <div className="mt-2 space-y-1">
+                    {editDuplicateMatches.slice(0, 4).map((match) => (
+                      <div key={match.clientId} className="text-xs text-amber-800">
+                        <span className="font-semibold">{match.clientName}</span> · {match.reason}
+                        {match.strength === "approximate" && " (aproximado)"}
+                      </div>
+                    ))}
+                  </div>
+                  <label className="mt-3 flex items-start gap-2 text-xs text-amber-900">
+                    <input
+                      type="checkbox"
+                      checked={duplicatesAcknowledged}
+                      onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
+                      className="mt-0.5"
+                    />
+                    Confirmo que revise estos clientes y deseo continuar sin sobrescribir datos
+                    existentes.
+                  </label>
+                </div>
+              )}
               {editError && (
                 <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {editError}
