@@ -38,6 +38,7 @@ import {
   type ClientFormValues,
   type ClientRow,
 } from "@/lib/client-validation";
+import { normalizeCaseStatus } from "@/lib/case-validation";
 
 export const Route = createFileRoute("/_app/clientes/")({
   head: () => ({
@@ -61,6 +62,61 @@ const EMPTY_FORM: ClientFormValues = {
 };
 
 const PAGE_SIZE = 10;
+const CLIENT_FILTER_STORAGE_KEY = "advocate-nest.clients.filters";
+
+type ClientListFilters = {
+  searchInput: string;
+  statusFilter: string;
+  caseFilter: string;
+  specialtyFilter: string;
+  responsibleFilter: string;
+  page: number;
+};
+
+const DEFAULT_CLIENT_FILTERS: ClientListFilters = {
+  searchInput: "",
+  statusFilter: "Todos",
+  caseFilter: "Todos",
+  specialtyFilter: "Todos",
+  responsibleFilter: "Todos",
+  page: 1,
+};
+
+function readClientListFilters(): ClientListFilters {
+  if (typeof window === "undefined") return DEFAULT_CLIENT_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(CLIENT_FILTER_STORAGE_KEY);
+    if (!raw) return DEFAULT_CLIENT_FILTERS;
+    const parsed = JSON.parse(raw) as Partial<ClientListFilters>;
+    const caseFilter =
+      parsed.caseFilter === "Con expedientes" ? "Con expedientes activos" : parsed.caseFilter;
+    return {
+      ...DEFAULT_CLIENT_FILTERS,
+      ...parsed,
+      caseFilter: caseFilter ?? DEFAULT_CLIENT_FILTERS.caseFilter,
+      page: Math.max(1, Number(parsed.page) || 1),
+    };
+  } catch {
+    return DEFAULT_CLIENT_FILTERS;
+  }
+}
+
+function normalizeClientStatus(status: string) {
+  return status.trim().toLowerCase();
+}
+
+function isArchivedClientStatus(status: string) {
+  return ["archivado", "cerrado"].includes(normalizeClientStatus(status));
+}
+
+function isInactiveClientStatus(status: string) {
+  const normalized = normalizeClientStatus(status);
+  return normalized !== "activo" && !isArchivedClientStatus(status);
+}
+
+function isActiveCaseStatus(status: string) {
+  return !["Archivado", "Concluido"].includes(normalizeCaseStatus(status));
+}
 
 function ClientsPage() {
   const navigate = useNavigate();
@@ -74,13 +130,14 @@ function ClientsPage() {
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
 
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("Todos");
-  const [caseFilter, setCaseFilter] = useState("Todos");
-  const [specialtyFilter, setSpecialtyFilter] = useState("Todos");
-  const [responsibleFilter, setResponsibleFilter] = useState("Todos");
-  const [page, setPage] = useState(1);
+  const [initialFilters] = useState<ClientListFilters>(() => readClientListFilters());
+  const [searchInput, setSearchInput] = useState(initialFilters.searchInput);
+  const [search, setSearch] = useState(initialFilters.searchInput.trim());
+  const [statusFilter, setStatusFilter] = useState(initialFilters.statusFilter);
+  const [caseFilter, setCaseFilter] = useState(initialFilters.caseFilter);
+  const [specialtyFilter, setSpecialtyFilter] = useState(initialFilters.specialtyFilter);
+  const [responsibleFilter, setResponsibleFilter] = useState(initialFilters.responsibleFilter);
+  const [page, setPage] = useState(initialFilters.page);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showZipImportModal, setShowZipImportModal] = useState(false);
@@ -97,6 +154,20 @@ function ClientsPage() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      CLIENT_FILTER_STORAGE_KEY,
+      JSON.stringify({
+        searchInput,
+        statusFilter,
+        caseFilter,
+        specialtyFilter,
+        responsibleFilter,
+        page,
+      }),
+    );
+  }, [caseFilter, page, responsibleFilter, searchInput, specialtyFilter, statusFilter]);
 
   const profilesById = useMemo(
     () => new Map(profiles.map((item) => [item.id, item.full_name] as const)),
@@ -179,6 +250,7 @@ function ClientsPage() {
     return clients.filter((client) => {
       const documentNumber = normalizeDigits(client.document_number || client.dni);
       const clientCases = casesByClient.get(client.id) ?? [];
+      const activeClientCases = clientCases.filter((item) => isActiveCaseStatus(item.status));
       const clientPayments = paymentsByClient.get(client.id) ?? [];
       const nextActivity = getNextActivity(client.id, clientCases);
       const responsible = getResponsibleLabel(client, clientCases);
@@ -195,7 +267,12 @@ function ClientsPage() {
         client.phone.includes(q) ||
         (client.whatsapp ?? "").includes(q) ||
         (client.email ?? "").toLowerCase().includes(q);
-      const matchStatus = statusFilter === "Todos" || client.status === statusFilter;
+      const matchStatus =
+        statusFilter === "Todos" ||
+        (statusFilter === "Activos" && normalizeClientStatus(client.status) === "activo") ||
+        (statusFilter === "Inactivos" && isInactiveClientStatus(client.status)) ||
+        (statusFilter === "Archivados" && isArchivedClientStatus(client.status)) ||
+        client.status === statusFilter;
       const matchSpecialty =
         specialtyFilter === "Todos" ||
         clientCases.some((item) =>
@@ -209,7 +286,7 @@ function ClientsPage() {
         responsible === responsibleFilter;
       const matchCaseFilter =
         caseFilter === "Todos" ||
-        (caseFilter === "Con expedientes" && clientCases.length > 0) ||
+        (caseFilter === "Con expedientes activos" && activeClientCases.length > 0) ||
         (caseFilter === "Sin expediente" && clientCases.length === 0) ||
         (caseFilter === "Con pagos pendientes" && pendingBalance > 0) ||
         (caseFilter === "Con proxima actividad" && !!nextActivity);
@@ -232,6 +309,12 @@ function ClientsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const hasActiveFilters =
+    searchInput.trim() !== "" ||
+    statusFilter !== DEFAULT_CLIENT_FILTERS.statusFilter ||
+    caseFilter !== DEFAULT_CLIENT_FILTERS.caseFilter ||
+    specialtyFilter !== DEFAULT_CLIENT_FILTERS.specialtyFilter ||
+    responsibleFilter !== DEFAULT_CLIENT_FILTERS.responsibleFilter;
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -268,6 +351,16 @@ function ClientsPage() {
   function closeModal() {
     setShowModal(false);
     resetForm();
+  }
+
+  function clearFilters() {
+    setSearchInput(DEFAULT_CLIENT_FILTERS.searchInput);
+    setSearch(DEFAULT_CLIENT_FILTERS.searchInput);
+    setStatusFilter(DEFAULT_CLIENT_FILTERS.statusFilter);
+    setCaseFilter(DEFAULT_CLIENT_FILTERS.caseFilter);
+    setSpecialtyFilter(DEFAULT_CLIENT_FILTERS.specialtyFilter);
+    setResponsibleFilter(DEFAULT_CLIENT_FILTERS.responsibleFilter);
+    setPage(DEFAULT_CLIENT_FILTERS.page);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -371,7 +464,7 @@ function ClientsPage() {
             }}
             options={[
               "Todos",
-              "Con expedientes",
+              "Con expedientes activos",
               "Sin expediente",
               "Con pagos pendientes",
               "Con proxima actividad",
@@ -399,8 +492,23 @@ function ClientsPage() {
               setStatusFilter(value);
               setPage(1);
             }}
-            options={["Todos", ...CLIENT_STATUS_OPTIONS]}
+            options={[
+              "Todos",
+              "Activos",
+              "Inactivos",
+              "Archivados",
+              ...CLIENT_STATUS_OPTIONS.filter((status) => status !== "Activo"),
+            ]}
           />
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="h-10 rounded-lg border border-border px-3 text-sm font-semibold hover:bg-muted/60"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       </Card>
 
@@ -432,17 +540,44 @@ function ClientsPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
-                      {search
-                        ? "No se encontraron clientes con esos filtros."
-                        : "Aun no hay clientes registrados."}
+                    <td colSpan={8} className="py-12 text-center">
+                      <div className="mx-auto max-w-md">
+                        <p className="text-sm font-semibold text-foreground">
+                          {hasActiveFilters
+                            ? "No se encontraron clientes con esos filtros."
+                            : "Aun no hay clientes registrados."}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {hasActiveFilters
+                            ? "Puedes limpiar los filtros persistidos o registrar un cliente nuevo."
+                            : "Registra el primer cliente o importa su expediente documental."}
+                        </p>
+                        <div className="mt-4 flex justify-center gap-2">
+                          {hasActiveFilters && (
+                            <button
+                              type="button"
+                              onClick={clearFilters}
+                              className="h-9 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted/60"
+                            >
+                              Limpiar filtros
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={openCreate}
+                            className="h-9 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:brightness-110"
+                          >
+                            Nuevo cliente
+                          </button>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   paginated.map((client) => {
                     const clientCases = casesByClient.get(client.id) ?? [];
-                    const activeCases = clientCases.filter(
-                      (item) => !["Archivado", "Concluido", "Sentencia"].includes(item.status),
+                    const activeCases = clientCases.filter((item) =>
+                      isActiveCaseStatus(item.status),
                     );
                     const nextActivity = getNextActivity(client.id, clientCases);
                     const responsible = getResponsibleLabel(client, clientCases);
@@ -522,6 +657,7 @@ function ClientsPage() {
                               to={"/clientes/$id" as never}
                               params={{ id: client.id } as never}
                               className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
+                              aria-label={`Ver ficha de ${client.name}`}
                             >
                               <Eye className="h-3.5 w-3.5" /> Ver
                             </Link>
@@ -529,42 +665,47 @@ function ClientsPage() {
                               type="button"
                               onClick={() => openEdit(client)}
                               className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Editar cliente ${client.name}`}
                             >
                               <Pencil className="h-3.5 w-3.5" /> Editar
                             </button>
                             <button
                               type="button"
                               onClick={() => navigate({ to: "/casos" as never })}
-                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
-                              title="Crear expediente"
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Crear expediente para ${client.name}`}
                             >
                               <Briefcase className="h-3.5 w-3.5" />
+                              Expediente
                             </button>
                             <button
                               type="button"
                               onClick={() => navigate({ to: "/documentos" as never })}
-                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
-                              title="Subir documento"
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Subir documento para ${client.name}`}
                             >
                               <FileUp className="h-3.5 w-3.5" />
+                              Documento
                             </button>
                             {isAdmin && (
                               <button
                                 type="button"
                                 onClick={() => navigate({ to: "/pagos" as never })}
-                                className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
-                                title="Registrar pago"
+                                className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                                aria-label={`Registrar pago de ${client.name}`}
                               >
                                 <CreditCard className="h-3.5 w-3.5" />
+                                Pago
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={() => navigate({ to: "/agenda" as never })}
-                              className="h-8 w-8 grid place-items-center rounded-md border border-border hover:bg-muted/60"
-                              title="Agendar actividad"
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Agendar actividad para ${client.name}`}
                             >
                               <CalendarClock className="h-3.5 w-3.5" />
+                              Agenda
                             </button>
                           </div>
                         </td>
