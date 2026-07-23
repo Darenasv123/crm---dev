@@ -54,6 +54,28 @@ export function useDocuments(typeFilter?: string) {
   });
 }
 
+export function useCaseDocumentCounts(caseIds: string[]) {
+  const normalizedCaseIds = Array.from(new Set(caseIds.filter(Boolean))).sort();
+  return useQuery({
+    queryKey: ["documents", "case-counts", normalizedCaseIds.join(",")],
+    queryFn: async () => {
+      if (normalizedCaseIds.length === 0) return {} as Record<string, number>;
+      const db = await getAuthClient();
+      const { data, error } = await db
+        .from("documents")
+        .select("case_id")
+        .in("case_id", normalizedCaseIds);
+      if (error) throw new Error(error.message);
+      return (data ?? []).reduce<Record<string, number>>((acc, row) => {
+        if (row.case_id) acc[row.case_id] = (acc[row.case_id] ?? 0) + 1;
+        return acc;
+      }, {});
+    },
+    enabled: normalizedCaseIds.length > 0,
+    staleTime: 1000 * 30,
+  });
+}
+
 export function useUploadDocument() {
   const qc = useQueryClient();
   return useMutation({

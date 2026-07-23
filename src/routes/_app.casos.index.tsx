@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useCases, useCreateCase } from "@/hooks/use-cases";
+import { useCases, useCreateCase, useUpdateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
-import { useUploadDocument } from "@/hooks/use-documents";
+import { useCaseDocumentCounts, useUploadDocument } from "@/hooks/use-documents";
 import { useProfiles } from "@/hooks/use-profiles";
+import { useAuth } from "@/hooks/use-auth";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
 import {
   CASE_STATUS_OPTIONS,
@@ -23,6 +24,11 @@ import {
   Loader2,
   FileUp,
   FileText,
+  Eye,
+  Pencil,
+  CreditCard,
+  CalendarPlus,
+  AlertTriangle,
 } from "lucide-react";
 import { useState, useRef, useMemo } from "react";
 
@@ -45,26 +51,37 @@ const statusTone: Record<
   Archivado: "default",
 };
 
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return !!value?.trim();
+}
+
 function CasesPage() {
-  const { data: cases = [], isLoading } = useCases();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "Administrador";
+  const { data: cases = [], isLoading, isError, error } = useCases();
   const { data: clients = [] } = useClients();
   const { data: profiles = [] } = useProfiles();
   const { data: allTasks = [] } = useCaseTasks();
   const createCase = useCreateCase();
+  const updateCase = useUpdateCase();
   const uploadDoc = useUploadDocument();
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
+  const [specialtyFilter, setSpecialtyFilter] = useState("");
   const [matterFilter, setMatterFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [responsibleFilter, setResponsibleFilter] = useState("");
+  const [workflowFilter, setWorkflowFilter] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [sortBy, setSortBy] = useState("recent");
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
+  const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [expedienteFile, setExpedienteFile] = useState<File | null>(null);
   const expedienteRef = useRef<HTMLInputElement>(null);
   // Client search state for the modal
@@ -108,29 +125,47 @@ function CasesPage() {
       )
       .map((task) => task.case_id),
   );
+  const specialties = Array.from(
+    new Set(cases.map((item) => item.legal_area).filter(isNonEmptyString)),
+  ).sort();
   const matters = Array.from(
-    new Set(cases.map((item) => item.legal_area || item.process_type)),
+    new Set(cases.map((item) => item.process_type || item.case_type).filter(isNonEmptyString)),
   ).sort();
   const filtered = cases.filter((c) => {
+    const status = normalizeCaseStatus(c.status);
+    const hasNumber = !!(c.expediente.trim() || c.case_number?.trim());
+    const hasNextAction = !!(c.next_action?.trim() || c.next_hearing);
     const matchSearch =
       !search ||
       (c.clients?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       c.expediente.toLowerCase().includes(search.toLowerCase()) ||
       (c.internal_code ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (c.next_action ?? "").toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !statusFilter || normalizeCaseStatus(c.status) === statusFilter;
+    const matchStatus = !statusFilter || status === statusFilter;
     const matchPriority = !priorityFilter || c.priority === priorityFilter;
-    const matchMatter = !matterFilter || (c.legal_area || c.process_type) === matterFilter;
+    const matchSpecialty = !specialtyFilter || c.legal_area === specialtyFilter;
+    const matchMatter = !matterFilter || (c.process_type || c.case_type) === matterFilter;
     const matchClient = !clientFilter || c.client_id === clientFilter;
-    const matchResponsible = !responsibleFilter || c.responsible_user_id === responsibleFilter;
+    const matchResponsible =
+      !responsibleFilter ||
+      (responsibleFilter === "__unassigned" && !c.responsible_user_id) ||
+      c.responsible_user_id === responsibleFilter;
+    const matchWorkflow =
+      !workflowFilter ||
+      (workflowFilter === "with_next_action" && hasNextAction) ||
+      (workflowFilter === "without_number" && !hasNumber) ||
+      (workflowFilter === "pending_classification" && status === "Pendiente de clasificacion") ||
+      (workflowFilter === "archived" && status === "Archivado");
     const matchOverdue = !overdueOnly || overdueCaseIds.has(c.id);
     return (
       matchSearch &&
       matchStatus &&
       matchPriority &&
+      matchSpecialty &&
       matchMatter &&
       matchClient &&
       matchResponsible &&
+      matchWorkflow &&
       matchOverdue
     );
   });
@@ -144,12 +179,23 @@ function CasesPage() {
       return (a.next_hearing ?? "9999").localeCompare(b.next_hearing ?? "9999");
     if (sortBy === "client")
       return (a.clients?.name ?? "").localeCompare(b.clients?.name ?? "", "es");
-    return b.created_at.localeCompare(a.created_at);
+    return (b.updated_at || b.created_at).localeCompare(a.updated_at || a.created_at);
   });
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paginated = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const { data: documentCounts = {} } = useCaseDocumentCounts(paginated.map((item) => item.id));
+  const hasActiveFilters =
+    !!search ||
+    !!statusFilter ||
+    !!priorityFilter ||
+    !!specialtyFilter ||
+    !!matterFilter ||
+    !!clientFilter ||
+    !!responsibleFilter ||
+    !!workflowFilter ||
+    overdueOnly;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -222,6 +268,35 @@ function CasesPage() {
     }
   }
 
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("");
+    setPriorityFilter("");
+    setSpecialtyFilter("");
+    setMatterFilter("");
+    setClientFilter("");
+    setResponsibleFilter("");
+    setWorkflowFilter("");
+    setOverdueOnly(false);
+    setPage(1);
+  }
+
+  async function handleStatusChange(id: string, status: CaseStatus) {
+    setTableError(null);
+    setChangingStatusId(id);
+    try {
+      await updateCase.mutateAsync({ id, updates: { status } });
+    } catch (err: unknown) {
+      setTableError(
+        err instanceof Error
+          ? `No se pudo cambiar el estado: ${err.message}`
+          : "No se pudo cambiar el estado del expediente.",
+      );
+    } finally {
+      setChangingStatusId(null);
+    }
+  }
+
   return (
     <AppLayout
       title="Expedientes"
@@ -230,17 +305,9 @@ function CasesPage() {
         <>
           <button
             type="button"
-            onClick={() => {
-              setSearch("");
-              setStatusFilter("");
-              setPriorityFilter("");
-              setMatterFilter("");
-              setClientFilter("");
-              setResponsibleFilter("");
-              setOverdueOnly(false);
-              setPage(1);
-            }}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 disabled:opacity-50"
           >
             <Filter className="h-4 w-4" /> Limpiar filtros
           </button>
@@ -301,6 +368,21 @@ function CasesPage() {
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           </div>
           <select
+            value={specialtyFilter}
+            onChange={(e) => {
+              setSpecialtyFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
+          >
+            <option value="">Todas las especialidades</option>
+            {specialties.map((specialty) => (
+              <option key={specialty} value={specialty}>
+                {specialty}
+              </option>
+            ))}
+          </select>
+          <select
             value={matterFilter}
             onChange={(e) => {
               setMatterFilter(e.target.value);
@@ -339,6 +421,7 @@ function CasesPage() {
             className="h-9 max-w-[220px] rounded-lg border border-border bg-card px-3 text-sm outline-none"
           >
             <option value="">Todos los responsables</option>
+            <option value="__unassigned">Sin asignar</option>
             {profiles
               .filter((item) => item.status === "Activo")
               .map((item) => (
@@ -346,6 +429,20 @@ function CasesPage() {
                   {item.full_name}
                 </option>
               ))}
+          </select>
+          <select
+            value={workflowFilter}
+            onChange={(e) => {
+              setWorkflowFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
+          >
+            <option value="">Todos los flujos</option>
+            <option value="with_next_action">Con proxima accion</option>
+            <option value="without_number">Sin numero</option>
+            <option value="pending_classification">Pendientes de clasificacion</option>
+            <option value="archived">Archivados</option>
           </select>
           <select
             value={sortBy}
@@ -371,6 +468,13 @@ function CasesPage() {
         </div>
       </Card>
 
+      {tableError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4" />
+          {tableError}
+        </div>
+      )}
+
       {/* Table */}
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -378,8 +482,13 @@ function CasesPage() {
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
+          ) : isError ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4" />
+              {error instanceof Error ? error.message : "No se pudieron cargar los expedientes."}
+            </div>
           ) : (
-            <table className="min-w-[1180px] w-full text-sm">
+            <table className="min-w-[1380px] w-full text-sm">
               <thead>
                 <tr className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="py-3 pl-5 pr-3 font-semibold">Numero/ref.</th>
@@ -390,6 +499,7 @@ function CasesPage() {
                   <th className="py-3 px-3 font-semibold">Juzgado</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
                   <th className="py-3 px-3 font-semibold">Proxima accion</th>
+                  <th className="py-3 px-3 font-semibold">Documentos</th>
                   <th className="py-3 px-3 font-semibold">Actualizado</th>
                   <th className="py-3 pr-5 font-semibold text-right">Acciones</th>
                 </tr>
@@ -397,7 +507,7 @@ function CasesPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">
                       {search
                         ? "No se encontraron expedientes."
                         : "Aún no hay expedientes registrados."}
@@ -460,6 +570,11 @@ function CasesPage() {
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </td>
+                        <td className="py-3 px-3">
+                          <span className="inline-flex h-7 min-w-8 items-center justify-center rounded-md border border-border px-2 text-xs font-semibold">
+                            {documentCounts[c.id] ?? 0}
+                          </span>
+                        </td>
                         <td className="py-3 px-3 text-xs text-muted-foreground">
                           {formatPeruDate(c.updated_at || c.created_at, {
                             day: "2-digit",
@@ -467,14 +582,66 @@ function CasesPage() {
                             year: "numeric",
                           })}
                         </td>
-                        <td className="py-3 pr-5 text-right">
-                          <Link
-                            to={"/casos/$id" as never}
-                            params={{ id: c.id } as never}
-                            className="inline-flex items-center gap-1 h-8 px-3 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
-                          >
-                            Ver / editar
-                          </Link>
+                        <td className="py-3 pr-5">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Link
+                              to={"/casos/$id" as never}
+                              params={{ id: c.id } as never}
+                              className="inline-flex h-8 items-center gap-1 rounded-md bg-primary/10 px-2.5 text-xs font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground"
+                              aria-label={`Ver expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Ver
+                            </Link>
+                            <Link
+                              to={"/casos/$id" as never}
+                              params={{ id: c.id } as never}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Editar expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar
+                            </Link>
+                            <Link
+                              to={"/documentos" as never}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Subir documento al expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                            >
+                              <FileUp className="h-3.5 w-3.5" />
+                              Documento
+                            </Link>
+                            <Link
+                              to={"/agenda" as never}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                              aria-label={`Agendar actividad del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                            >
+                              <CalendarPlus className="h-3.5 w-3.5" />
+                              Agenda
+                            </Link>
+                            {isAdmin && (
+                              <Link
+                                to={"/pagos" as never}
+                                className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
+                                aria-label={`Registrar pago del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                              >
+                                <CreditCard className="h-3.5 w-3.5" />
+                                Pago
+                              </Link>
+                            )}
+                            <select
+                              value={status}
+                              onChange={(event) =>
+                                handleStatusChange(c.id, event.target.value as CaseStatus)
+                              }
+                              disabled={changingStatusId === c.id}
+                              aria-label={`Cambiar estado del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
+                              className="h-8 rounded-md border border-border bg-card px-2 text-xs font-semibold outline-none disabled:opacity-50"
+                            >
+                              {CASE_STATUS_OPTIONS.map((option) => (
+                                <option key={option}>{option}</option>
+                              ))}
+                            </select>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -484,7 +651,7 @@ function CasesPage() {
             </table>
           )}
         </div>
-        {!isLoading && (
+        {!isLoading && !isError && (
           <div className="px-5 py-3 border-t border-border text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span>
