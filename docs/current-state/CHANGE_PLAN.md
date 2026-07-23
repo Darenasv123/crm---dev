@@ -54,3 +54,25 @@ Siguiente orden recomendado para registrar clientes reales:
 4. Subir documentos uno por uno, asociandolos a cliente y expediente cuando corresponda.
 5. Usar `Reportes` solo con cliente/expediente ya revisado.
 6. Retomar importacion ZIP solo cuando exista batch backend o una cola con revision humana.
+
+## Fase 9 - Cierre funcional del core CRM completado el 2026-07-23
+
+Completado:
+
+- Menu principal simplificado y herramientas de importacion reubicadas.
+- Dashboard accionable para trabajo diario.
+- Clientes: filtros persistentes, creacion/edicion completa, duplicados, ficha por pestanas y archivado seguro.
+- Expedientes: lenguaje unificado, filtros operativos, conteos, acciones rapidas, edicion completa y cambio de estado.
+- ZIP individual: confirmacion editable, fusion de propuestas, estados validos, errores visibles y documentos sin clasificar cuando corresponde.
+- React Query: invalidaciones compartidas para reducir pantallas desactualizadas despues de mutaciones.
+- Documentos/layout: mejoras de accesibilidad y scroll horizontal.
+- Tests: cobertura agregada para invalidaciones compartidas.
+
+Siguiente orden recomendado:
+
+1. Probar manualmente con usuario real administrador y personal.
+2. Validar Supabase remoto, RLS y Storage con datos reales.
+3. Registrar clientes reales manualmente desde Clientes.
+4. Crear expedientes manuales y asociar documentos revisados.
+5. Usar ZIP solo para importacion individual controlada, no para carga masiva.
+6. Planificar auditoria persistida, backend de importacion, OCR real y optimizacion de chunks antes de produccion final.

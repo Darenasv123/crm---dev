@@ -63,3 +63,29 @@ Remoto Supabase: `tests/remote-validation.test.ts` existe, pero `npm test` lo ex
 - Reglas finales de auditoria persistida en base de datos.
 
 Importante: no se debe afirmar que un flujo externo funciona en produccion solo porque los tests unitarios pasan.
+
+## Verificacion core CRM - 2026-07-23
+
+Comandos ejecutados:
+
+- `.\\node_modules\\.bin\\tsc.cmd --noEmit --pretty false`: exit code 0.
+- `npm.cmd test`: exit code 0. 11 archivos, 143 tests pasaron.
+- `npm.cmd run lint`: exit code 0. Persisten solo 7 warnings Fast Refresh historicos en UI/auth.
+- `npm.cmd run build`: exit code 0. Build client, SSR y Nitro Cloudflare completado.
+
+Prueba nueva agregada:
+
+- `tests/query-invalidation.test.ts`: cubre invalidaciones compartidas para listados, detalles y claves core del CRM.
+
+Warnings no bloqueantes observados:
+
+- `vite-tsconfig-paths` avisa de deprecacion futura.
+- Vite advierte chunks mayores a 500 kB.
+- Nitro/Vite informa tiempos altos de plugins e `inlineDynamicImports` ignorado por `codeSplitting`.
+
+No confirmado todavia:
+
+- Login manual con credenciales reales.
+- Prueba E2E visual completa desde navegador.
+- Supabase remoto con politicas reales para todos los roles.
+- Google Calendar, Groq/OpenAI, Google Drive u otros servicios externos con credenciales vigentes.

@@ -56,3 +56,18 @@ Archivo: `src/routes/_app.configuracion.index.tsx`. Admin-only por UI (`:104`). 
 
 Busqueda global consulta multiples tablas (`src/components/global-search.tsx:126` a `:177`). Chatbot usa clientes, casos, pagos admin y agenda (`src/components/chatbot.tsx:44` a `:50`) y puede crear eventos (`src/components/chatbot.tsx:193`).
 
+## Actualizacion core CRM - 2026-07-23
+
+La ruta interna `/casos` se conserva por compatibilidad tecnica, pero la UI visible debe hablar de Expedientes.
+
+- `/_app`: menu simplificado. Importaciones y Revision IA dejan de aparecer como ventanas principales. Pagos y Configuracion siguen restringidos a administradores.
+- `/`: Dashboard operativo con acciones rapidas, proximas actuaciones, pagos por cobrar, expedientes de trabajo, reportes recientes y alertas de importacion.
+- `/clientes`: busqueda y filtros persistentes por estado, proceso, contacto, expedientes activos y registros incompletos. Acciones visibles para editar, abrir ficha, crear cliente, importar CSV/XLSX y ZIP individual.
+- `/clientes/$id`: ficha por pestanas con resumen, expedientes, documentos, agenda, pagos y reportes. El administrador archiva clientes en lugar de eliminarlos desde la interfaz.
+- `/casos`: listado de Expedientes con filtros por estado, prioridad, especialidad, materia, responsable y flujo de trabajo. Incluye conteo de documentos por expediente, cambio de estado y acciones rapidas.
+- `/casos/$id`: detalle de Expediente con edicion completa, resumen, documentos, pagos, reportes, partes, actuaciones y tareas.
+- `/documentos`: tabla con scroll horizontal y acciones accesibles para ver, descargar, asociar y eliminar documentos segun permisos.
+- `/reportes`: se mantiene como modulo compartido de administradores y personal para publicar, visualizar y descargar reportes por cliente/expediente.
+- `/configuracion`: concentra herramientas administrativas, importacion historica y opciones de servicios externos.
+
+Las rutas eliminadas del menu no fueron borradas fisicamente; quedan fuera del flujo principal para no romper enlaces internos ni historial tecnico.

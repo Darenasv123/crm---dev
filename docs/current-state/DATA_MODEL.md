@@ -88,3 +88,16 @@ No hay tabla de configuracion confirmada. Preferencias de notificacion usan `loc
 - Numero de expediente: `cases.expediente` es not null; `case_number` agregado es nullable.
 - Expedientes provisionales: No confirmado; UI exige `N Expediente *` (`src/routes/_app.casos.index.tsx:620`) y DB exige `expediente not null`.
 
+## Actualizacion core CRM - 2026-07-23
+
+No hubo cambios de esquema en esta fase. El trabajo fue de capa de aplicacion, validacion y sincronizacion de cache.
+
+Uso actual por modulo:
+
+- Clientes: usa `clients` y conserva los campos existentes. La UI permite archivar con `status = "Archivado"` para evitar borrado duro accidental desde la ficha.
+- Expedientes: usa `cases` como entidad canonica. Los estados ingresados desde formularios e importacion se normalizan al catalogo soportado antes de persistir.
+- Documentos: `documents.case_id` puede quedar `null` cuando el ZIP no permite identificar un expediente con suficiente confianza. Esto evita asociaciones incorrectas.
+- Reportes: `client_reports` sigue siendo la bitacora por cliente y expediente, con `author_id` asociado al usuario autenticado.
+- Pagos y Agenda: no cambiaron tablas; se conectaron a invalidaciones compartidas para refrescar vistas relacionadas.
+
+No se crearon migraciones nuevas, funciones SQL nuevas ni tablas de auditoria. La auditoria persistida sigue siendo una recomendacion pendiente si el estudio requiere trazabilidad formal de ediciones, archivados y eliminaciones.

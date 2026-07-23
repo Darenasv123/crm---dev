@@ -103,3 +103,25 @@ Riesgos pendientes:
 - No se probo flujo E2E autenticado con Playwright; la app responde en localhost, pero la revision visual final queda para prueba manual con usuario real.
 - Los warnings Fast Refresh historicos siguen presentes y no bloquean build.
 - Sigue pendiente mover procesamiento pesado ZIP/OCR a backend si se retoma importacion masiva.
+
+## Actualizacion core CRM - 2026-07-23
+
+Mitigado en esta fase:
+
+- Menu operativo simplificado: Importaciones y Revision IA ya no compiten como ventanas principales.
+- Edicion completa de clientes y expedientes desde UI, con validaciones y mensajes de error.
+- Archivado seguro de clientes desde ficha en lugar de borrado duro.
+- Dashboard reemplazado por una vista accionable basada en datos reales del CRM.
+- Filtros persistentes y estados vacios utiles en Clientes y Expedientes.
+- ZIP individual con confirmacion editable, estados normalizados y documentos sin clasificar cuando la asociacion no es segura.
+- Invalidador compartido de React Query para refrescar clientes, expedientes, documentos, agenda, pagos y reportes despues de mutaciones.
+- Accesibilidad basica en layout y Documentos: botones con tipo, etiquetas y seleccion por teclado.
+
+Riesgos pendientes:
+
+- Falta prueba E2E autenticada con usuario real, permisos reales y datos reales del estudio.
+- La importacion ZIP masiva sigue siendo un riesgo si se usa para lotes grandes; debe migrarse a backend/cola antes de reactivarla como flujo principal.
+- OCR/PDF real y deteccion avanzada de juzgado siguen pendientes si el estudio espera analisis documental automatico confiable.
+- No existe tabla de auditoria formal para registrar cambios sensibles.
+- Persisten warnings historicos de Fast Refresh en componentes UI y hook de auth.
+- El build todavia advierte chunks grandes por dependencias pesadas de importacion/documentos.

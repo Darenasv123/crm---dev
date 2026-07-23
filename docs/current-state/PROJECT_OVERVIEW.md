@@ -99,4 +99,19 @@ Dependencia transitiva usada directamente: `jszip` se importa en `src/lib/import
 
 `README.md:17`, `README.md:74` y `docs/import-workflow.md:5` describen importaciones como demostrativas/sin persistencia. El codigo actual de ZIP si persiste clientes, expedientes y documentos en `src/components/zip-import.tsx:572`, `src/components/zip-import.tsx:600` y `src/components/zip-import.tsx:647`.
 
+## Actualizacion core CRM - 2026-07-23
+
+El CRM quedo enfocado en operacion diaria del estudio. La navegacion principal visible queda centrada en Dashboard, Clientes, Expedientes, Documentos, Agenda, Pagos, Reportes y Configuracion. Las herramientas de importacion CSV/XLSX/ZIP ya no viven como ventanas principales: el uso operativo queda en Clientes y las herramientas administrativas quedan dentro de Configuracion.
+
+Cambios principales de esta fase:
+
+- Dashboard accionable con KPIs, agenda, pagos pendientes, expedientes por atender, reportes recientes y alertas reales de importacion para administradores.
+- Clientes con filtros persistentes, alta/edicion completa, validaciones, advertencias de duplicados, ficha por pestanas y archivado seguro en lugar de borrado duro desde UI.
+- Expedientes con lenguaje unificado, filtros persistentes, conteo de documentos, acciones rapidas, cambio de estado y formulario completo de creacion/edicion.
+- ZIP individual mejorado con confirmacion editable, fusion de propuestas, estados normalizados, documentos sin clasificar cuando no hay expediente claro y enlaces de resultado.
+- Reportes, documentos, pagos, agenda y busqueda conectados a invalidaciones compartidas de React Query para reducir datos desactualizados.
+- Accesibilidad responsive reforzada en layout y Documentos, incluyendo botones etiquetados, teclado en filas y scroll horizontal.
+
+No se agregaron migraciones ni columnas nuevas en esta fase. Se reutilizo el modelo actual de Supabase y se incorporo el valor operativo `Archivado` en `clients.status` desde la UI.
+
 
