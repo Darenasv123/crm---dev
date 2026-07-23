@@ -26,11 +26,12 @@ export function useFindingSourceReference(findingId?: string | null) {
   });
 }
 
-export function useImportJobsFilter() {
+export function useImportJobsFilter(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["import-jobs-filter"],
     queryFn: fetchImportJobsForFilter,
     staleTime: 1000 * 60 * 5,
+    enabled: options.enabled ?? true,
   });
 }
 
