@@ -427,14 +427,15 @@ export function normalizeProcessType(raw?: string | null): string | undefined {
 
 export function normalizeCaseStatus(raw?: string | null): string {
   const n = normalizedText(raw ?? "");
-  if (!n) return "Consulta";
-  if (n.includes("AUDIENCIA")) return "Audiencia";
-  if (n.includes("SENTENCIA")) return "Sentencia";
+  if (!n) return "Pendiente de clasificacion";
+  if (n.includes("AUDIENCIA")) return "En audiencia";
+  if (n.includes("SENTENCIA")) return "Concluido";
   if (n.includes("ARCHIV")) return "Archivado";
-  if (n.includes("DEMANDA")) return "Demanda presentada";
-  if (n.includes("DOCUMENT")) return "Documentacion";
-  if (n.includes("TRAMIT") || n.includes("PROCES")) return "En proceso";
-  return "Consulta";
+  if (n.includes("EJECUC")) return "En ejecucion";
+  if (n.includes("DEMANDA") || n.includes("PRESENT")) return "Presentado";
+  if (n.includes("DOCUMENT") || n.includes("PREPAR")) return "En preparacion";
+  if (n.includes("TRAMIT") || n.includes("PROCES")) return "En tramite";
+  return "Pendiente de clasificacion";
 }
 
 function cleanDetectedName(value?: string): string | undefined {

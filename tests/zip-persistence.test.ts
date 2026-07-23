@@ -283,7 +283,7 @@ describe("persistZipCandidate", () => {
     expect(fakeStorage.uploads).toHaveLength(0);
   });
 
-  it("crea expediente provisional para documentos dejados sin clasificar", async () => {
+  it("deja sin expediente los documentos marcados como sin clasificar", async () => {
     const file = makeFile({ zipPath: "CLIENTE/doc.txt", path: "CLIENTE/doc.txt" });
     const candidate = makeCandidate({
       files: [file],
@@ -292,8 +292,9 @@ describe("persistZipCandidate", () => {
     });
     const { result, fakeDb } = await run(candidate);
     expect(result.status).toBe("success");
-    const caseInsert = fakeDb.inserts.find((item) => item.table === "cases");
-    expect(caseInsert?.payload.case_stage).toBe("pendiente_revision");
-    expect(result.caseIds[0].caseNumber).toBeNull();
+    expect(fakeDb.inserts.some((item) => item.table === "cases")).toBe(false);
+    const documentInsert = fakeDb.inserts.find((item) => item.table === "documents");
+    expect(documentInsert?.payload.case_id).toBeNull();
+    expect(result.documentIds[0].caseId).toBeNull();
   });
 });

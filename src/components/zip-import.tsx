@@ -2,6 +2,7 @@
  * zip-import.tsx
  * Componente de importaciÃ³n de carpetas de clientes desde ZIP (Google Drive).
  */
+import { Link } from "@tanstack/react-router";
 import { useRef, useState, useCallback } from "react";
 import {
   Upload,
@@ -21,9 +22,14 @@ import {
   SkipForward,
   UserPlus,
   RefreshCw,
+  GitMerge,
 } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { getAuthClient, supabase } from "@/lib/supabase";
+import {
+  CASE_STATUS_OPTIONS,
+  normalizeCaseStatus as normalizeReviewCaseStatus,
+} from "@/lib/case-validation";
 import {
   parseSingleClientZipFile,
   SINGLE_CLIENT_ZIP_ERROR,
@@ -61,7 +67,7 @@ interface FolderImportResult {
   errors?: string[];
   compensations?: string[];
   caseIds?: Array<{ id: string; title: string; caseNumber: string | null }>;
-  documentIds?: Array<{ id: string; name: string; storagePath: string; caseId: string }>;
+  documentIds?: Array<{ id: string; name: string; storagePath: string; caseId: string | null }>;
   failedFiles?: Array<{ name: string; path: string; error: string }>;
   warnings?: string[];
 }
@@ -90,6 +96,21 @@ const DUPLICATE_ICONS: Record<DuplicateAction, typeof UserPlus> = {
   attach_docs: FileText,
   skip: SkipForward,
 };
+
+const ZIP_DOCUMENT_TYPE_OPTIONS = [
+  "DNI",
+  "DEMANDA",
+  "CONTESTACIÓN",
+  "ANEXOS",
+  "CARGO",
+  "RESOLUCIÓN",
+  "SENTENCIA",
+  "AUDIENCIA",
+  "LIQUIDACIÓN",
+  "ESCRITO",
+  "NOTIFICACIÓN",
+  "OTROS",
+];
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -241,7 +262,7 @@ function CandidateCard({
           matter: "Pendiente de clasificacion",
           specialty: "Pendiente de clasificacion",
           juzgado: "Por determinar",
-          status: "pendiente_revision",
+          status: "Pendiente de clasificacion",
           origin: "importacion_zip_individual",
           originPath: candidate.folderPath,
           confidence: 0.3,
@@ -262,6 +283,40 @@ function CandidateCard({
 
   function moveFile(path: string, caseId: string) {
     onUpdate(index, moveDocumentBetweenCases(caseCandidates, documentCaseMap, path, caseId));
+  }
+
+  function patchFile(path: string, updates: Partial<ZipFileEntry>) {
+    onUpdate(index, {
+      files: candidate.files.map((file) =>
+        file.zipPath === path ? { ...file, ...updates } : file,
+      ),
+    });
+  }
+
+  function mergeCaseIntoPrevious(caseId: string) {
+    const currentIndex = caseCandidates.findIndex((caseCandidate) => caseCandidate.id === caseId);
+    const source = caseCandidates[currentIndex];
+    const target =
+      caseCandidates[currentIndex - 1] ?? caseCandidates.find((item) => item.id !== caseId);
+    if (!source || !target) return;
+
+    const nextMap = { ...documentCaseMap };
+    for (const path of source.documentPaths) nextMap[path] = target.id;
+    onUpdate(index, {
+      documentCaseMap: nextMap,
+      caseCandidates: caseCandidates
+        .filter((caseCandidate) => caseCandidate.id !== source.id)
+        .map((caseCandidate) =>
+          caseCandidate.id === target.id
+            ? {
+                ...caseCandidate,
+                documentPaths: Array.from(
+                  new Set([...caseCandidate.documentPaths, ...source.documentPaths]),
+                ),
+              }
+            : caseCandidate,
+        ),
+    });
   }
 
   function deleteCase(caseId: string) {
@@ -384,9 +439,38 @@ function CandidateCard({
                     }
                   />
                   {evidence && (
-                    <p className="mt-1 truncate text-[9px] text-muted-foreground">
-                      {evidence.sourceName} · {Math.round(evidence.confidence * 100)}%
-                    </p>
+                    <div className="mt-1 space-y-1">
+                      <p className="truncate text-[9px] text-muted-foreground">
+                        {evidence.sourceName} · {Math.round(evidence.confidence * 100)}%
+                      </p>
+                      <p className="line-clamp-2 text-[9px] text-muted-foreground">
+                        {evidence.evidence}
+                      </p>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdate(index, {
+                              edits: { ...eff, [field]: String(evidence.value) },
+                            })
+                          }
+                          className="rounded border border-emerald-200 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 hover:bg-emerald-50"
+                        >
+                          Aceptar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdate(index, {
+                              edits: { ...eff, [field]: "" },
+                            })
+                          }
+                          className="rounded border border-border px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground hover:bg-muted/60"
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               );
@@ -507,19 +591,10 @@ function CandidateCard({
                     />
                     <select
                       className="h-8 rounded border border-border bg-card px-2 text-xs"
-                      value={caseCandidate.status}
+                      value={normalizeReviewCaseStatus(caseCandidate.status)}
                       onChange={(e) => patchCase(caseCandidate.id, { status: e.target.value })}
                     >
-                      {[
-                        "pendiente_revision",
-                        "Consulta",
-                        "Documentacion",
-                        "Demanda presentada",
-                        "En proceso",
-                        "Audiencia",
-                        "Sentencia",
-                        "Archivado",
-                      ].map((status) => (
+                      {CASE_STATUS_OPTIONS.map((status) => (
                         <option key={status}>{status}</option>
                       ))}
                     </select>
@@ -567,15 +642,43 @@ function CandidateCard({
                       {caseCandidate.warnings.join(" ")}
                     </p>
                   )}
+                  {caseCandidate.detectedFields &&
+                    Object.entries(caseCandidate.detectedFields).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {Object.entries(caseCandidate.detectedFields).map(([field, evidence]) =>
+                          evidence ? (
+                            <span
+                              key={field}
+                              title={evidence.evidence}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-600"
+                            >
+                              {field}: {evidence.sourceName} ·{" "}
+                              {Math.round(evidence.confidence * 100)}%
+                            </span>
+                          ) : null,
+                        )}
+                      </div>
+                    )}
                   <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                     <span>{files.length} documento(s) asignado(s)</span>
-                    <button
-                      type="button"
-                      onClick={() => deleteCase(caseCandidate.id)}
-                      className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-3 w-3" /> Eliminar expediente
-                    </button>
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      {caseCandidates.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => mergeCaseIntoPrevious(caseCandidate.id)}
+                          className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-muted-foreground hover:bg-muted/60"
+                        >
+                          <GitMerge className="h-3 w-3" /> Fusionar
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => deleteCase(caseCandidate.id)}
+                        className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3 w-3" /> Eliminar expediente
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -597,7 +700,9 @@ function CandidateCard({
                       <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate font-medium">{f.name}</span>
                     </div>
-                    <p className="truncate pl-5 text-[10px] text-muted-foreground">{f.zipPath}</p>
+                    <p className="truncate pl-5 text-[10px] text-muted-foreground">
+                      {f.zipPath} · {f.ext || "sin extension"}
+                    </p>
                   </div>
                   <select
                     className="h-7 w-44 rounded border border-border bg-card px-2 text-[10px]"
@@ -613,9 +718,15 @@ function CandidateCard({
                   </select>
                   <span className="text-muted-foreground">{formatSize(f.size)}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-600">
-                      {f.docType}
-                    </span>
+                    <select
+                      value={f.docType}
+                      onChange={(event) => patchFile(f.zipPath, { docType: event.target.value })}
+                      className="h-7 w-32 rounded border border-border bg-card px-2 text-[9px] font-medium text-slate-600"
+                    >
+                      {ZIP_DOCUMENT_TYPE_OPTIONS.map((type) => (
+                        <option key={type}>{type}</option>
+                      ))}
+                    </select>
                     <ExtractionBadge status={f.extractionStatus} />
                     <button
                       type="button"
@@ -979,7 +1090,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 {results.map((r, i) => (
                   <div
                     key={i}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${r.status === "success" ? "border-emerald-200 bg-emerald-50" : r.status === "partial" ? "border-amber-200 bg-amber-50" : r.status === "failed" ? "border-red-200 bg-red-50" : "border-muted bg-muted/20"}`}
+                    className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs ${r.status === "success" ? "border-emerald-200 bg-emerald-50" : r.status === "partial" ? "border-amber-200 bg-amber-50" : r.status === "failed" ? "border-red-200 bg-red-50" : "border-muted bg-muted/20"}`}
                   >
                     {r.status === "success" && (
                       <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -996,6 +1107,33 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                     )}
                     {r.status === "failed" && r.error && (
                       <span className="text-red-600 truncate max-w-[200px]">{r.error}</span>
+                    )}
+                    {r.clientId && (
+                      <Link
+                        to={"/clientes/$id" as never}
+                        params={{ id: r.clientId } as never}
+                        className="rounded border border-emerald-300 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        Abrir cliente
+                      </Link>
+                    )}
+                    {r.caseIds?.slice(0, 2).map((caseItem) => (
+                      <Link
+                        key={caseItem.id}
+                        to={"/casos/$id" as never}
+                        params={{ id: caseItem.id } as never}
+                        className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
+                      >
+                        {caseItem.caseNumber ?? "Expediente"}
+                      </Link>
+                    ))}
+                    {(r.documentIds?.length ?? 0) > 0 && (
+                      <Link
+                        to={"/documentos" as never}
+                        className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
+                      >
+                        Documentos ({r.documentIds?.length})
+                      </Link>
                     )}
                   </div>
                 ))}

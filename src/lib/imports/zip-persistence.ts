@@ -70,7 +70,7 @@ export interface PersistZipCandidateResult {
   errors: string[];
   compensations: string[];
   caseIds: Array<{ id: string; title: string; caseNumber: string | null }>;
-  documentIds: Array<{ id: string; name: string; storagePath: string; caseId: string }>;
+  documentIds: Array<{ id: string; name: string; storagePath: string; caseId: string | null }>;
   failedFiles: Array<{ name: string; path: string; error: string }>;
   warnings: string[];
 }
@@ -140,7 +140,7 @@ function activeFilesForCase(
 }
 
 function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
-  if (candidate.caseCandidates?.length) return candidate.caseCandidates;
+  if (candidate.caseCandidates) return candidate.caseCandidates;
   const activePaths = candidate.files.map((file) => file.zipPath);
   return [
     {
@@ -174,30 +174,6 @@ function prepareCasesForPersistence(candidate: ReviewCandidate): {
 
   if (!candidate.caseCandidates?.length && caseCandidates[0]) {
     for (const file of activeFiles) documentCaseMap[file.zipPath] = caseCandidates[0].id;
-  }
-
-  const unclassified = activeFiles.filter(
-    (file) => !documentCaseMap[file.zipPath] || documentCaseMap[file.zipPath] === "__unclassified",
-  );
-  if (unclassified.length > 0) {
-    const provisional: ZipCaseCandidate = {
-      id: "pending-unclassified",
-      title: "Expediente pendiente de clasificacion",
-      caseNumber: null,
-      processType: PENDING_PROCESS_TYPE,
-      matter: PENDING_PROCESS_TYPE,
-      specialty: PENDING_PROCESS_TYPE,
-      juzgado: "Por determinar",
-      status: "pendiente_revision",
-      origin: "importacion_zip_individual",
-      originPath: candidate.folderPath,
-      confidence: 0.3,
-      warnings: ["Documentos dejados sin clasificar durante la revision."],
-      documentPaths: unclassified.map((file) => file.zipPath),
-      isProvisional: true,
-    };
-    caseCandidates.push(provisional);
-    for (const file of unclassified) documentCaseMap[file.zipPath] = provisional.id;
   }
 
   return { caseCandidates, documentCaseMap };
@@ -345,7 +321,7 @@ async function documentAlreadyExists(
 async function insertDocument(
   db: DbClient,
   clientId: string,
-  caseId: string,
+  caseId: string | null,
   docFile: ZipFileEntry,
   storagePath: string,
 ): Promise<string> {
@@ -438,7 +414,63 @@ export async function persistZipCandidate(
     };
   }
 
+  if (!clientId) {
+    const msg = "No se pudo determinar el cliente para importar documentos.";
+    return {
+      folderName: candidate.folderName,
+      status: "failed",
+      error: msg,
+      documentsImported: 0,
+      documentsSkipped: 0,
+      errors: [msg],
+      compensations,
+      caseIds,
+      documentIds,
+      failedFiles,
+      warnings,
+    };
+  }
+
+  const persistedClientId = clientId;
   const { documentCaseMap, caseCandidates } = prepareCasesForPersistence(candidate);
+  const activeFiles = candidate.files.filter(
+    (file) => file.data.byteLength > 0 && !candidate.excludedFiles.has(file.zipPath),
+  );
+
+  async function persistDocumentFile(docFile: ZipFileEntry, caseId: string | null) {
+    if (
+      docFile.checksum &&
+      (await documentAlreadyExists(db, persistedClientId, docFile.checksum))
+    ) {
+      documentsSkipped++;
+      return;
+    }
+
+    const storagePath = `${persistedClientId}/${now()}_${safeNamePart(docFile.name)}`;
+    let uploaded = false;
+    try {
+      const blob = new Blob([docFile.data], { type: mimeTypeFor(docFile.ext) });
+      const { error: uploadError } = await storageBucket.upload(storagePath, blob, {
+        upsert: false,
+        contentType: mimeTypeFor(docFile.ext),
+      });
+      if (uploadError) throw new Error(`Subir ${docFile.name}: ${uploadError.message}`);
+      uploaded = true;
+      const documentId = await insertDocument(db, persistedClientId, caseId, docFile, storagePath);
+      documentIds.push({ id: documentId, name: docFile.name, storagePath, caseId });
+      documentsImported++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : `Error importando ${docFile.name}`;
+      errors.push(msg);
+      failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
+      if (uploaded) {
+        const { error: removeError } = await storageBucket.remove([storagePath]);
+        if (removeError)
+          compensations.push(`No se pudo retirar ${storagePath}: ${removeError.message}`);
+        else compensations.push(`Storage revertido: ${storagePath}`);
+      }
+    }
+  }
 
   for (const caseCandidate of caseCandidates) {
     const files = activeFilesForCase(candidate, caseCandidate, documentCaseMap);
@@ -457,37 +489,15 @@ export async function persistZipCandidate(
       continue;
     }
 
-    for (const docFile of files) {
-      if (docFile.checksum && (await documentAlreadyExists(db, clientId, docFile.checksum))) {
-        documentsSkipped++;
-        continue;
-      }
+    for (const docFile of files) await persistDocumentFile(docFile, caseId);
+  }
 
-      const storagePath = `${clientId}/${now()}_${safeNamePart(docFile.name)}`;
-      let uploaded = false;
-      try {
-        const blob = new Blob([docFile.data], { type: mimeTypeFor(docFile.ext) });
-        const { error: uploadError } = await storageBucket.upload(storagePath, blob, {
-          upsert: false,
-          contentType: mimeTypeFor(docFile.ext),
-        });
-        if (uploadError) throw new Error(`Subir ${docFile.name}: ${uploadError.message}`);
-        uploaded = true;
-        const documentId = await insertDocument(db, clientId, caseId, docFile, storagePath);
-        documentIds.push({ id: documentId, name: docFile.name, storagePath, caseId });
-        documentsImported++;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : `Error importando ${docFile.name}`;
-        errors.push(msg);
-        failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
-        if (uploaded) {
-          const { error: removeError } = await storageBucket.remove([storagePath]);
-          if (removeError)
-            compensations.push(`No se pudo retirar ${storagePath}: ${removeError.message}`);
-          else compensations.push(`Storage revertido: ${storagePath}`);
-        }
-      }
-    }
+  const unclassifiedFiles = activeFiles.filter(
+    (file) => !documentCaseMap[file.zipPath] || documentCaseMap[file.zipPath] === "__unclassified",
+  );
+  if (unclassifiedFiles.length > 0) {
+    warnings.push(`${unclassifiedFiles.length} documento(s) importado(s) sin expediente asignado.`);
+    for (const docFile of unclassifiedFiles) await persistDocumentFile(docFile, null);
   }
 
   const status: PersistStatus =
