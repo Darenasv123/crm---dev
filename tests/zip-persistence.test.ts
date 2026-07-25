@@ -66,15 +66,28 @@ type FakeChain = {
   update: (payload: Record<string, unknown>) => FakeChain;
   select: () => FakeChain;
   eq: (column: string, value: unknown) => FakeChain;
-  single: () => Promise<{ data: { id: string } | null; error: { message: string } | null }>;
-  maybeSingle: () => Promise<{ data: { id: string } | null; error: { message: string } | null }>;
+  single: () => Promise<{
+    data: { id: string } | null;
+    error: { message: string; code?: string } | null;
+  }>;
+  maybeSingle: () => Promise<{
+    data: { id: string } | null;
+    error: { message: string; code?: string } | null;
+  }>;
   then: (
-    resolve: (value: { data: { id: string } | null; error: { message: string } | null }) => void,
+    resolve: (value: {
+      data: { id: string } | null;
+      error: { message: string; code?: string } | null;
+    }) => void,
   ) => void;
 };
 type FakeOptions = {
   clientError?: string;
   caseError?: string;
+  /** PostgreSQL/Supabase error code to attach to caseError */
+  caseErrorCode?: string;
+  /** When true, case INSERT returns data:null, error:null (RLS silent block) */
+  caseNullData?: boolean;
   documentError?: string;
   duplicate?: boolean;
 };
@@ -111,7 +124,14 @@ function makeDb(options: FakeOptions = {}) {
         if (table === "documents" && options.documentError)
           return { data: null, error: { message: options.documentError } };
         if (table === "cases" && options.caseError)
-          return { data: null, error: { message: options.caseError } };
+          return {
+            data: null,
+            error: {
+              message: options.caseError,
+              code: options.caseErrorCode,
+            },
+          };
+        if (table === "cases" && options.caseNullData) return { data: null, error: null };
         if (table === "clients") return { data: { id: "client-1" }, error: null };
         if (table === "cases") return { data: { id: "case-1" }, error: null };
         return { data: { id: "row-1" }, error: null };
@@ -207,23 +227,27 @@ describe("persistZipCandidate", () => {
     expect(fakeStorage.uploads).toHaveLength(0);
   });
 
-  it("no sube documentos si falla la creacion de expediente", async () => {
+  it("no sube documentos si falla la creación de expediente", async () => {
     const { result, fakeStorage } = await run(makeCandidate(), { caseError: "case denied" });
-    expect(result.status).toBe("failed");
+    // Client was created but case failed → partial (not failed).
+    // Previously this returned "failed" which was the bug: 0 clientes importados.
+    expect(result.status).toBe("partial");
     expect(fakeStorage.uploads).toHaveLength(0);
   });
 
-  it("marca fallido si falla Storage upload", async () => {
+  it("marca parcial si falla Storage upload (cliente creado)", async () => {
     const { result, fakeDb } = await run(makeCandidate(), {}, { uploadError: "bucket denied" });
-    expect(result.status).toBe("failed");
+    // Client and case were created, only the storage upload failed → partial.
+    expect(result.status).toBe("partial");
     expect(fakeDb.inserts.filter((i) => i.table === "documents")).toHaveLength(0);
   });
 
-  it("compensa Storage si falla el insert de documento", async () => {
+  it("compensa Storage si falla el insert de documento (marca parcial)", async () => {
     const { result, fakeStorage } = await run(makeCandidate(), {
       documentError: "documents denied",
     });
-    expect(result.status).toBe("failed");
+    // Client and case were created; document DB insert failed → partial.
+    expect(result.status).toBe("partial");
     expect(fakeStorage.uploads).toHaveLength(1);
     expect(fakeStorage.removals).toEqual(fakeStorage.uploads);
     expect(result.compensations[0]).toMatch(/Storage revertido/);
@@ -296,5 +320,156 @@ describe("persistZipCandidate", () => {
     const documentInsert = fakeDb.inserts.find((item) => item.table === "documents");
     expect(documentInsert?.payload.case_id).toBeNull();
     expect(result.documentIds[0].caseId).toBeNull();
+  });
+
+  // ── Tests para la corrección del bug de importación parcial ──────────────
+
+  it("1. cliente creado y expediente fallido → status parcial, no fallido", async () => {
+    const { result } = await run(makeCandidate(), { caseError: "some db error" });
+    // Client was created (no clientError), but the case failed.
+    // The result must be "partial", NOT "failed".
+    expect(result.status).toBe("partial");
+    // clientId must be present so the UI can show "Abrir cliente".
+    expect(result.clientId).toBeDefined();
+    // No documents should be uploaded (case was never created).
+    expect(result.documentsImported).toBe(0);
+    // The error must be captured.
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it("2. reintento reutiliza el cliente ya creado sin duplicarlo", async () => {
+    const candidate = makeCandidate();
+    const fakeDbCtx = makeDb();
+    const fakeStorage = makeStorage();
+
+    // Simulate a retry: existingClientIdOverride is provided.
+    const result = await persistZipCandidate({
+      candidate,
+      db: fakeDbCtx.db,
+      storageBucket: fakeStorage.bucket,
+      sourceFileName: "clientes.zip",
+      buildInitials: () => "CP",
+      randomColor: () => "oklch(0.55 0.13 235)",
+      now: () => 1000,
+      existingClientIdOverride: "client-already-exists",
+    });
+
+    // No new client should have been inserted.
+    expect(fakeDbCtx.inserts.filter((i) => i.table === "clients")).toHaveLength(0);
+    // The returned clientId must be the override value.
+    expect(result.clientId).toBe("client-already-exists");
+    // clientAlreadyExisted flag must be set.
+    expect(result.clientAlreadyExisted).toBe(true);
+    // The case and documents should proceed normally.
+    expect(result.status).toBe("success");
+  });
+
+  it("3. violación UNIQUE 23505 en expediente → error estructurado, no mensaje truncado", async () => {
+    const { result } = await run(makeCandidate(), {
+      caseError: 'duplicate key value violates unique constraint "cases_expediente_key"',
+      caseErrorCode: "23505",
+    });
+    expect(result.status).toBe("partial");
+    // errorDetail must be set with the structured information.
+    expect(result.errorDetail).toBeDefined();
+    expect(result.errorDetail?.code).toBe("23505");
+    expect(result.errorDetail?.stage).toBe("case");
+    // The summary must NOT start with "Crear expediente" (the old truncated message).
+    expect(result.errorDetail?.summary).not.toMatch(/^Crear expediente/);
+    // Must mention the case number.
+    expect(result.errorDetail?.summary).toMatch(/01234-2024-0-JR-FC-01/);
+  });
+
+  it("4. violación NOT NULL 23502 en expediente → error estructurado con acción recomendada", async () => {
+    const { result } = await run(makeCandidate(), {
+      caseError: 'null value in column "expediente" violates not-null constraint',
+      caseErrorCode: "23502",
+    });
+    expect(result.status).toBe("partial");
+    expect(result.errorDetail?.code).toBe("23502");
+    expect(result.errorDetail?.action).toBeTruthy();
+  });
+
+  it("5. error RLS 42501 en expediente → error estructurado con acción de sesión", async () => {
+    const { result } = await run(makeCandidate(), {
+      caseError: "insufficient privilege",
+      caseErrorCode: "42501",
+    });
+    expect(result.status).toBe("partial");
+    expect(result.errorDetail?.code).toBe("42501");
+    expect(result.errorDetail?.summary).toMatch(/permisos/i);
+  });
+
+  it("6. error UNIQUE 23505 en expediente → summary no empieza con «Crear expediente»", async () => {
+    const { result } = await run(makeCandidate(), {
+      caseError: "duplicate key",
+      caseErrorCode: "23505",
+    });
+    // This is the core regression test for the reported bug:
+    // the old code reached ensureSupabaseData and produced "Crear expediente
+    // Expediente 070…" as the visible error message.
+    expect(result.error).not.toMatch(/^Crear expediente/);
+  });
+
+  it("7. documentos ya subidos (checksum duplicate) no se repiten en reintento", async () => {
+    const { result, fakeStorage } = await run(makeCandidate(), { duplicate: true });
+    expect(result.documentsSkipped).toBe(1);
+    expect(fakeStorage.uploads).toHaveLength(0);
+    expect(result.documentsImported).toBe(0);
+  });
+
+  it("8. importación parcial reportada correctamente: clientId presente, status partial", async () => {
+    const { result } = await run(makeCandidate(), { caseError: "any error" });
+    expect(result.status).toBe("partial");
+    expect(result.clientId).toBeDefined();
+    // failedFiles should list the documents that could not be uploaded because
+    // the case was never created.
+    expect(result.failedFiles.length).toBeGreaterThan(0);
+  });
+
+  it("9. data null sin error → error estructurado PGRST000, no throw genérico de ensureSupabaseData", async () => {
+    // Simulate the exact failure mode: INSERT succeeds silently (RLS) returning
+    // data: null and error: null.
+    const fakeDbCtx = makeDb({ caseNullData: true });
+    const fakeStorage = makeStorage();
+    const result = await persistZipCandidate({
+      candidate: makeCandidate(),
+      db: fakeDbCtx.db,
+      storageBucket: fakeStorage.bucket,
+      sourceFileName: "clientes.zip",
+      buildInitials: () => "CP",
+      randomColor: () => "oklch(0.55 0.13 235)",
+      now: () => 1000,
+    });
+    expect(result.status).toBe("partial");
+    // The error must NOT be the raw ensureSupabaseData message.
+    expect(result.error).not.toMatch(/^Crear expediente.*Supabase no devolvió datos/);
+    expect(result.errorDetail?.code).toBe("PGRST000");
+  });
+
+  it("10. segundo reintento no duplica cliente ni documentos ya completados", async () => {
+    // Simulate a second retry: client already exists, document already in DB.
+    const candidate = makeCandidate();
+    const fakeDbCtx = makeDb({ duplicate: true });
+    const fakeStorage = makeStorage();
+
+    const result = await persistZipCandidate({
+      candidate,
+      db: fakeDbCtx.db,
+      storageBucket: fakeStorage.bucket,
+      sourceFileName: "clientes.zip",
+      buildInitials: () => "CP",
+      randomColor: () => "oklch(0.55 0.13 235)",
+      now: () => 1000,
+      existingClientIdOverride: "client-already-exists",
+    });
+
+    // No new client insert.
+    expect(fakeDbCtx.inserts.filter((i) => i.table === "clients")).toHaveLength(0);
+    // Document was skipped (checksum match).
+    expect(result.documentsSkipped).toBe(1);
+    expect(fakeStorage.uploads).toHaveLength(0);
+    // Overall status is success (case created, doc skipped — not an error).
+    expect(result.status).toBe("success");
   });
 });

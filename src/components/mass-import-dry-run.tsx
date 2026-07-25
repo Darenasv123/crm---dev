@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { AlertCircle, FileSearch, Loader2 } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { getAuthClient } from "@/lib/supabase";
@@ -54,7 +54,7 @@ export function MassImportDryRun() {
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo generar el diagnostico.");
+      setError(err instanceof Error ? err.message : "No se pudo generar el diagnóstico.");
     } finally {
       setLoading(false);
     }
@@ -64,7 +64,7 @@ export function MassImportDryRun() {
     <Card className="mt-6 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold">Diagnostico de importacion masiva anterior</h2>
+          <h2 className="text-base font-semibold">Diagnóstico de importación masiva anterior</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Vista dry-run: identifica registros creados por el importador ZIP masivo anterior y los
             objetos de Storage asociados. No elimina registros.
@@ -102,7 +102,7 @@ export function MassImportDryRun() {
           </div>
           {plan.items.length === 0 ? (
             <p className="rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-              No se encontraron clientes con origen de importacion ZIP masiva anterior.
+              No se encontraron clientes con origen de importación ZIP masiva anterior.
             </p>
           ) : (
             <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
@@ -123,18 +123,18 @@ export function MassImportDryRun() {
                     <InfoBlock title="Rutas ZIP" values={item.zipPaths} />
                     <InfoBlock title="Hashes" values={item.hashes.slice(0, 20)} />
                     <InfoBlock
-                      title="Storage que se incluiria en limpieza"
+                      title="Storage que se incluiría en la limpieza"
                       values={item.storagePaths}
                     />
                     <InfoBlock
-                      title="Expedientes que se incluirian"
+                      title="Expedientes que se incluirían"
                       values={item.cases.map(
                         (caseRow) =>
-                          `${caseRow.id} · ${caseRow.case_number ?? caseRow.expediente ?? caseRow.case_name ?? "Sin numero"}`,
+                          `${caseRow.id} · ${caseRow.case_number ?? caseRow.expediente ?? caseRow.case_name ?? "Sin número"}`,
                       )}
                     />
                     <InfoBlock
-                      title="Documentos que se incluirian"
+                      title="Documentos que se incluirían"
                       values={item.documents.map((doc) => `${doc.id} · ${doc.name}`)}
                     />
                   </div>

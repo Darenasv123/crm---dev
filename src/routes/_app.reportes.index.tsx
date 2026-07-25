@@ -43,17 +43,17 @@ type ReportFormState = { category: ReportCategory; case_id: string; title: strin
 
 type ReportExportData = {
   clientName: string;
-  dni: string;
-  phone: string;
-  email: string;
-  processType: string;
+  dni: string | null;
+  phone: string | null;
+  email: string | null;
+  processType: string | null;
   category: string;
   title: string;
   body: string;
   createdAt: string;
   caseExpediente: string;
-  caseProcess: string;
-  caseStatus: string;
+  caseProcess: string | null;
+  caseStatus: string | null;
 };
 
 const caseStatusTone: Record<
@@ -241,14 +241,14 @@ async function createReportJpg(data: ReportExportData) {
   ctx.lineTo(1144, 232);
   ctx.stroke();
 
-  const fields = [
+  const fields: [string, string][] = [
     ["Cliente", data.clientName],
-    ["DNI", data.dni],
-    ["Teléfono", data.phone],
-    ["Correo", data.email],
-    ["Proceso", data.processType],
+    ["DNI", data.dni ?? "—"],
+    ["Teléfono", data.phone ?? "—"],
+    ["Correo", data.email ?? "—"],
+    ["Proceso", data.processType ?? "—"],
     ["Expediente", data.caseExpediente],
-    ["Estado del expediente", data.caseStatus],
+    ["Estado del expediente", data.caseStatus ?? "—"],
     ["Tipo de reporte", data.category],
   ];
 
@@ -425,14 +425,14 @@ ${docxParagraph("Estudio Jurídico Arenas")}
 ${docxParagraph(data.createdAt)}
 ${docxParagraph("Datos del cliente", "heading")}
 ${docxParagraph(`Cliente: ${data.clientName}`)}
-${docxParagraph(`DNI: ${data.dni}`)}
-${docxParagraph(`Teléfono: ${data.phone}`)}
-${docxParagraph(`Correo: ${data.email}`)}
-${docxParagraph(`Proceso: ${data.processType}`)}
+${docxParagraph(`DNI: ${data.dni ?? "—"}`)}
+${docxParagraph(`Teléfono: ${data.phone ?? "—"}`)}
+${docxParagraph(`Correo: ${data.email ?? "—"}`)}
+${docxParagraph(`Proceso: ${data.processType ?? "—"}`)}
 ${docxParagraph("Expediente relacionado", "heading")}
 ${docxParagraph(`Expediente: ${data.caseExpediente}`)}
-${docxParagraph(`Materia: ${data.caseProcess}`)}
-${docxParagraph(`Estado: ${data.caseStatus}`)}
+${docxParagraph(`Materia: ${data.caseProcess ?? "—"}`)}
+${docxParagraph(`Estado: ${data.caseStatus ?? "—"}`)}
 ${docxParagraph("Reporte", "heading")}
 ${docxParagraph(`Tipo: ${data.category}`)}
 ${docxParagraph(data.title, "heading")}
@@ -482,8 +482,8 @@ function ReportsPage() {
     return clients.filter(
       (c) =>
         c.name.toLowerCase().includes(term) ||
-        c.dni.includes(term) ||
-        c.process_type.toLowerCase().includes(term),
+        (c.dni ?? "").includes(term) ||
+        (c.process_type ?? "").toLowerCase().includes(term),
     );
   }, [clients, search]);
 

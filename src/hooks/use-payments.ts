@@ -18,7 +18,7 @@ export function validatePaymentInput(
   if (!input.service.trim()) throw new Error("Describe el servicio asociado al pago.");
   if (!Number.isFinite(fees) || fees <= 0) throw new Error("Los honorarios deben ser mayores a 0.");
   if (!Number.isInteger(installments) || installments < 1) {
-    throw new Error("El numero de cuotas debe ser al menos 1.");
+    throw new Error("El número de cuotas debe ser al menos 1.");
   }
 }
 

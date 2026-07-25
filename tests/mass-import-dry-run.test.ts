@@ -5,7 +5,7 @@ import {
 } from "@/lib/imports/mass-import-dry-run";
 
 describe("mass import dry-run", () => {
-  it("identifica clientes creados por importacion ZIP masiva anterior", () => {
+  it("identifica clientes creados por importación ZIP masiva anterior", () => {
     expect(
       isMassZipImportClient({
         id: "c1",

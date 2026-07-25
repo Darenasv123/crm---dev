@@ -1,10 +1,11 @@
-﻿/**
+/**
  * Pure ZIP import analysis for folders exported from Google Drive.
  * This module does not talk to React or Supabase, so the import can be
  * reviewed before any CRM data is persisted.
  */
 import JSZip from "jszip";
 import mammoth from "mammoth";
+import { formatCount, repairMojibake, stripUtf8Bom } from "@/lib/text-utils";
 
 export const ALLOWED_EXTENSIONS = new Set([
   ".pdf",
@@ -65,11 +66,14 @@ const PROCESS_TYPE_RULES: Array<{ label: string; terms: string[] }> = [
   { label: "Alimentos", terms: ["ALIMENTO", "PRORRATEO", "PENSION"] },
   { label: "Aumento de alimentos", terms: ["AUMENTO DE ALIMENTO"] },
   { label: "Tenencia", terms: ["TENENCIA"] },
-  { label: "Regimen de visitas", terms: ["REGIMEN DE VISIT", "REGIMEN VISIT", "VISITAS"] },
-  { label: "Filiacion", terms: ["FILIACION"] },
+  { label: "Régimen de visitas", terms: ["REGIMEN DE VISIT", "REGIMEN VISIT", "VISITAS"] },
+  { label: "Filiación", terms: ["FILIACION"] },
   { label: "Divorcio", terms: ["DIVORCIO", "DIV"] },
   { label: "Violencia familiar", terms: ["VIOLENCIA FAMILIAR", "VIOLENCIA CONTRA"] },
-  { label: "Ejecucion de acta", terms: ["EJECUCION DE ACTA", "ACTA DE CONCILIACION"] },
+  {
+    label: "Ejecución de acta de conciliación",
+    terms: ["EJECUCION DE ACTA", "ACTA DE CONCILIACION"],
+  },
   { label: "Civil", terms: ["CIVIL"] },
   { label: "Penal", terms: ["PENAL", "FISCALIA", "FISCALÍA"] },
   { label: "Laboral", terms: ["LABORAL"] },
@@ -293,7 +297,7 @@ export async function sha256(buffer: ArrayBuffer): Promise<string> {
 }
 
 export function normalizeFolderName(raw: string): string {
-  return raw.replace(DRIVE_SUFFIXES, "").replace(/\s+/g, " ").trim();
+  return repairMojibake(raw).replace(DRIVE_SUFFIXES, "").replace(/\s+/g, " ").trim();
 }
 
 export function shouldIgnorePath(pathSegment: string): boolean {
@@ -384,7 +388,7 @@ export function classifyFolderNode(
   if (isGenericContainerName(node.name) && directDocCount === 0 && childCount > 0) {
     kind = "container";
     confidence = Math.min(0.95, 0.65 + childCount * 0.05);
-    evidence.push("Nombre generico de contenedor", `${childCount} subcarpeta(s)`);
+    evidence.push("Nombre genérico de contenedor", formatCount(childCount, "subcarpeta"));
   } else if (
     looksLikeExpedienteFolder(node.name) &&
     (directDocCount > 0 || node.totalDescendantDocs > 0)
@@ -397,7 +401,7 @@ export function classifyFolderNode(
     confidence = 0.72;
     evidence.push(
       "Nombre compatible con persona o empresa",
-      `${node.totalDescendantDocs} documento(s)`,
+      formatCount(node.totalDescendantDocs, "documento"),
     );
     if (directDocCount > 0) evidence.push("Contiene documentos directos");
     if (childCount > 0) evidence.push("Contiene subcarpetas revisables");
@@ -408,7 +412,7 @@ export function classifyFolderNode(
   } else if (node.totalDescendantDocs > 0) {
     kind = "unknown";
     confidence = 0.45;
-    evidence.push("Contiene documentos, requiere revision");
+    evidence.push("Contiene documentos, requiere revisión");
   }
 
   if (kind === "unknown") warnings.push("No se pudo clasificar la carpeta con confianza alta.");
@@ -427,15 +431,15 @@ export function normalizeProcessType(raw?: string | null): string | undefined {
 
 export function normalizeCaseStatus(raw?: string | null): string {
   const n = normalizedText(raw ?? "");
-  if (!n) return "Pendiente de clasificacion";
+  if (!n) return "Pendiente de clasificación";
   if (n.includes("AUDIENCIA")) return "En audiencia";
   if (n.includes("SENTENCIA")) return "Concluido";
   if (n.includes("ARCHIV")) return "Archivado";
-  if (n.includes("EJECUC")) return "En ejecucion";
+  if (n.includes("EJECUC")) return "En ejecución";
   if (n.includes("DEMANDA") || n.includes("PRESENT")) return "Presentado";
-  if (n.includes("DOCUMENT") || n.includes("PREPAR")) return "En preparacion";
-  if (n.includes("TRAMIT") || n.includes("PROCES")) return "En tramite";
-  return "Pendiente de clasificacion";
+  if (n.includes("DOCUMENT") || n.includes("PREPAR")) return "En preparación";
+  if (n.includes("TRAMIT") || n.includes("PROCES")) return "En trámite";
+  return "Pendiente de clasificación";
 }
 
 function cleanDetectedName(value?: string): string | undefined {
@@ -486,7 +490,7 @@ function mergeFieldEvidence<T extends Record<string, FieldEvidence | undefined>>
 
 function specialtyForMatter(matter?: string | null): string {
   const normalized = normalizedText(matter ?? "");
-  if (!normalized || normalized.includes("PENDIENTE")) return "Pendiente de clasificacion";
+  if (!normalized || normalized.includes("PENDIENTE")) return "Pendiente de clasificación";
   if (
     ["ALIMENTO", "TENENCIA", "VISIT", "FILIACION", "DIVORCIO", "VIOLENCIA"].some((term) =>
       normalized.includes(term),
@@ -503,7 +507,7 @@ function specialtyForMatter(matter?: string | null): string {
     return "Constitucional";
   if (normalized.includes("ADMINISTRATIVO")) return "Administrativo";
   if (normalized.includes("CIVIL")) return "Civil";
-  return matter ?? "Pendiente de clasificacion";
+  return matter ?? "Pendiente de clasificación";
 }
 
 function inferClientRole(
@@ -731,7 +735,7 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string | null> {
         if (decoded.trim()) textParts.push(decoded);
       }
     }
-    return textParts.length > 0 ? textParts.join(" ") : null;
+    return textParts.length > 0 ? repairMojibake(textParts.join(" ").trim()) || null : null;
   } catch {
     return null;
   }
@@ -740,7 +744,7 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string | null> {
 async function extractDocxText(buffer: ArrayBuffer): Promise<string | null> {
   try {
     const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-    return result.value?.trim() || null;
+    return repairMojibake(result.value?.trim() ?? "") || null;
   } catch {
     return null;
   }
@@ -750,6 +754,15 @@ function folderPathFromZipPath(zipPath: string): string {
   const parts = zipPath.split("/").filter(Boolean);
   parts.pop();
   return parts.join("/");
+}
+
+function decodeTextBuffer(buffer: ArrayBuffer): string {
+  const utf8 = stripUtf8Bom(new TextDecoder("utf-8", { fatal: false }).decode(buffer));
+  const repairedUtf8 = repairMojibake(utf8);
+  if (!utf8.includes("\uFFFD")) return repairedUtf8;
+
+  const legacy = stripUtf8Bom(new TextDecoder("windows-1252", { fatal: false }).decode(buffer));
+  return repairMojibake(legacy);
 }
 
 export function buildZipTree(filePaths: string[]): ZipTreeNode[] {
@@ -915,7 +928,7 @@ function buildCaseCandidates(
       group.files.map((file) => file.fieldEvidence?.case),
     );
     const processType =
-      perFileDetected.processType ?? detected.processType ?? "Pendiente de clasificacion";
+      perFileDetected.processType ?? detected.processType ?? "Pendiente de clasificación";
     const matter = processType;
     const specialty = specialtyForMatter(matter);
     const juzgado = perFileDetected.juzgado ?? detected.juzgado ?? "Por determinar";
@@ -927,9 +940,9 @@ function buildCaseCandidates(
       ? `Expediente ${group.caseNumber}`
       : key.startsWith("folder:")
         ? normalizeFolderName(
-            group.originPath.split("/").pop() ?? "Expediente pendiente de clasificacion",
+            group.originPath.split("/").pop() ?? "Expediente pendiente de clasificación",
           )
-        : "Expediente pendiente de clasificacion";
+        : "Expediente pendiente de clasificación";
     const clientRole = inferClientRole(clientName, demandante, demandado);
     cases.push({
       id: group.caseNumber ? `exp-${group.caseNumber}` : `pending-${pendingCount}`,
@@ -949,7 +962,7 @@ function buildCaseCandidates(
       originPath: group.originPath,
       confidence: group.caseNumber ? 0.85 : key.startsWith("folder:") ? 0.62 : 0.4,
       warnings: isProvisional
-        ? ["No se detecto numero de expediente. Se creara como pendiente de revision."]
+        ? ["No se detectó número de expediente. Se creará como pendiente de revisión."]
         : [],
       documentPaths: group.files.map((file) => file.zipPath),
       isProvisional,
@@ -1058,7 +1071,7 @@ async function processRawFile(raw: RawZipFile): Promise<ZipFileEntry> {
       extractionStatus = "ocr_required";
     }
   } else if ([".txt", ".rtf", ".odt"].includes(raw.ext)) {
-    extractedText = new TextDecoder("utf-8", { fatal: false }).decode(rawData);
+    extractedText = decodeTextBuffer(rawData);
     extractionStatus = extractedText.trim() ? "extracted" : "empty";
   }
 
@@ -1104,28 +1117,29 @@ export async function parseZipFile(
   const rawFiles: RawZipFile[] = [];
 
   zip.forEach((relativePath, zipFile) => {
-    const parts = relativePath.split("/").filter(Boolean);
+    const safePath = repairMojibake(relativePath);
+    const parts = safePath.split("/").filter(Boolean);
     if (parts.length === 0) return;
 
     if (parts.some((part) => shouldIgnorePath(part))) {
-      ignoredPaths.push(relativePath);
+      ignoredPaths.push(safePath);
       return;
     }
 
     if (zipFile.dir) return;
 
-    const fileName = parts[parts.length - 1];
+    const fileName = repairMojibake(parts[parts.length - 1]);
     const ext = fileName.includes(".") ? `.${fileName.split(".").pop()!.toLowerCase()}` : "";
     if (!ALLOWED_EXTENSIONS.has(ext)) {
-      ignoredPaths.push(relativePath);
+      ignoredPaths.push(safePath);
       return;
     }
 
     rawFiles.push({
-      zipPath: relativePath,
+      zipPath: safePath,
       name: fileName,
       ext,
-      folderPath: folderPathFromZipPath(relativePath),
+      folderPath: folderPathFromZipPath(safePath),
       zipFile,
     });
   });
@@ -1145,7 +1159,7 @@ export async function parseZipFile(
         const processed = await processRawFile(raw);
         processedFiles.push(processed);
         if (processed.extractionStatus === "empty")
-          warnings.push(`Archivo vacio: ${processed.name}`);
+          warnings.push(`Archivo vacío: ${processed.name}`);
         if (processed.extractionStatus === "error")
           warnings.push(`No se pudo extraer texto de: ${processed.name}`);
       } catch (err) {
@@ -1166,10 +1180,11 @@ export async function parseZipFile(
       );
     }
     const ocrPending = processedFiles.filter((f) => f.extractionStatus === "ocr_required").length;
-    if (ocrPending > 0) warnings.push(`${ocrPending} archivo(s) requieren OCR para extraer texto.`);
+    if (ocrPending > 0)
+      warnings.push(`${formatCount(ocrPending, "archivo")} requieren OCR para extraer texto.`);
     if (caseCandidates.some((c) => c.isProvisional))
       warnings.push(
-        "Hay documentos sin numero de expediente; se agruparon como pendiente de clasificacion.",
+        "Hay documentos sin número de expediente; se agruparon como pendiente de clasificación.",
       );
 
     const documentCaseMap = Object.fromEntries(
@@ -1265,7 +1280,7 @@ export function detectDuplicates(
       matches.push({
         clientId: client.id,
         clientName: client.name,
-        matchReason: `Telefono coincide (${detectedPhone}) y nombres similares`,
+        matchReason: `Teléfono coincide (${detectedPhone}) y nombres similares`,
         matchStrength: "name_phone",
       });
       continue;

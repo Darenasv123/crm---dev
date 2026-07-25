@@ -28,7 +28,7 @@ describe("document upload validation", () => {
   it("rejects empty and oversized files", () => {
     expect(() =>
       validateDocumentFile({ name: "dni.pdf", size: 0, type: "application/pdf" }),
-    ).toThrow(/vacio/);
+    ).toThrow(/vacío/);
     expect(() =>
       validateDocumentFile({
         name: "archivo.pdf",
@@ -191,9 +191,9 @@ describe("client validation", () => {
 
 describe("case validation", () => {
   it("normalizes legacy statuses to the current workflow", () => {
-    expect(normalizeCaseStatus("Consulta")).toBe("Pendiente de clasificacion");
-    expect(normalizeCaseStatus("Documentacion")).toBe("En preparacion");
-    expect(normalizeCaseStatus("En proceso")).toBe("En tramite");
+    expect(normalizeCaseStatus("Consulta")).toBe("Pendiente de clasificación");
+    expect(normalizeCaseStatus("Documentacion")).toBe("En preparación");
+    expect(normalizeCaseStatus("En proceso")).toBe("En trámite");
     expect(normalizeCaseStatus("Sentencia")).toBe("Concluido");
   });
 
@@ -216,6 +216,6 @@ describe("case validation", () => {
       }).expediente,
     ).toBe("");
 
-    expect(displayCaseNumber("", null)).toBe("Sin numero");
+    expect(displayCaseNumber("", null)).toBe("Sin número");
   });
 });

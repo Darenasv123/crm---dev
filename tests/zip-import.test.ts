@@ -1,9 +1,9 @@
-﻿/**
+/**
  * Tests para el importador ZIP de carpetas de clientes (Google Drive).
  * Cubre: lectura del ZIP, carpetas anidadas, nombres con tildes,
- * agrupaciÃ³n, DOCX, PDF, archivos vacÃ­os, ZIP corrupto, duplicados,
- * mÃºltiples carpetas del mismo cliente, varios expedientes, y
- * error parcial sin cancelar toda la importaciÃ³n.
+ * agrupación, DOCX, PDF, archivos vacíos, ZIP corrupto, duplicados,
+ * múltiples carpetas del mismo cliente, varios expedientes, y
+ * error parcial sin cancelar toda la importación.
  */
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import JSZip from "jszip";
@@ -27,7 +27,7 @@ import {
   type ExistingClient,
 } from "@/lib/imports/zip-import";
 
-// â”€â”€â”€ Helpers de test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers de test ──────────────────────────────────────────────────────────
 
 /** Construye un ArrayBuffer de ZIP en memoria */
 async function buildZip(
@@ -45,7 +45,7 @@ function corruptBuffer(): ArrayBuffer {
   return new Uint8Array([0x00, 0x01, 0x02, 0xde, 0xad, 0xbe, 0xef]).buffer;
 }
 
-// â”€â”€â”€ Mock crypto.subtle.digest para entorno Node â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Mock crypto.subtle.digest para entorno Node ──────────────────────────────
 
 beforeAll(() => {
   // Node 18+ tiene crypto.subtle, pero por si acaso lo aseguramos
@@ -56,31 +56,31 @@ beforeAll(() => {
   }
 });
 
-// â”€â”€â”€ normalizeFolderName â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── normalizeFolderName ──────────────────────────────────────────────────────
 
 describe("normalizeFolderName", () => {
   it("elimina espacios repetidos", () => {
     expect(normalizeFolderName("YLLA  NEGRON  YENI")).toBe("YLLA NEGRON YENI");
   });
 
-  it("elimina sufijo numÃ©rico de Google Drive", () => {
+  it("elimina sufijo numérico de Google Drive", () => {
     expect(normalizeFolderName("GARCIA TORRES (1)")).toBe("GARCIA TORRES");
   });
 
   it("conserva tildes y caracteres especiales", () => {
-    expect(normalizeFolderName("Ã‘UÃ‘EZ LÃ“PEZ MARÃA")).toBe("Ã‘UÃ‘EZ LÃ“PEZ MARÃA");
+    expect(normalizeFolderName("ÑUÑEZ LÓPEZ MARÍA")).toBe("ÑUÑEZ LÓPEZ MARÍA");
   });
 
   it("recorta espacios al inicio y final", () => {
     expect(normalizeFolderName("  RODRIGUEZ PEREZ  ")).toBe("RODRIGUEZ PEREZ");
   });
 
-  it("conserva mayÃºsculas sin modificar", () => {
+  it("conserva mayúsculas sin modificar", () => {
     expect(normalizeFolderName("YLLA NEGRON YENI")).toBe("YLLA NEGRON YENI");
   });
 });
 
-// â”€â”€â”€ shouldIgnorePath â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── shouldIgnorePath ─────────────────────────────────────────────────────────
 
 describe("shouldIgnorePath", () => {
   it("ignora archivos ocultos (punto inicial)", () => {
@@ -104,11 +104,11 @@ describe("shouldIgnorePath", () => {
   });
 });
 
-// â”€â”€â”€ classifyDocument â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── classifyDocument ─────────────────────────────────────────────────────────
 
 describe("classifyDocument", () => {
   it("detecta DEMANDA", () => {
-    expect(classifyDocument("DEMANDA DE EJECUCIÃ“N.docx")).toBe("DEMANDA");
+    expect(classifyDocument("DEMANDA DE EJECUCIÓN.docx")).toBe("DEMANDA");
   });
 
   it("detecta CARGO", () => {
@@ -123,12 +123,12 @@ describe("classifyDocument", () => {
     expect(classifyDocument("Sentencia Final.pdf")).toBe("SENTENCIA");
   });
 
-  it("detecta RESOLUCIÃ“N con tilde", () => {
-    expect(classifyDocument("RESOLUCIÃ“N-2024.pdf")).toBe("RESOLUCIÓN");
+  it("detecta RESOLUCIÓN con tilde", () => {
+    expect(classifyDocument("RESOLUCIÓN-2024.pdf")).toBe("RESOLUCIÓN");
   });
 
-  it("detecta NOTIFICACIÃ“N", () => {
-    expect(classifyDocument("notificaciÃ³n-juzgado.pdf")).toBe("NOTIFICACIÓN");
+  it("detecta NOTIFICACIÓN", () => {
+    expect(classifyDocument("notificación-juzgado.pdf")).toBe("NOTIFICACIÓN");
   });
 
   it("clasifica como OTROS si no hay coincidencia", () => {
@@ -136,27 +136,27 @@ describe("classifyDocument", () => {
   });
 });
 
-// â”€â”€â”€ analyzeText â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── analyzeText ──────────────────────────────────────────────────────────────
 
 describe("analyzeText", () => {
-  it("detecta DNI de 8 dÃ­gitos", () => {
-    const result = analyzeText("DNI: 12345678 del seÃ±or GarcÃ­a.");
+  it("detecta DNI de 8 dígitos", () => {
+    const result = analyzeText("DNI: 12345678 del señor García.");
     expect(result.dni).toBe("12345678");
   });
 
-  it("detecta correo electrÃ³nico", () => {
+  it("detecta correo electrónico", () => {
     const result = analyzeText("Puede contactar al correo juan.perez@gmail.com");
     expect(result.email).toBe("juan.perez@gmail.com");
   });
 
-  it("detecta nÃºmero de expediente", () => {
-    const result = analyzeText("EXPEDIENTE NÂ° 01234-2024-0-JDPT-JR-CI-01");
+  it("detecta número de expediente", () => {
+    const result = analyzeText("EXPEDIENTE N° 01234-2024-0-JDPT-JR-CI-01");
     expect(result.expedientes.length).toBeGreaterThan(0);
     expect(result.expedientes[0]).toContain("01234-2024");
   });
 
-  it("detecta telÃ©fono peruano de 9 dÃ­gitos", () => {
-    const result = analyzeText("TelÃ©fono: 987654321");
+  it("detecta teléfono peruano de 9 dígitos", () => {
+    const result = analyzeText("Teléfono: 987654321");
     expect(result.phone).toBe("987654321");
   });
 
@@ -167,15 +167,15 @@ describe("analyzeText", () => {
     expect(result.email).toBeUndefined();
   });
 
-  it("detecta mÃºltiples expedientes distintos", () => {
+  it("detecta múltiples expedientes distintos", () => {
     const text =
-      "EXPEDIENTE NÂ° 01234-2024-0-JDPT-JR-CI-01\n" + "Acumulado con EXP. NÂ° 05678-2023-0-JDPT";
+      "EXPEDIENTE N° 01234-2024-0-JDPT-JR-CI-01\n" + "Acumulado con EXP. N° 05678-2023-0-JDPT";
     const result = analyzeText(text);
     expect(result.expedientes.length).toBeGreaterThanOrEqual(1);
   });
 });
 
-// â”€â”€â”€ formatSize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── formatSize ───────────────────────────────────────────────────────────────
 
 describe("formatSize", () => {
   it("formatea bytes", () => expect(formatSize(500)).toBe("500 B"));
@@ -183,7 +183,7 @@ describe("formatSize", () => {
   it("formatea megabytes", () => expect(formatSize(1048576)).toBe("1.0 MB"));
 });
 
-// â”€â”€â”€ sha256 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── sha256 ───────────────────────────────────────────────────────────────────
 
 describe("sha256", () => {
   it("retorna un string hex de 64 caracteres", async () => {
@@ -193,7 +193,7 @@ describe("sha256", () => {
     expect(hash).toMatch(/^[0-9a-f]+$/);
   });
 
-  it("dos buffers idÃ©nticos producen el mismo hash", async () => {
+  it("dos buffers idénticos producen el mismo hash", async () => {
     const buf1 = new TextEncoder().encode("hola").buffer;
     const buf2 = new TextEncoder().encode("hola").buffer;
     const [h1, h2] = await Promise.all([sha256(buf1 as ArrayBuffer), sha256(buf2 as ArrayBuffer)]);
@@ -208,7 +208,7 @@ describe("sha256", () => {
   });
 });
 
-// â”€â”€â”€ detectDuplicates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── detectDuplicates ─────────────────────────────────────────────────────────
 
 describe("detectDuplicates", () => {
   const makeCandidate = (overrides: Partial<ClientCandidate> = {}): ClientCandidate => ({
@@ -252,7 +252,7 @@ describe("detectDuplicates", () => {
     ).toHaveLength(0);
   });
 
-  it("nunca sobrescribe automÃ¡ticamente â€” solo retorna coincidencias", () => {
+  it("nunca sobrescribe automáticamente — solo retorna coincidencias", () => {
     const c = makeCandidate({
       detected: { dni: "12345678", expedientes: [], relevantDates: [], fullNameCandidates: [] },
     });
@@ -263,12 +263,12 @@ describe("detectDuplicates", () => {
   });
 });
 
-// â”€â”€â”€ parseZipFile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── parseZipFile ─────────────────────────────────────────────────────────────
 
 describe("parseZipFile", () => {
-  it("lee un ZIP bÃ¡sico con una carpeta y un PDF", async () => {
+  it("lee un ZIP básico con una carpeta y un PDF", async () => {
     const zipBuf = await buildZip([
-      { path: "YLLA NEGRON YENI/DEMANDA.pdf", content: "%PDF-1.4 contenido bÃ¡sico" },
+      { path: "YLLA NEGRON YENI/DEMANDA.pdf", content: "%PDF-1.4 contenido básico" },
     ]);
     const result = await parseZipFile(zipBuf);
     expect(result.candidates).toHaveLength(1);
@@ -278,10 +278,44 @@ describe("parseZipFile", () => {
 
   it("reconoce carpetas con tildes en el nombre", async () => {
     const zipBuf = await buildZip([
-      { path: "Ã‘UÃ‘EZ LÃ“PEZ MARÃA/SENTENCIA.pdf", content: "%PDF-1.4" },
+      { path: "ÑUÑEZ LÓPEZ MARÍA/SENTENCIA.pdf", content: "%PDF-1.4" },
     ]);
     const result = await parseZipFile(zipBuf);
-    expect(result.candidates[0].proposedName).toBe("Ã‘UÃ‘EZ LÃ“PEZ MARÃA");
+    expect(result.candidates[0].proposedName).toBe("ÑUÑEZ LÓPEZ MARÍA");
+  });
+
+  it("mantiene nombres de archivo con acentos y ñ desde el ZIP", async () => {
+    const zipBuf = await buildZip([
+      {
+        path: "PEÑA GARCÍA/Ejecución de acta de conciliación/Pensión de alimentos Ñ.pdf",
+        content: "%PDF-1.4",
+      },
+    ]);
+    const result = await parseZipFile(zipBuf);
+    expect(result.candidates[0].proposedName).toBe("PEÑA GARCÍA");
+    expect(result.candidates[0].files[0].name).toBe("Pensión de alimentos Ñ.pdf");
+    expect(result.candidates[0].files[0].zipPath).toContain("Ejecución de acta de conciliación");
+  });
+
+  it("repara mojibake en texto seleccionable de PDF", async () => {
+    const pdf =
+      "%PDF-1.4\n/Font <<>>\nBT (DEMANDA DE EJECUCI\u00c3\u201cN DNI: 12345678) ET\n%%EOF";
+    const zipBuf = await buildZip([{ path: "PEÑA GARCÍA/DEMANDA.pdf", content: pdf }]);
+    const result = await parseZipFile(zipBuf);
+    const file = result.candidates[0].files[0];
+    expect(file.extractedText).toContain("EJECUCIÓN");
+    expect(result.candidates[0].detected.dni).toBe("12345678");
+  });
+
+  it("lee texto Windows-1252 sin reemplazos cuando no viene como UTF-8", async () => {
+    const latin1Text = new Uint8Array([
+      84, 101, 108, 233, 102, 111, 110, 111, 58, 32, 57, 56, 55, 54, 53, 52, 51, 50, 49,
+    ]);
+    const zipBuf = await buildZip([{ path: "LOPEZ MENDEZ/notas.txt", content: latin1Text }]);
+    const result = await parseZipFile(zipBuf);
+    const file = result.candidates[0].files[0];
+    expect(file.extractedText).toBe("Teléfono: 987654321");
+    expect(result.candidates[0].detected.phone).toBe("987654321");
   });
 
   it("agrupa archivos de subcarpetas bajo la carpeta principal", async () => {
@@ -307,7 +341,7 @@ describe("parseZipFile", () => {
     expect(result.ignoredPaths.some((p) => p.includes("MACOSX"))).toBe(true);
   });
 
-  it("maneja carpetas mÃºltiples (varios clientes)", async () => {
+  it("maneja carpetas múltiples (varios clientes)", async () => {
     const zipBuf = await buildZip([
       { path: "GARCIA TORRES/DEMANDA.docx", content: "contenido demanda" },
       { path: "LOPEZ MENDEZ/SENTENCIA.pdf", content: "%PDF" },
@@ -328,31 +362,31 @@ describe("parseZipFile", () => {
     expect(result.ignoredPaths.some((p) => p.includes(".exe"))).toBe(true);
   });
 
-  it("marca archivos vacÃ­os con extractionStatus 'empty'", async () => {
+  it("marca archivos vacíos con extractionStatus 'empty'", async () => {
     const zipBuf = await buildZip([{ path: "CLIENTE/VACIO.pdf", content: new Uint8Array(0) }]);
     const result = await parseZipFile(zipBuf);
     const f = result.candidates[0]?.files[0];
     expect(f?.extractionStatus).toBe("empty");
   });
 
-  it("agrega advertencia cuando hay mÃºltiples expedientes detectados", async () => {
+  it("agrega advertencia cuando hay múltiples expedientes detectados", async () => {
     const docxContent = `
-      EXPEDIENTE NÂ° 01234-2024
-      EXPEDIENTE NÂ° 05678-2023
-      Caso de la seÃ±ora GarcÃ­a
+      EXPEDIENTE N° 01234-2024
+      EXPEDIENTE N° 05678-2023
+      Caso de la señora García
     `;
-    // Simulamos un DOCX mÃ­nimo (mammoth fallarÃ¡, pero el texto en docx es detectado)
+    // Simulamos un DOCX mínimo (mammoth fallará, pero el texto en docx es detectado)
     const zipBuf = await buildZip([{ path: "GARCIA/notas.txt", content: docxContent }]);
     const result = await parseZipFile(zipBuf);
-    // Con texto extraÃ­do, se deben detectar advertencias si hay varios expedientes
+    // Con texto extraído, se deben detectar advertencias si hay varios expedientes
     // O al menos no crashear
     expect(result.candidates).toHaveLength(1);
   });
 
-  it("no cancela toda la importaciÃ³n por un archivo problemÃ¡tico", async () => {
+  it("no cancela toda la importación por un archivo problemático", async () => {
     // Un DOCX corrupto no debe detener el procesamiento de otras carpetas
     const zipBuf = await buildZip([
-      { path: "CLIENTE A/DEMANDA.pdf", content: "%PDF-1.4 texto vÃ¡lido" },
+      { path: "CLIENTE A/DEMANDA.pdf", content: "%PDF-1.4 texto válido" },
       { path: "CLIENTE A/corrupto.docx", content: new Uint8Array([0x00, 0x01]) },
       { path: "CLIENTE B/CARGO.pdf", content: "%PDF-1.4 otro texto" },
     ]);
@@ -373,20 +407,20 @@ describe("parseZipFile", () => {
 
   it("un cliente con varios expedientes en texto plano", async () => {
     const texto = `
-      EXPEDIENTE NÂ° 01234-2024-0-JDPT
-      EXPEDIENTE NÂ° 07890-2023-0-JDPT
+      EXPEDIENTE N° 01234-2024-0-JDPT
+      EXPEDIENTE N° 07890-2023-0-JDPT
       DNI: 45678901
     `;
     const zipBuf = await buildZip([{ path: "MENDOZA TORRES/notas.txt", content: texto }]);
     const result = await parseZipFile(zipBuf);
     expect(result.candidates).toHaveLength(1);
-    // Se debe agregar advertencia de mÃºltiples expedientes
+    // Se debe agregar advertencia de múltiples expedientes
     const candidate = result.candidates[0];
-    // El texto extraÃ­do detecta expedientes
+    // El texto extraído detecta expedientes
     expect(candidate.detected.expedientes.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("ZIP vacÃ­o (sin carpetas de clientes) retorna candidates vacÃ­o", async () => {
+  it("ZIP vacío (sin carpetas de clientes) retorna candidates vacío", async () => {
     const zip = new JSZip();
     const buf = await zip.generateAsync({ type: "arraybuffer" });
     const result = await parseZipFile(buf);
@@ -401,7 +435,7 @@ describe("parseZipFile", () => {
 });
 
 describe("parseZipFile jerarquico", () => {
-  it("detecta contenedor con multiples clientes sin crear cliente contenedor", async () => {
+  it("detecta contenedor con múltiples clientes sin crear cliente contenedor", async () => {
     const zipBuf = await buildZip([
       {
         path: "A-EXPEDIENTES DE CLIENTES/YLLA NEGRON YENI/DEMANDA.txt",
@@ -432,7 +466,7 @@ describe("parseZipFile jerarquico", () => {
     const zipBuf = await buildZip([
       {
         path: "Backup Google Drive/Clientes/LOPEZ MENDEZ ANA/documento.txt",
-        content: "Telefono: 987654321",
+        content: "Teléfono: 987654321",
       },
     ]);
     const result = await parseZipFile(zipBuf);
@@ -440,18 +474,18 @@ describe("parseZipFile jerarquico", () => {
     expect(result.candidates[0].proposedName).toBe("LOPEZ MENDEZ ANA");
   });
 
-  it("crea expediente provisional cuando hay documentos sin numero", async () => {
+  it("crea expediente provisional cuando hay documentos sin número", async () => {
     const zipBuf = await buildZip([
       { path: "MENDOZA TORRES/DEMANDA DE ALIMENTOS.txt", content: "Materia: Alimentos" },
     ]);
     const result = await parseZipFile(zipBuf);
     const provisional = result.candidates[0].caseCandidates?.[0];
     expect(provisional?.isProvisional).toBe(true);
-    expect(provisional?.title).toMatch(/pendiente de clasificacion/i);
+    expect(provisional?.title).toMatch(/pendiente de clasificación/i);
     expect(provisional?.processType).toBe("Alimentos");
   });
 
-  it("agrupa documentos por varios numeros de expediente", async () => {
+  it("agrupa documentos por varios números de expediente", async () => {
     const zipBuf = await buildZip([
       {
         path: "MENDOZA TORRES/EXP 01234-2024-0-JR-FC-01/demanda.txt",
@@ -496,7 +530,7 @@ describe("parseZipFile jerarquico", () => {
   });
 });
 
-describe("importacion ZIP individual", () => {
+describe("importación ZIP individual", () => {
   it("acepta documentos directos de un solo cliente", async () => {
     const zipBuf = await buildZip([
       { path: "YLLA NEGRON YENI/DEMANDA.txt", content: "DNI: 12345678 Materia: Alimentos" },
@@ -517,7 +551,7 @@ describe("importacion ZIP individual", () => {
     expect(result.candidates).toHaveLength(1);
   });
 
-  it("rechaza ZIP con mas de un cliente", async () => {
+  it("rechaza ZIP con más de un cliente", async () => {
     const zipBuf = await buildZip([
       { path: "CLIENTE UNO/DEMANDA.txt", content: "DNI: 12345678" },
       { path: "CLIENTE DOS/CARGO.txt", content: "DNI: 87654321" },
@@ -529,7 +563,7 @@ describe("importacion ZIP individual", () => {
 
   it("no inventa datos y conserva evidencia por campo", () => {
     const result = analyzeTextWithEvidence(
-      "DNI: 12345678\nRUC: 20123456789\nTelefono: 987654321\nCorreo: cliente@test.pe",
+      "DNI: 12345678\nRUC: 20123456789\nTeléfono: 987654321\nCorreo: cliente@test.pe",
       "CLIENTE/DEMANDA.txt",
       "DEMANDA.txt",
     );
@@ -539,7 +573,7 @@ describe("importacion ZIP individual", () => {
     expect(result.fieldEvidence.client.address).toBeUndefined();
   });
 
-  it("crea expediente provisional con estado pendiente_revision cuando falta numero", async () => {
+  it("crea expediente provisional con estado pendiente_revision cuando falta número", async () => {
     const zipBuf = await buildZip([
       { path: "MENDOZA TORRES/ANEXOS/documento.txt", content: "Documento sin expediente" },
     ]);
@@ -547,7 +581,7 @@ describe("importacion ZIP individual", () => {
     const provisional = result.candidate?.caseCandidates?.[0];
     expect(provisional?.isProvisional).toBe(true);
     expect(provisional?.status).toBe("pendiente_revision");
-    expect(provisional?.matter).toBe("Pendiente de clasificacion");
+    expect(provisional?.matter).toBe("Pendiente de clasificación");
   });
 
   it("permite mover documentos entre expedientes y dejar sin clasificar", () => {

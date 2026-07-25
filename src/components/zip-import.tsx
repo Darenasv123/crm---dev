@@ -1,6 +1,6 @@
-﻿/**
+/**
  * zip-import.tsx
- * Componente de importaciÃ³n de carpetas de clientes desde ZIP (Google Drive).
+ * Componente de importación de carpetas de clientes desde ZIP (Google Drive).
  */
 import { Link } from "@tanstack/react-router";
 import { useRef, useState, useCallback } from "react";
@@ -25,6 +25,13 @@ import {
   GitMerge,
 } from "lucide-react";
 import { Card } from "@/components/app-layout";
+import {
+  formatDuplicateWarning,
+  formatZipReviewSelection,
+  formatZipReviewStats,
+  ZIP_IMPORT_COPY,
+} from "@/lib/import-copy";
+import { formatCount } from "@/lib/text-utils";
 import { getAuthClient, supabase } from "@/lib/supabase";
 import {
   CASE_STATUS_OPTIONS,
@@ -48,7 +55,7 @@ import {
 } from "@/lib/imports/zip-import";
 import { persistZipCandidate } from "@/lib/imports/zip-persistence";
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
   onClose: () => void;
@@ -61,7 +68,11 @@ interface FolderImportResult {
   folderName: string;
   status: "success" | "partial" | "failed" | "skipped";
   clientId?: string;
+  /** True when the client existed from a previous attempt */
+  clientAlreadyExisted?: boolean;
   error?: string;
+  /** Structured error detail for display with "Ver detalle" */
+  errorDetail?: import("@/lib/imports/zip-persistence").OperationError;
   documentsImported: number;
   documentsSkipped?: number;
   errors?: string[];
@@ -72,7 +83,7 @@ interface FolderImportResult {
   warnings?: string[];
 }
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const COLORS = [
   "oklch(0.74 0.12 80)",
@@ -112,7 +123,7 @@ const ZIP_DOCUMENT_TYPE_OPTIONS = [
   "OTROS",
 ];
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -125,20 +136,28 @@ function randomColor(): string {
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
-// â”€â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function formatImportStatus(success: number, partial: number, failed: number): string {
+  return [
+    formatCount(success, "importación completada", "importaciones completadas"),
+    formatCount(partial, "importación parcial", "importaciones parciales"),
+    formatCount(failed, "importación fallida", "importaciones fallidas"),
+  ].join(" · ");
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function ExtractionBadge({ status }: { status: ZipFileEntry["extractionStatus"] }) {
   const map = {
     extracted: {
       cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      label: "Texto extraÃ­do",
+      label: "Texto extraído",
     },
     ocr_required: {
       cls: "bg-amber-50 text-amber-700 border-amber-200",
-      label: "Pendiente de extracciÃ³n OCR",
+      label: "Pendiente de extracción OCR",
     },
     binary: { cls: "bg-slate-50 text-slate-600 border-slate-200", label: "Imagen/binario" },
-    empty: { cls: "bg-red-50 text-red-600 border-red-200", label: "VacÃ­o" },
+    empty: { cls: "bg-red-50 text-red-600 border-red-200", label: "Vacío" },
     error: { cls: "bg-red-50 text-red-600 border-red-200", label: "Error de lectura" },
   };
   const { cls, label } = map[status] ?? map.binary;
@@ -176,7 +195,7 @@ function DuplicateActionSelector({
           className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs"
         >
           <span className="font-medium">{m.clientName}</span>
-          <span className="ml-2 text-amber-600">â€” {m.matchReason}</span>
+          <span className="ml-2 text-amber-600">— {m.matchReason}</span>
           {m.matchStrength === "approximate" && (
             <span className="ml-1 italic text-amber-500">(solo advertencia)</span>
           )}
@@ -209,7 +228,7 @@ function DuplicateActionSelector({
           value={existingClientId ?? ""}
           onChange={(e) => onClientChange(e.target.value)}
         >
-          <option value="">â€” Selecciona el cliente existente â€”</option>
+          <option value="">— Selecciona el cliente existente —</option>
           {matches.map((m) => (
             <option key={m.clientId} value={m.clientId}>
               {m.clientName}
@@ -221,7 +240,7 @@ function DuplicateActionSelector({
   );
 }
 
-// â”€â”€â”€ CandidateCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── CandidateCard ────────────────────────────────────────────────────────────
 
 function CandidateCard({
   candidate,
@@ -256,17 +275,17 @@ function CandidateCard({
         ...caseCandidates,
         {
           id,
-          title: "Expediente pendiente de clasificacion",
+          title: "Expediente pendiente de clasificación",
           caseNumber: null,
-          processType: "Pendiente de clasificacion",
-          matter: "Pendiente de clasificacion",
-          specialty: "Pendiente de clasificacion",
+          processType: "Pendiente de clasificación",
+          matter: "Pendiente de clasificación",
+          specialty: "Pendiente de clasificación",
           juzgado: "Por determinar",
-          status: "Pendiente de clasificacion",
+          status: "Pendiente de clasificación",
           origin: "importacion_zip_individual",
           originPath: candidate.folderPath,
           confidence: 0.3,
-          warnings: ["Creado manualmente durante la revision."],
+          warnings: ["Creado manualmente durante la revisión."],
           documentPaths: [],
           isProvisional: true,
         },
@@ -414,9 +433,9 @@ function CandidateCard({
             {[
               { label: "DNI", field: "dni" as const, value: eff.dni ?? d.dni },
               { label: "RUC", field: "ruc" as const, value: eff.ruc ?? d.ruc },
-              { label: "Telefono", field: "phone" as const, value: eff.phone ?? d.phone },
+              { label: "Teléfono", field: "phone" as const, value: eff.phone ?? d.phone },
               { label: "Correo", field: "email" as const, value: eff.email ?? d.email },
-              { label: "Direccion", field: "address" as const, value: eff.address ?? d.address },
+              { label: "Dirección", field: "address" as const, value: eff.address ?? d.address },
               { label: "Estado", field: "status" as const, value: eff.status ?? d.status },
               {
                 label: "Observaciones",
@@ -584,8 +603,8 @@ function CandidateCard({
                       value={caseCandidate.processType}
                       onChange={(e) =>
                         patchCase(caseCandidate.id, {
-                          processType: e.target.value || "Pendiente de clasificacion",
-                          matter: e.target.value || "Pendiente de clasificacion",
+                          processType: e.target.value || "Pendiente de clasificación",
+                          matter: e.target.value || "Pendiente de clasificación",
                         })
                       }
                     />
@@ -660,7 +679,9 @@ function CandidateCard({
                       </div>
                     )}
                   <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span>{files.length} documento(s) asignado(s)</span>
+                    <span>
+                      {formatCount(files.length, "documento asignado", "documentos asignados")}
+                    </span>
                     <div className="flex flex-wrap justify-end gap-1.5">
                       {caseCandidates.length > 1 && (
                         <button
@@ -749,7 +770,148 @@ function CandidateCard({
     </div>
   );
 }
-// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── ResultRow ────────────────────────────────────────────────────────────────
+
+function ResultRow({ result: r }: { result: FolderImportResult }) {
+  const [showDetail, setShowDetail] = useState(false);
+  const detail = r.errorDetail;
+
+  // Determine the label shown below the folder name for partial/failed results.
+  // For a case-stage failure after a successful client creation the message
+  // is more specific than just the raw error string.
+  const errorSummary = detail?.summary ?? r.error;
+
+  return (
+    <div
+      className={`rounded-lg border text-xs ${
+        r.status === "success"
+          ? "border-emerald-200 bg-emerald-50"
+          : r.status === "partial"
+            ? "border-amber-200 bg-amber-50"
+            : r.status === "failed"
+              ? "border-red-200 bg-red-50"
+              : "border-muted bg-muted/20"
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+        {r.status === "success" && (
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+        )}
+        {r.status === "partial" && <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />}
+        {r.status === "failed" && <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+        {r.status === "skipped" && (
+          <SkipForward className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        )}
+
+        <span className="flex-1 font-medium truncate">{r.folderName}</span>
+
+        {r.status === "success" && (
+          <span className="text-emerald-700">
+            {formatCount(r.documentsImported, "documento", "documentos")}
+          </span>
+        )}
+
+        {r.status === "partial" && (
+          <span className="text-amber-700">
+            {r.clientAlreadyExisted ? "Cliente ya existía." : "Cliente creado."} Expediente
+            pendiente de creación.
+          </span>
+        )}
+
+        {(r.status === "failed" || r.status === "partial") && errorSummary && (
+          <button
+            type="button"
+            onClick={() => setShowDetail((v) => !v)}
+            className={`inline-flex items-center gap-1 rounded border px-2 py-1 font-semibold transition ${
+              r.status === "partial"
+                ? "border-amber-300 text-amber-700 hover:bg-amber-100"
+                : "border-red-300 text-red-600 hover:bg-red-100"
+            }`}
+          >
+            {showDetail ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            Ver detalle
+          </button>
+        )}
+
+        {r.clientId && (
+          <Link
+            to={"/clientes/$id" as never}
+            params={{ id: r.clientId } as never}
+            className="rounded border border-emerald-300 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            Abrir cliente
+          </Link>
+        )}
+        {r.caseIds?.slice(0, 2).map((caseItem) => (
+          <Link
+            key={caseItem.id}
+            to={"/casos/$id" as never}
+            params={{ id: caseItem.id } as never}
+            className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
+          >
+            {caseItem.caseNumber ?? "Expediente"}
+          </Link>
+        ))}
+        {(r.documentIds?.length ?? 0) > 0 && (
+          <Link
+            to={"/documentos" as never}
+            className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
+          >
+            Documentos ({r.documentIds?.length})
+          </Link>
+        )}
+      </div>
+
+      {showDetail && errorSummary && (
+        <div
+          className={`border-t px-3 py-2.5 space-y-1 ${
+            r.status === "partial"
+              ? "border-amber-200 bg-amber-50/80"
+              : "border-red-200 bg-red-50/80"
+          }`}
+        >
+          {/* Stage + code */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {detail?.stage && (
+              <span className="rounded-full bg-white/70 border border-current px-2 py-0.5 capitalize font-mono text-[10px]">
+                etapa: {detail.stage}
+              </span>
+            )}
+            {detail?.code && (
+              <span className="rounded-full bg-white/70 border border-current px-2 py-0.5 font-mono text-[10px]">
+                código: {detail.code}
+              </span>
+            )}
+          </div>
+          {/* Full selectable error text */}
+          <p className="select-text break-words leading-relaxed">{errorSummary}</p>
+          {detail?.action && (
+            <p className="text-[10px] font-semibold opacity-80">
+              Acción recomendada: {detail.action}
+            </p>
+          )}
+          {/* Raw detail for copy-paste */}
+          {detail?.detail && detail.detail !== errorSummary && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-[10px] opacity-60 hover:opacity-100">
+                Detalle técnico (copiar)
+              </summary>
+              <pre className="mt-1 whitespace-pre-wrap break-all text-[10px] select-text opacity-70">
+                {detail.detail}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function ZipImport({ onClose, onSuccess }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -768,7 +930,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     [],
   );
 
-  // â”€â”€â”€ ZIP parsing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── ZIP parsing ─────────────────────────────────────────────────────────────
 
   async function handleFile(f: File) {
     if (!f.name.toLowerCase().endsWith(".zip")) {
@@ -799,7 +961,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
       }
 
       // Cargar clientes existentes para detectar duplicados
-      addProgress("Verificando duplicados en la base de datosâ€¦");
+      addProgress("Verificando duplicados en la base de datos…");
       const db = await getAuthClient();
       const { data: existingRaw } = await db
         .from("clients")
@@ -841,13 +1003,13 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     if (f) handleFile(f);
   }
 
-  // â”€â”€â”€ Candidate updates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Candidate updates ───────────────────────────────────────────────────────
 
   function updateCandidate(idx: number, partial: Partial<ReviewCandidate>) {
     setCandidates((prev) => prev.map((c, i) => (i === idx ? { ...c, ...partial } : c)));
   }
 
-  // â”€â”€â”€ Import final â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Import final ────────────────────────────────────────────────────────────
 
   async function handleImport(indicesToImport?: number[]) {
     const toImport = candidates.filter((c, i) => {
@@ -860,7 +1022,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
 
     if (toImport.length === 0) {
       setParseError(
-        "No hay un cliente seleccionado para importar. Resuelve duplicados o cancela la importacion.",
+        "No hay un cliente seleccionado para importar. Resuelve duplicados o cancela la importación.",
       );
       return;
     }
@@ -882,6 +1044,11 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         sourceFileName: fileName,
         buildInitials,
         randomColor,
+        // On retry, pass the clientId from the previous attempt so the client
+        // is never re-created. existingClientIdOverride is undefined on first import.
+        existingClientIdOverride: retryOnly
+          ? (batchResults.find((r) => r.folderName === candidate.folderName)?.clientId ?? undefined)
+          : undefined,
       });
 
       const existing = batchResults.find((r) => r.folderName === candidate.folderName);
@@ -889,7 +1056,9 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         folderName: result.folderName,
         status: result.status,
         clientId: result.clientId,
+        clientAlreadyExisted: result.clientAlreadyExisted,
         error: result.error,
+        errorDetail: result.errorDetail,
         documentsImported: result.documentsImported,
         documentsSkipped: result.documentsSkipped,
         errors: result.errors,
@@ -915,14 +1084,19 @@ export function ZipImport({ onClose, onSuccess }: Props) {
     )
       onSuccess();
   }
-  // â”€â”€â”€ Retry failed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Retry failed ────────────────────────────────────────────────────────────
 
   async function handleRetryFailed() {
+    setRetrying(true);
     setRetryOnly(true);
-    await handleImport(failedIndices);
+    try {
+      await handleImport(failedIndices);
+    } finally {
+      setRetrying(false);
+    }
   }
 
-  // â”€â”€â”€ Render helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Render helpers ──────────────────────────────────────────────────────────
 
   const activeCount = candidates.filter((c) => !c.excluded && c.duplicateAction !== "skip").length;
   const unresolved = candidates.filter(
@@ -932,7 +1106,14 @@ export function ZipImport({ onClose, onSuccess }: Props) {
   const successCount = results.filter((r) => r.status === "success").length;
   const partialCount = results.filter((r) => r.status === "partial").length;
   const failedCount = results.filter((r) => r.status === "failed").length;
+  // "completedCount" for the headline includes fully successful imports only.
+  // Partial imports are surfaced separately so the user understands the client
+  // was created even when the case failed.
   const completedCount = successCount;
+  const [retrying, setRetrying] = useState(false);
+  const activeFolderCount = candidates.filter((c) => !c.excluded).length;
+  const totalDocumentCount = candidates.reduce((s, c) => s + c.files.length, 0);
+  const totalDuplicateCount = candidates.reduce((s, c) => s + c.duplicates.length, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -940,14 +1121,13 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold">Importar un cliente desde ZIP</h3>
+            <h3 className="text-base font-semibold">{ZIP_IMPORT_COPY.title}</h3>
             <p className="text-xs text-muted-foreground truncate">
-              {step === "upload" && "Sube un ZIP que contenga una sola carpeta de cliente"}
-              {step === "parsing" && "Analizando archivoâ€¦"}
-              {step === "review" && `${activeCount} cliente seleccionado para revision`}
+              {step === "upload" && ZIP_IMPORT_COPY.uploadSubtitle}
+              {step === "parsing" && "Analizando archivo…"}
+              {step === "review" && formatZipReviewSelection(activeCount)}
               {step === "importing" && importProgress}
-              {step === "done" &&
-                `${completedCount} importada(s) Â· ${partialCount} parcial(es) Â· ${failedCount} fallida(s)`}
+              {step === "done" && formatImportStatus(completedCount, partialCount, failedCount)}
             </p>
           </div>
           <button
@@ -959,7 +1139,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
-          {/* â”€â”€ Upload â”€â”€ */}
+          {/* ── Upload ── */}
           {step === "upload" && (
             <div className="space-y-4">
               <div
@@ -970,14 +1150,12 @@ export function ZipImport({ onClose, onSuccess }: Props) {
               >
                 <Upload className="h-10 w-10 text-muted-foreground" />
                 <div className="text-sm text-center">
-                  <p className="font-medium">Arrastra el ZIP aquÃ­</p>
+                  <p className="font-medium">{ZIP_IMPORT_COPY.dropTitle}</p>
                   <p className="text-muted-foreground text-xs mt-0.5">
-                    o haz clic para seleccionar Â· <strong>.zip</strong>
+                    {ZIP_IMPORT_COPY.dropHintPrefix} <strong>.zip</strong>
                   </p>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Selecciona una sola carpeta de cliente y descargala como ZIP
-                </p>
+                <p className="text-[10px] text-muted-foreground">{ZIP_IMPORT_COPY.helper}</p>
               </div>
               <input
                 ref={fileRef}
@@ -996,24 +1174,24 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 </div>
               )}
               <div className="rounded-lg bg-muted/40 p-4 text-xs text-muted-foreground space-y-1.5">
-                <p className="font-semibold text-foreground mb-1">Estructura esperada del ZIP:</p>
-                <p className="font-mono">YLLA NEGRON YENI/</p>
-                <p className="font-mono ml-4">DEMANDA DE EJECUCIÃ“N.docx</p>
-                <p className="font-mono ml-4">CARGO-YLLA NEGRON.pdf</p>
-                <p className="font-mono ml-4">EXP 01234-2024/</p>
-                <p className="font-mono ml-8">RESOLUCION.pdf</p>
-                <p className="mt-2">
-                  Si el ZIP contiene mas de un cliente, la importacion se bloqueara.
+                <p className="font-semibold text-foreground mb-1">
+                  {ZIP_IMPORT_COPY.structureTitle}
                 </p>
+                <p className="font-mono">{ZIP_IMPORT_COPY.exampleLines[0]}</p>
+                <p className="font-mono ml-4">{ZIP_IMPORT_COPY.exampleLines[1]}</p>
+                <p className="font-mono ml-4">{ZIP_IMPORT_COPY.exampleLines[2]}</p>
+                <p className="font-mono ml-4">{ZIP_IMPORT_COPY.exampleLines[3]}</p>
+                <p className="font-mono ml-8">{ZIP_IMPORT_COPY.exampleLines[4]}</p>
+                <p className="mt-2">{ZIP_IMPORT_COPY.multipleClientsWarning}</p>
               </div>
             </div>
           )}
 
-          {/* â”€â”€ Parsing â”€â”€ */}
+          {/* ── Parsing ── */}
           {step === "parsing" && (
             <div className="flex flex-col items-center justify-center gap-4 py-12">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="text-sm font-medium">Analizando archivo ZIPâ€¦</p>
+              <p className="text-sm font-medium">Analizando archivo ZIP…</p>
               <div className="w-full max-w-md space-y-1 max-h-40 overflow-y-auto">
                 {parseProgress.map((msg, i) => (
                   <p key={i} className="text-xs text-muted-foreground">
@@ -1024,24 +1202,24 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* â”€â”€ Review â”€â”€ */}
+          {/* ── Review ── */}
           {step === "review" && (
             <div className="space-y-3">
               {unresolved > 0 && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                   <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-800">
-                    {unresolved} carpeta(s) tienen posibles duplicados. Asigna una acciÃ³n antes de
-                    importar.
-                  </p>
+                  <p className="text-sm text-amber-800">{formatDuplicateWarning(unresolved)}</p>
                 </div>
               )}
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {candidates.length} carpetas Â· {candidates.filter((c) => !c.excluded).length}{" "}
-                  activas
+                  {formatZipReviewStats({
+                    folders: candidates.length,
+                    activeFolders: activeFolderCount,
+                    duplicates: totalDuplicateCount,
+                  })}
                 </span>
-                <span>{candidates.reduce((s, c) => s + c.files.length, 0)} documentos totales</span>
+                <span>{formatCount(totalDocumentCount, "documento", "documentos")} en total</span>
               </div>
               <div className="space-y-2">
                 {candidates.map((c, i) => (
@@ -1056,7 +1234,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* â”€â”€ Importing â”€â”€ */}
+          {/* ── Importing ── */}
           {step === "importing" && (
             <div className="flex flex-col items-center justify-center gap-4 py-12">
               <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -1064,14 +1242,14 @@ export function ZipImport({ onClose, onSuccess }: Props) {
             </div>
           )}
 
-          {/* â”€â”€ Done â”€â”€ */}
+          {/* ── Done ── */}
           {step === "done" && (
             <div className="space-y-4">
               <div className="flex flex-col items-center gap-3 py-4">
                 <div
-                  className={`grid h-14 w-14 place-items-center rounded-full ${failedCount === 0 && partialCount === 0 ? "bg-emerald-50 text-emerald-600" : completedCount > 0 ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"}`}
+                  className={`grid h-14 w-14 place-items-center rounded-full ${failedCount === 0 && partialCount === 0 ? "bg-emerald-50 text-emerald-600" : completedCount > 0 || partialCount > 0 ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"}`}
                 >
-                  {failedCount === 0 || completedCount > 0 ? (
+                  {failedCount === 0 || completedCount > 0 || partialCount > 0 ? (
                     <CheckCircle2 className="h-8 w-8" />
                   ) : (
                     <AlertCircle className="h-8 w-8" />
@@ -1079,63 +1257,31 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 </div>
                 <div className="text-center">
                   <p className="text-base font-bold">
-                    {completedCount} cliente importado correctamente
+                    {formatCount(
+                      completedCount,
+                      "cliente importado correctamente",
+                      "clientes importados correctamente",
+                    )}
                   </p>
+                  {partialCount > 0 && (
+                    <p className="text-sm text-amber-700 mt-0.5">
+                      {formatCount(
+                        partialCount,
+                        "importación parcial — cliente creado, expediente pendiente",
+                        "importaciones parciales — clientes creados, expedientes pendientes",
+                      )}
+                    </p>
+                  )}
                   {failedCount > 0 && (
-                    <p className="text-sm text-muted-foreground mt-0.5">{failedCount} fallida(s)</p>
+                    <p className="text-sm text-red-600 mt-0.5">
+                      {formatCount(failedCount, "importación fallida", "importaciones fallidas")}
+                    </p>
                   )}
                 </div>
               </div>
               <div className="space-y-1.5">
                 {results.map((r, i) => (
-                  <div
-                    key={i}
-                    className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs ${r.status === "success" ? "border-emerald-200 bg-emerald-50" : r.status === "partial" ? "border-amber-200 bg-amber-50" : r.status === "failed" ? "border-red-200 bg-red-50" : "border-muted bg-muted/20"}`}
-                  >
-                    {r.status === "success" && (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                    )}
-                    {r.status === "failed" && (
-                      <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                    )}
-                    {r.status === "skipped" && (
-                      <SkipForward className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    )}
-                    <span className="flex-1 font-medium truncate">{r.folderName}</span>
-                    {r.status === "success" && (
-                      <span className="text-emerald-700">{r.documentsImported} doc.</span>
-                    )}
-                    {r.status === "failed" && r.error && (
-                      <span className="text-red-600 truncate max-w-[200px]">{r.error}</span>
-                    )}
-                    {r.clientId && (
-                      <Link
-                        to={"/clientes/$id" as never}
-                        params={{ id: r.clientId } as never}
-                        className="rounded border border-emerald-300 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100"
-                      >
-                        Abrir cliente
-                      </Link>
-                    )}
-                    {r.caseIds?.slice(0, 2).map((caseItem) => (
-                      <Link
-                        key={caseItem.id}
-                        to={"/casos/$id" as never}
-                        params={{ id: caseItem.id } as never}
-                        className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
-                      >
-                        {caseItem.caseNumber ?? "Expediente"}
-                      </Link>
-                    ))}
-                    {(r.documentIds?.length ?? 0) > 0 && (
-                      <Link
-                        to={"/documentos" as never}
-                        className="rounded border border-border px-2 py-1 font-semibold text-muted-foreground hover:bg-background/60"
-                      >
-                        Documentos ({r.documentIds?.length})
-                      </Link>
-                    )}
-                  </div>
+                  <ResultRow key={i} result={r} />
                 ))}
               </div>
             </div>
@@ -1162,7 +1308,7 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 }}
                 className="h-10 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
               >
-                â† AtrÃ¡s
+                {ZIP_IMPORT_COPY.backButton}
               </button>
               <button
                 onClick={() => handleImport()}
@@ -1170,23 +1316,26 @@ export function ZipImport({ onClose, onSuccess }: Props) {
                 className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 <Users className="h-4 w-4" />
-                Confirmar importación del cliente
+                {ZIP_IMPORT_COPY.confirmButton}
               </button>
             </>
           )}
           {step === "done" && (
             <>
-              {failedCount > 0 && (
+              {(failedCount > 0 || partialCount > 0) && (
                 <button
                   onClick={handleRetryFailed}
-                  className="flex items-center gap-2 h-10 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+                  disabled={retrying}
+                  className="flex items-center gap-2 h-10 px-4 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <RefreshCw className="h-4 w-4" /> Reintentar fallidas
+                  <RefreshCw className={`h-4 w-4 ${retrying ? "animate-spin" : ""}`} />
+                  {retrying ? "Reintentando…" : "Reintentar fallidas"}
                 </button>
               )}
               <button
                 onClick={onClose}
-                className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110"
+                disabled={retrying}
+                className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60"
               >
                 Cerrar
               </button>

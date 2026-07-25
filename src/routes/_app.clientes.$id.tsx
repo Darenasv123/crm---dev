@@ -9,6 +9,7 @@ import { useProfiles } from "@/hooks/use-profiles";
 import { useClientReports } from "@/hooks/use-reports";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
+import { usePermissions } from "@/lib/permissions";
 import { supabase } from "@/lib/supabase";
 import {
   buildClientInitials,
@@ -65,15 +66,17 @@ function ClientDetail() {
   const { data: client, isLoading: loadingClient } = useClient(id);
   const { data: allClients = [] } = useClients();
   const { data: allCases = [] } = useCases();
-  const { data: allPayments = [] } = usePayments();
   const { data: allDocs = [] } = useDocuments();
   const { data: allReports = [] } = useClientReports();
   const { data: allAgendaEvents = [] } = useAgendaEvents();
   const { data: profiles = [] } = useProfiles();
+  const { profile } = useAuth();
+  const { canViewPayments } = usePermissions(profile);
+  // Pagos solo se consultan si el rol tiene permiso
+  const { data: allPayments = [] } = usePayments({ enabled: canViewPayments });
   const clientCaseIds = allCases.filter((item) => item.client_id === id).map((item) => item.id);
   const { data: clientTasks = [] } = useCaseTasks({ clientId: id });
   const { data: clientEvents = [] } = useCaseEvents(clientCaseIds);
-  const { profile } = useAuth();
   const updateClient = useUpdateClient();
   const uploadDoc = useUploadDocument();
   const deleteDoc = useDeleteDocument();
@@ -209,14 +212,14 @@ function ClientDetail() {
   function startEdit() {
     setEditForm({
       name: loadedClient.name,
-      dni: loadedClient.dni,
-      phone: loadedClient.phone,
+      dni: loadedClient.dni ?? "",
+      phone: loadedClient.phone ?? "",
       email: loadedClient.email ?? "",
-      process_type: loadedClient.process_type,
+      process_type: loadedClient.process_type ?? "",
       status: loadedClient.status,
       document_type: loadedClient.document_type || "DNI",
-      document_number: loadedClient.document_number ?? loadedClient.dni,
-      whatsapp: loadedClient.whatsapp ?? loadedClient.phone,
+      document_number: loadedClient.document_number ?? loadedClient.dni ?? "",
+      whatsapp: loadedClient.whatsapp ?? loadedClient.phone ?? "",
       occupation: loadedClient.occupation ?? "",
       address: loadedClient.address ?? "",
       notes: loadedClient.notes ?? "",
@@ -250,7 +253,7 @@ function ClientDetail() {
         return;
       }
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Datos incompletos o invalidos.");
+      setEditError(err instanceof Error ? err.message : "Datos incompletos o inválidos.");
       return;
     }
 
@@ -380,7 +383,7 @@ function ClientDetail() {
               {client.initials}
             </div>
             <h2 className="mt-4 text-lg font-bold">{client.name}</h2>
-            <p className="text-xs text-muted-foreground">{client.process_type}</p>
+            <p className="text-xs text-muted-foreground">{client.process_type ?? "—"}</p>
             <div className="mt-3 flex justify-center">
               <StatusBadge
                 tone={
@@ -441,13 +444,13 @@ function ClientDetail() {
               Contacto
             </h3>
             <ul className="space-y-3 text-sm">
-              <InfoRow icon={Phone} label="Telefono principal" value={client.phone} />
-              <InfoRow icon={Phone} label="Telefono alternativo" value={client.whatsapp ?? "—"} />
+              <InfoRow icon={Phone} label="Teléfono principal" value={client.phone ?? "—"} />
+              <InfoRow icon={Phone} label="Teléfono alternativo" value={client.whatsapp ?? "—"} />
               <InfoRow icon={Mail} label="Correo" value={client.email ?? "—"} />
               <InfoRow
                 icon={IdCard}
                 label={client.document_type || "DNI/RUC"}
-                value={client.document_number || client.dni}
+                value={client.document_number || client.dni || "—"}
               />
             </ul>
           </Card>
@@ -456,7 +459,7 @@ function ClientDetail() {
         {/* Tabs */}
         <div>
           <div className="flex items-center gap-1 border-b border-border mb-6 overflow-x-auto">
-            {TABS.map((t) => (
+            {TABS.filter((t) => t !== "Pagos" || canViewPayments).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -479,12 +482,12 @@ function ClientDetail() {
                   <DataRow k="Responsable" v={responsibleName} />
                   <DataRow k="Tipo de documento" v={client.document_type || "DNI"} />
                   <DataRow k="N.º de documento" v={client.document_number || client.dni || "—"} />
-                  <DataRow k="Teléfono" v={client.phone} />
+                  <DataRow k="Teléfono" v={client.phone ?? "—"} />
                   <DataRow k="WhatsApp" v={client.whatsapp || client.phone || "—"} />
                   <DataRow k="Correo" v={client.email ?? "—"} />
                   <DataRow k="Dirección" v={client.address || "—"} />
                   <DataRow k="Ocupación" v={client.occupation || "—"} />
-                  <DataRow k="Materia principal" v={client.process_type} />
+                  <DataRow k="Materia principal" v={client.process_type ?? "—"} />
                   <DataRow k="Estado" v={client.status} />
                   <DataRow
                     k="Registrado"
@@ -633,7 +636,7 @@ function ClientDetail() {
             </Card>
           )}
 
-          {tab === "Pagos" && (
+          {tab === "Pagos" && canViewPayments && (
             <Card className="overflow-hidden">
               {clientPayments.length === 0 ? (
                 <div className="py-12 text-center text-sm text-muted-foreground">

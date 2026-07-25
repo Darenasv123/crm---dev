@@ -21,12 +21,12 @@ const ALLOWED_DOCUMENT_EXTENSIONS = new Set([
 
 export function validateDocumentFile(file: Pick<File, "name" | "size" | "type">) {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!file.name.trim()) throw new Error("El archivo debe tener un nombre valido.");
+  if (!file.name.trim()) throw new Error("El archivo debe tener un nombre válido.");
   if (!ALLOWED_DOCUMENT_EXTENSIONS.has(extension)) {
     throw new Error("Formato no permitido. Usa PDF, DOC, DOCX, JPG, PNG, XLS o XLSX.");
   }
-  if (file.size <= 0) throw new Error("El archivo esta vacio.");
-  if (file.size > MAX_DOCUMENT_SIZE_BYTES) throw new Error("El archivo supera el limite de 10 MB.");
+  if (file.size <= 0) throw new Error("El archivo está vacío.");
+  if (file.size > MAX_DOCUMENT_SIZE_BYTES) throw new Error("El archivo supera el límite de 10 MB.");
 }
 
 export interface DocumentWithClient extends Document {

@@ -694,7 +694,8 @@ export type Database = {
           color: string;
           created_at: string;
           created_by: string | null;
-          dni: string;
+          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
+          dni: string | null;
           document_number: string | null;
           document_type: string;
           email: string | null;
@@ -703,8 +704,10 @@ export type Database = {
           name: string;
           notes: string | null;
           occupation: string | null;
-          phone: string;
-          process_type: string;
+          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
+          phone: string | null;
+          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
+          process_type: string | null;
           registered_at: string;
           status: string;
           updated_at: string;
@@ -717,7 +720,8 @@ export type Database = {
           color?: string;
           created_at?: string;
           created_by?: string | null;
-          dni: string;
+          /** Nullable after migration 20260724000000 */
+          dni?: string | null;
           document_number?: string | null;
           document_type?: string;
           email?: string | null;
@@ -726,8 +730,10 @@ export type Database = {
           name: string;
           notes?: string | null;
           occupation?: string | null;
-          phone: string;
-          process_type: string;
+          /** Nullable after migration 20260724000000 */
+          phone?: string | null;
+          /** Nullable after migration 20260724000000 */
+          process_type?: string | null;
           registered_at?: string;
           status?: string;
           updated_at?: string;
@@ -740,7 +746,7 @@ export type Database = {
           color?: string;
           created_at?: string;
           created_by?: string | null;
-          dni?: string;
+          dni?: string | null;
           document_number?: string | null;
           document_type?: string;
           email?: string | null;
@@ -749,8 +755,8 @@ export type Database = {
           name?: string;
           notes?: string | null;
           occupation?: string | null;
-          phone?: string;
-          process_type?: string;
+          phone?: string | null;
+          process_type?: string | null;
           registered_at?: string;
           status?: string;
           updated_at?: string;
@@ -853,6 +859,10 @@ export type Database = {
           updated_at: string;
           uploaded_at: string;
           verification_status: string;
+          /** Path relative to the client folder, e.g. "Resoluciones/res01.pdf". Added by migration 20260724000000. */
+          relative_path: string | null;
+          /** SHA-256 hex of file content. Added by migration 20260724000000. */
+          content_hash: string | null;
         };
         Insert: {
           case_id?: string | null;
@@ -881,6 +891,8 @@ export type Database = {
           updated_at?: string;
           uploaded_at?: string;
           verification_status?: string;
+          relative_path?: string | null;
+          content_hash?: string | null;
         };
         Update: {
           case_id?: string | null;
@@ -909,6 +921,8 @@ export type Database = {
           updated_at?: string;
           uploaded_at?: string;
           verification_status?: string;
+          relative_path?: string | null;
+          content_hash?: string | null;
         };
         Relationships: [
           {

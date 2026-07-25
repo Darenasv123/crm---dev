@@ -36,7 +36,7 @@ function ImportsPage() {
               <h2 className="text-base font-semibold">Herramientas administrativas</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 El ZIP individual y la lista CSV/XLSX se importan desde Clientes. El historial,
-                diagnostico y limpieza segura estan en Configuracion.
+                diagnóstico y limpieza segura están en Configuración.
               </p>
             </div>
           </div>

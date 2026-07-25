@@ -155,7 +155,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             type="button"
             onClick={() => setMobileMenuOpen(false)}
             className="h-8 w-8 grid place-items-center rounded-lg hover:bg-sidebar-accent/60 shrink-0"
-            aria-label="Cerrar menu"
+            aria-label="Cerrar menú"
           >
             <X className="h-4 w-4 text-sidebar-foreground/70" />
           </button>
@@ -197,7 +197,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               onClick={handleSignOut}
               title="Cerrar sesión"
               className="h-8 w-8 grid place-items-center rounded-lg hover:bg-red-500/20 text-sidebar-foreground/60 hover:text-red-400 transition"
-              aria-label="Cerrar sesion"
+              aria-label="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -261,7 +261,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 onClick={handleSignOut}
                 title="Cerrar sesión"
                 className="hidden lg:grid place-items-center h-10 w-10 rounded-lg bg-muted/60 hover:bg-red-50 hover:text-red-600 transition"
-                aria-label="Cerrar sesion"
+                aria-label="Cerrar sesión"
               >
                 <LogOut className="h-[18px] w-[18px]" />
               </button>

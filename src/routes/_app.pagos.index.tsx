@@ -8,6 +8,7 @@ import {
 } from "@/hooks/use-payments";
 import { useClients } from "@/hooks/use-clients";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/lib/permissions";
 import { useSignedUrl } from "@/hooks/use-documents";
 import { supabase } from "@/lib/supabase";
 import { exportPaymentsExcel } from "@/lib/export-excel";
@@ -42,10 +43,44 @@ function currency(n: number) {
 type ModalMode = "new" | "register" | null;
 
 function PaymentsPage() {
+  const { profile, loading: authLoading } = useAuth();
+  const { canViewPayments } = usePermissions(profile);
+  const navigate = useNavigate();
+
+  // ── Guard: comprobación ANTES de ejecutar cualquier query ──────────────────
+  // Redirigir a inicio si el perfil ya cargó y no tiene permiso.
+  useEffect(() => {
+    if (!authLoading && profile && !canViewPayments) {
+      navigate({ to: "/", replace: true });
+    }
+  }, [profile, authLoading, canViewPayments, navigate]);
+
+  // Mientras el perfil carga o si no tiene permiso, no renderizar nada
+  // y no ejecutar las queries de datos financieros.
+  if (authLoading || !profile || !canViewPayments) {
+    if (!authLoading && profile && !canViewPayments) {
+      return (
+        <AppLayout title="Acceso restringido" subtitle="">
+          <div className="flex items-center justify-center py-32">
+            <p className="text-sm text-muted-foreground">
+              No tienes permisos para acceder al módulo de Pagos.
+            </p>
+          </div>
+        </AppLayout>
+      );
+    }
+    return null;
+  }
+
+  // A partir de aquí sólo llega el rol Administrador.
+  return <PaymentsContent />;
+}
+
+function PaymentsContent() {
   const { data: payments = [], isLoading } = usePayments();
   const { data: clients = [] } = useClients();
-  const { profile, loading: authLoading } = useAuth();
-  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const { canExportPayments, canCreatePayments } = usePermissions(profile);
   const createPayment = useCreatePayment();
   const registerPayment = useRegisterPayment();
 
@@ -70,16 +105,6 @@ function PaymentsPage() {
   });
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
   const voucherRef = useRef<HTMLInputElement>(null);
-
-  // Redirect non-admins away from this page
-  useEffect(() => {
-    if (!authLoading && profile && profile.role !== "Administrador") {
-      navigate({ to: "/", replace: true });
-    }
-  }, [profile, authLoading, navigate]);
-
-  // While auth resolves or if not admin, render nothing
-  if (authLoading || !profile || profile.role !== "Administrador") return null;
 
   const total = payments.reduce((s, p) => s + Number(p.fees), 0);
   const collected = payments.reduce((s, p) => s + Number(p.paid), 0);

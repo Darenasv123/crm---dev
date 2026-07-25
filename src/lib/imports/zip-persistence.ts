@@ -1,5 +1,6 @@
-﻿import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
+import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 import type { Database } from "@/lib/database.types";
+import { formatCount } from "@/lib/text-utils";
 import {
   formatSize,
   normalizeCaseStatus,
@@ -50,6 +51,23 @@ type StorageBucket = {
 
 export type PersistStatus = "success" | "partial" | "failed" | "skipped";
 
+/**
+ * Structured error detail for a single failed operation.
+ * Surfaced in the UI as a collapsible "Ver detalle" panel.
+ */
+export interface OperationError {
+  /** Human-readable summary of what failed */
+  summary: string;
+  /** The stage where the error occurred */
+  stage: "client" | "case" | "document" | "storage";
+  /** PostgreSQL/Supabase error code (e.g. "23514", "23505", "42501") */
+  code?: string;
+  /** Full technical error message for copy-paste reporting */
+  detail?: string;
+  /** Suggested user action */
+  action?: string;
+}
+
 export interface PersistZipCandidateParams {
   candidate: ReviewCandidate;
   db: DbClient;
@@ -58,15 +76,25 @@ export interface PersistZipCandidateParams {
   buildInitials: (name: string) => string;
   randomColor: () => string;
   now?: () => number;
+  /**
+   * When retrying, pass the clientId of the already-created client.
+   * This prevents duplicate creation and allows the retry to start
+   * directly from the case/document stage.
+   */
+  existingClientIdOverride?: string;
 }
 
 export interface PersistZipCandidateResult {
   folderName: string;
   status: PersistStatus;
   clientId?: string;
+  /** True when the client was found to already exist (created in a prior attempt) */
+  clientAlreadyExisted?: boolean;
   documentsImported: number;
   documentsSkipped: number;
   error?: string;
+  /** Structured error detail for display with "Ver detalle" */
+  errorDetail?: OperationError;
   errors: string[];
   compensations: string[];
   caseIds: Array<{ id: string; title: string; caseNumber: string | null }>;
@@ -75,7 +103,7 @@ export interface PersistZipCandidateResult {
   warnings: string[];
 }
 
-const PENDING_PROCESS_TYPE = "Pendiente de clasificacion";
+const PENDING_PROCESS_TYPE = "Pendiente de clasificación";
 
 function ensureSupabaseData<T>(
   data: T | null | undefined,
@@ -83,7 +111,7 @@ function ensureSupabaseData<T>(
   action: string,
 ): T {
   if (error) throw new Error(`${action}: ${error.message}`);
-  if (!data) throw new Error(`${action}: Supabase no devolvio datos.`);
+  if (!data) throw new Error(`${action}: Supabase no devolvió datos.`);
   return data;
 }
 
@@ -145,7 +173,7 @@ function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
   return [
     {
       id: "pending-1",
-      title: "Expediente pendiente de clasificacion",
+      title: "Expediente pendiente de clasificación",
       caseNumber: null,
       processType: PENDING_PROCESS_TYPE,
       matter: PENDING_PROCESS_TYPE,
@@ -155,7 +183,7 @@ function fallbackCases(candidate: ReviewCandidate): ZipCaseCandidate[] {
       origin: "importacion_zip_individual",
       originPath: candidate.folderPath,
       confidence: 0.35,
-      warnings: ["No se detecto numero de expediente."],
+      warnings: ["No se detectó número de expediente."],
       documentPaths: activePaths,
       isProvisional: true,
     },
@@ -240,7 +268,7 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
 }
 
 async function updateExistingClient(candidate: ReviewCandidate, db: DbClient): Promise<string> {
-  if (!candidate.existingClientId) throw new Error("No se selecciono cliente existente.");
+  if (!candidate.existingClientId) throw new Error("No se seleccionó cliente existente.");
   const updates: ClientUpdate = {};
   if (candidate.edits.phone) updates.phone = candidate.edits.phone;
   if (candidate.edits.email) updates.email = candidate.edits.email;
@@ -258,6 +286,85 @@ async function updateExistingClient(candidate: ReviewCandidate, db: DbClient): P
   return candidate.existingClientId;
 }
 
+/**
+ * Maps a new-style status value back to the legacy CHECK set.
+ * Used as a fallback when the migration has not yet been applied to the
+ * remote database (isMissingSchemaFieldError does not cover check violations,
+ * so we proactively downgrade for the legacy INSERT attempt).
+ */
+function toLegacyCaseStatus(status: string): string {
+  const map: Record<string, string> = {
+    "Pendiente de clasificación": "Consulta",
+    pendiente_revision: "Consulta",
+    "En preparación": "Documentación",
+    Presentado: "Demanda presentada",
+    "En trámite": "En proceso",
+    "En audiencia": "Audiencia",
+    "En ejecución": "En proceso",
+    Concluido: "Sentencia",
+    Archivado: "Archivado",
+  };
+  return map[status] ?? "Consulta";
+}
+
+/**
+ * Produces a structured OperationError from a raw DB error for the case stage.
+ */
+function buildCaseError(
+  raw: DbError | null | undefined,
+  expediente: string,
+  caseTitle: string,
+): OperationError {
+  const code = raw?.code ?? "";
+  const msg = raw?.message ?? "Error desconocido";
+
+  if (code === "23514") {
+    return {
+      summary: `Falló la creación del expediente ${expediente}. El valor de estado no está permitido por la base de datos.`,
+      stage: "case",
+      code,
+      detail: msg,
+      action:
+        "Aplica la migración 20260724120000_fix_cases_status_check_constraint.sql en Supabase y reintenta.",
+    };
+  }
+  if (code === "23505") {
+    return {
+      summary: `Ya existe un expediente con el número ${expediente}.`,
+      stage: "case",
+      code,
+      detail: msg,
+      action:
+        "El expediente ya existe en la base de datos. Puedes reutilizarlo o revisar la numeración.",
+    };
+  }
+  if (code === "23502") {
+    return {
+      summary: `Falta un campo obligatorio al crear el expediente ${expediente}.`,
+      stage: "case",
+      code,
+      detail: msg,
+      action: "Revisa que el expediente tenga número, juzgado y tipo de proceso.",
+    };
+  }
+  if (code === "42501" || code === "PGRST301") {
+    return {
+      summary: "Sin permisos para crear el expediente. Verifica que tu sesión esté activa.",
+      stage: "case",
+      code,
+      detail: msg,
+      action: "Recarga la página e inicia sesión nuevamente.",
+    };
+  }
+  return {
+    summary: `Falló la creación del expediente "${caseTitle}".`,
+    stage: "case",
+    code: code || undefined,
+    detail: msg,
+    action: "Revisa el detalle técnico y contacta al administrador si el error persiste.",
+  };
+}
+
 async function createCase(
   db: DbClient,
   clientId: string,
@@ -267,6 +374,13 @@ async function createCase(
   const expediente =
     caseCandidate.caseNumber ?? provisionalExpediente(clientId, caseCandidate, files);
   const processType = safeProcessType(caseCandidate.processType);
+
+  // normalizeCaseStatus returns values from the new status set
+  // ('Pendiente de clasificación', 'En trámite', etc.).
+  // These are valid after migration 20260724120000. If the migration
+  // has not been applied yet, we fall back to the legacy set below.
+  const newStatus = normalizeCaseStatus(caseCandidate.status);
+
   const payload: CaseInsert = {
     client_id: clientId,
     expediente,
@@ -277,7 +391,7 @@ async function createCase(
     court: caseCandidate.juzgado || "Por determinar",
     juzgado: caseCandidate.juzgado || "Por determinar",
     process_type: processType,
-    status: normalizeCaseStatus(caseCandidate.status),
+    status: newStatus,
     priority: "Media",
     demandante: caseCandidate.demandante ?? null,
     demandado: caseCandidate.demandado ?? null,
@@ -285,22 +399,94 @@ async function createCase(
     internal_code: caseCandidate.isProvisional ? expediente : null,
   };
 
+  // Track the last raw DB error across retries so we can always produce a
+  // structured OperationError — even when a retry clears `error` to null but
+  // still returns `data: null` (RLS silencing or race condition).
+  let lastError: DbError | null | undefined = undefined;
+
   let { data, error } = await fromDb(db, "cases").insert(payload).select("id").single();
+  if (error) lastError = error;
+
+  // Schema cache miss (new columns not yet recognized) → strip new-only columns
   if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: CaseInsert = {
       client_id: payload.client_id,
       expediente: payload.expediente,
       juzgado: payload.juzgado,
       process_type: payload.process_type,
-      status: payload.status,
+      // Map new status values back to the legacy CHECK set
+      status: toLegacyCaseStatus(newStatus),
       priority: payload.priority,
       demandante: payload.demandante,
       demandado: payload.demandado,
     };
     ({ data, error } = await fromDb(db, "cases").insert(legacyPayload).select("id").single());
+    if (error) lastError = error;
   }
-  return ensureSupabaseData<{ id: string }>(data, error, `Crear expediente ${caseCandidate.title}`)
-    .id;
+
+  // Check constraint violation on status (23514): the migration has not been
+  // applied yet. Retry with the legacy status value against the full payload
+  // minus the new-only columns to avoid a second PGRST204.
+  if (error?.code === "23514") {
+    const legacyStatusPayload: CaseInsert = {
+      client_id: payload.client_id,
+      expediente: payload.expediente,
+      case_number: payload.case_number,
+      case_name: payload.case_name,
+      case_type: payload.case_type,
+      case_stage: payload.case_stage,
+      court: payload.court,
+      juzgado: payload.juzgado,
+      process_type: payload.process_type,
+      status: toLegacyCaseStatus(newStatus),
+      priority: payload.priority,
+      demandante: payload.demandante,
+      demandado: payload.demandado,
+      current_status_description: payload.current_status_description,
+      internal_code: payload.internal_code,
+    };
+    ({ data, error } = await fromDb(db, "cases").insert(legacyStatusPayload).select("id").single());
+    if (error) lastError = error;
+  }
+
+  // Determine if we have a final error: prefer the current `error`, fall back
+  // to `lastError` from a previous retry attempt.  This covers the edge case
+  // where a retry clears `error` to null but still returns `data: null`
+  // (e.g., RLS silently blocking the row return, or a race on unique index).
+  const finalError = error ?? (!data ? lastError : null);
+
+  if (finalError) {
+    // Build a structured error and attach it to the thrown Error so the
+    // caller can surface it in the UI with full detail.
+    const structured = buildCaseError(finalError, expediente, caseCandidate.title);
+    const thrown = new Error(structured.summary);
+    (thrown as Error & { operationError?: OperationError }).operationError = structured;
+    throw thrown;
+  }
+
+  // If we reach here with no error but also no data, this is an unexpected
+  // Supabase response (e.g., RLS USING clause filtered the returning row).
+  // Surface it as a structured error rather than the raw ensureSupabaseData
+  // message, which would produce the truncated "Crear expediente Expediente
+  // 070…" text that the user sees.
+  if (!data) {
+    const structured = buildCaseError(
+      {
+        message:
+          "Supabase no devolvió el id del expediente creado. " +
+          "Es posible que una política RLS esté bloqueando la lectura del registro recién insertado, " +
+          "o que el expediente ya exista con el mismo número.",
+        code: "PGRST000",
+      },
+      expediente,
+      caseCandidate.title,
+    );
+    const thrown = new Error(structured.summary);
+    (thrown as Error & { operationError?: OperationError }).operationError = structured;
+    throw thrown;
+  }
+
+  return data.id;
 }
 
 async function documentAlreadyExists(
@@ -365,7 +551,7 @@ async function insertDocument(
 export async function persistZipCandidate(
   params: PersistZipCandidateParams,
 ): Promise<PersistZipCandidateResult> {
-  const { candidate, db, storageBucket, now = () => Date.now() } = params;
+  const { candidate, db, storageBucket, now = () => Date.now(), existingClientIdOverride } = params;
   const errors: string[] = [];
   const compensations: string[] = [];
   const caseIds: PersistZipCandidateResult["caseIds"] = [];
@@ -375,17 +561,58 @@ export async function persistZipCandidate(
   let documentsImported = 0;
   let documentsSkipped = 0;
   let clientId: string | undefined;
+  let clientAlreadyExisted = false;
+  let firstErrorDetail: OperationError | undefined;
 
-  try {
-    const action =
-      candidate.duplicates.length > 0 ? (candidate.duplicateAction ?? "create_new") : "create_new";
-    if (action === "skip") {
+  // ── Client stage ────────────────────────────────────────────────────────────
+  //
+  // If existingClientIdOverride is provided (retry path), skip client creation
+  // entirely and reuse the already-created client. This ensures the retry is
+  // idempotent: the client is never duplicated.
+
+  if (existingClientIdOverride) {
+    clientId = existingClientIdOverride;
+    clientAlreadyExisted = true;
+  } else {
+    try {
+      const action =
+        candidate.duplicates.length > 0
+          ? (candidate.duplicateAction ?? "create_new")
+          : "create_new";
+      if (action === "skip") {
+        return {
+          folderName: candidate.folderName,
+          status: "skipped",
+          documentsImported: 0,
+          documentsSkipped: 0,
+          errors,
+          compensations,
+          caseIds,
+          documentIds,
+          failedFiles,
+          warnings,
+        };
+      }
+      clientId =
+        action === "create_new"
+          ? await createClient(params)
+          : await updateExistingClient(candidate, db);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
       return {
         folderName: candidate.folderName,
-        status: "skipped",
+        status: "failed",
+        error: msg,
+        errorDetail: {
+          summary: msg,
+          stage: "client",
+          code: (err as { operationError?: OperationError }).operationError?.code,
+          detail: msg,
+          action: "Verifica los datos del cliente e intenta nuevamente.",
+        },
         documentsImported: 0,
         documentsSkipped: 0,
-        errors,
+        errors: [msg],
         compensations,
         caseIds,
         documentIds,
@@ -393,25 +620,6 @@ export async function persistZipCandidate(
         warnings,
       };
     }
-    clientId =
-      action === "create_new"
-        ? await createClient(params)
-        : await updateExistingClient(candidate, db);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error desconocido";
-    return {
-      folderName: candidate.folderName,
-      status: "failed",
-      error: msg,
-      documentsImported: 0,
-      documentsSkipped: 0,
-      errors: [msg],
-      compensations,
-      caseIds,
-      documentIds,
-      failedFiles,
-      warnings,
-    };
   }
 
   if (!clientId) {
@@ -420,6 +628,7 @@ export async function persistZipCandidate(
       folderName: candidate.folderName,
       status: "failed",
       error: msg,
+      errorDetail: { summary: msg, stage: "client", action: "Reinicia la importación." },
       documentsImported: 0,
       documentsSkipped: 0,
       errors: [msg],
@@ -472,6 +681,8 @@ export async function persistZipCandidate(
     }
   }
 
+  // ── Case stage ──────────────────────────────────────────────────────────────
+
   for (const caseCandidate of caseCandidates) {
     const files = activeFilesForCase(candidate, caseCandidate, documentCaseMap);
     if (files.length === 0) continue;
@@ -485,7 +696,20 @@ export async function persistZipCandidate(
         caseNumber: caseCandidate.caseNumber,
       });
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : "Error creando expediente");
+      const msg = err instanceof Error ? err.message : "Error creando expediente";
+      errors.push(msg);
+      // Capture the structured error detail from the first case failure
+      const structured = (err as Error & { operationError?: OperationError }).operationError;
+      if (!firstErrorDetail) firstErrorDetail = structured;
+      // Documents for this case cannot be uploaded without a caseId.
+      // Mark them as failed so the retry can pick them up.
+      for (const docFile of files) {
+        failedFiles.push({
+          name: docFile.name,
+          path: docFile.zipPath,
+          error: `Expediente no creado: ${msg}`,
+        });
+      }
       continue;
     }
 
@@ -496,19 +720,52 @@ export async function persistZipCandidate(
     (file) => !documentCaseMap[file.zipPath] || documentCaseMap[file.zipPath] === "__unclassified",
   );
   if (unclassifiedFiles.length > 0) {
-    warnings.push(`${unclassifiedFiles.length} documento(s) importado(s) sin expediente asignado.`);
+    warnings.push(
+      `${formatCount(unclassifiedFiles.length, "documento importado", "documentos importados")} sin expediente asignado.`,
+    );
     for (const docFile of unclassifiedFiles) await persistDocumentFile(docFile, null);
   }
 
-  const status: PersistStatus =
-    errors.length === 0 ? "success" : documentsImported > 0 ? "partial" : "failed";
+  // ── Status computation ──────────────────────────────────────────────────────
+  //
+  // Distinguish between:
+  //   "partial" — client created/existed and at least something failed
+  //   "failed"  — client itself was never created (no clientId at all)
+  //   "success" — everything succeeded with no errors
+  //
+  // Key rule: if we have a clientId (either freshly created OR pre-existing),
+  // the client stage succeeded.  Any downstream failure (case, document) makes
+  // the result "partial", NOT "failed".  This prevents "0 clientes importados
+  // correctamente" when the client was created but the case failed.
+
+  const hasAnySuccess = documentsImported > 0 || caseIds.length > 0;
+  const hasErrors = errors.length > 0;
+  // clientId is always set by the time we reach this point (we return early
+  // above if it is falsy), so clientCreatedOrExisted is always true here.
+  // We keep the variable for clarity and future-proofing.
+  const clientCreatedOrExisted = Boolean(clientId);
+
+  let status: PersistStatus;
+  if (!hasErrors) {
+    status = "success";
+  } else if (clientCreatedOrExisted) {
+    // Client exists — any error is partial (not a total failure).
+    // "partial" is correct even when hasAnySuccess is false: the client was
+    // created but the case (and therefore its documents) failed entirely.
+    status = "partial";
+  } else {
+    status = "failed";
+  }
+
   return {
     folderName: candidate.folderName,
     status,
     clientId,
+    clientAlreadyExisted,
     documentsImported,
     documentsSkipped,
     error: errors[0],
+    errorDetail: firstErrorDetail,
     errors,
     compensations,
     caseIds,

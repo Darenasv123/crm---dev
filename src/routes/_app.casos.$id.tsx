@@ -10,6 +10,7 @@ import {
 import { usePayments } from "@/hooks/use-payments";
 import { useClientReports } from "@/hooks/use-reports";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/lib/permissions";
 import { CasePartiesPanel } from "@/components/legal/case-parties-panel";
 import { CaseTimelinePanel } from "@/components/legal/case-timeline-panel";
 import { CaseTasksPanel } from "@/components/legal/case-tasks-panel";
@@ -76,9 +77,11 @@ function CaseDetail() {
   const { data: item, isLoading } = useCase(id);
   const { data: allCases = [] } = useCases();
   const { data: allDocs = [] } = useDocuments();
-  const { data: allPayments = [] } = usePayments();
   const { data: allReports = [] } = useClientReports();
   const { profile } = useAuth();
+  const { canViewPayments } = usePermissions(profile);
+  // Pagos solo se consultan si el rol tiene permiso (Personal no ejecuta esta query)
+  const { data: allPayments = [] } = usePayments({ enabled: canViewPayments });
   const updateCase = useUpdateCase();
   const uploadDoc = useUploadDocument();
   const deleteDoc = useDeleteDocument();
@@ -142,6 +145,7 @@ function CaseDetail() {
   // Separate the main expediente file (type "Expediente") from the rest
   const expedienteDoc = caseDocs.find((d) => d.type === "Expediente");
   const otherDocs = caseDocs.filter((d) => d.type !== "Expediente");
+  // casePayments solo tiene datos si el rol tiene permiso (query desactivada para Personal)
   const casePayments = allPayments.filter((payment) => payment.case_id === id);
   const caseReports = allReports.filter((report) => report.case_id === id);
 
@@ -297,7 +301,7 @@ function CaseDetail() {
   }
 
   function archiveCase() {
-    if (!window.confirm("¿Archivar este expediente? Podras cambiar el estado mas adelante.")) {
+    if (!window.confirm("¿Archivar este expediente? Podrás cambiar el estado más adelante.")) {
       return;
     }
     updateCase.mutate({ id, updates: { status: "Archivado" } });
@@ -333,7 +337,7 @@ function CaseDetail() {
           >
             <CalendarPlus className="h-4 w-4" /> Agendar
           </Link>
-          {isAdmin && (
+          {canViewPayments && (
             <Link
               to={"/pagos" as never}
               className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
@@ -353,7 +357,7 @@ function CaseDetail() {
       }
     >
       <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-border">
-        {CASE_TABS.map((tab) => (
+        {CASE_TABS.filter((tab) => tab !== "Pagos" || canViewPayments).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -659,7 +663,7 @@ function CaseDetail() {
           <CaseTasksPanel caseId={id} clientId={item.client_id} />
         </div>
       )}
-      {activeTab === "Pagos" && <CasePaymentsPanel payments={casePayments} />}
+      {activeTab === "Pagos" && canViewPayments && <CasePaymentsPanel payments={casePayments} />}
       {activeTab === "Notas" && (
         <Card className="p-5">
           <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
@@ -706,7 +710,7 @@ function CaseDetail() {
                 label="N° Expediente"
                 v={editForm.expediente}
                 set={(v) => setEditForm((f) => ({ ...f, expediente: v }))}
-                placeholder="Puede quedar vacio si aun no existe numero judicial"
+                placeholder="Puede quedar vacío si aún no existe número judicial"
               />
               <CF
                 label="Proceso *"

@@ -9,6 +9,7 @@ import { useClientReports } from "@/hooks/use-reports";
 import { useDocuments } from "@/hooks/use-documents";
 import { useImportJobsFilter } from "@/hooks/use-ai-findings";
 import { ZipImport } from "@/components/zip-import";
+import { usePermissions } from "@/lib/permissions";
 import { displayCaseNumber, normalizeCaseStatus } from "@/lib/case-validation";
 import { formatPeruDate, getPeruHour, getPeruTodayISO } from "@/lib/peru-time";
 import { useState } from "react";
@@ -56,11 +57,12 @@ function activityIcon(t: string) {
 function Dashboard() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
+  const { canViewPayments, canViewFinancialMetrics } = usePermissions(profile);
   const [showZipImport, setShowZipImport] = useState(false);
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
   const { data: events = [] } = useAgendaEvents();
-  const { data: payments = [] } = usePayments({ enabled: isAdmin });
+  const { data: payments = [] } = usePayments({ enabled: canViewPayments });
   const { data: reports = [] } = useClientReports();
   const { data: documents = [] } = useDocuments();
   const { data: importJobs = [] } = useImportJobsFilter({ enabled: isAdmin });
@@ -72,7 +74,7 @@ function Dashboard() {
   );
   const pendingClassificationCases = activeCases.filter(
     (c) =>
-      normalizeCaseStatus(c.status) === "Pendiente de clasificacion" ||
+      normalizeCaseStatus(c.status) === "Pendiente de clasificación" ||
       c.case_stage === "pendiente_revision" ||
       !c.expediente.trim(),
   );
@@ -116,12 +118,15 @@ function Dashboard() {
       title: doc.name,
       meta: doc.clients?.name ?? "Documento sin cliente",
     })),
-    ...payments.slice(0, 8).map((payment) => ({
-      date: payment.created_at,
-      type: "payment",
-      title: payment.clients?.name ?? payment.service,
-      meta: payment.status,
-    })),
+    // Solo incluir actividad de pagos si el rol tiene permiso (no ejecuta la query para Personal)
+    ...(canViewPayments
+      ? payments.slice(0, 8).map((payment) => ({
+          date: payment.created_at,
+          type: "payment",
+          title: payment.clients?.name ?? payment.service,
+          meta: payment.status,
+        }))
+      : []),
   ]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
@@ -157,25 +162,27 @@ function Dashboard() {
         />
         <KpiCard
           icon={AlertTriangle}
-          label="Pendientes de clasificacion"
+          label="Pendientes de clasificación"
           value={pendingClassificationCases.length}
           tone="warning"
           to="/casos"
         />
         <KpiCard
           icon={CalendarClock}
-          label="Actividades proximas"
+          label="Actividades próximas"
           value={upcomingEvents.length}
           tone="info"
           to="/agenda"
         />
-        <KpiCard
-          icon={CreditCard}
-          label="Pagos pendientes"
-          value={pendingPayments.length}
-          tone="danger"
-          to="/pagos"
-        />
+        {canViewFinancialMetrics && (
+          <KpiCard
+            icon={CreditCard}
+            label="Pagos pendientes"
+            value={pendingPayments.length}
+            tone="danger"
+            to="/pagos"
+          />
+        )}
         <KpiCard
           icon={FileText}
           label="Docs. sin expediente"
@@ -195,7 +202,7 @@ function Dashboard() {
           />
           <QuickAction icon={FolderPlus} label="Nuevo expediente" to="/casos" />
           <QuickAction icon={FileText} label="Subir documento" to="/documentos" />
-          {isAdmin && <QuickAction icon={Landmark} label="Registrar pago" to="/pagos" />}
+          {canViewPayments && <QuickAction icon={Landmark} label="Registrar pago" to="/pagos" />}
           <QuickAction icon={CalendarPlus} label="Agendar actividad" to="/agenda" />
         </div>
       </Card>
@@ -224,11 +231,17 @@ function Dashboard() {
             <WorkBucket
               icon={CreditCard}
               label="Pagos vencidos"
-              empty={isAdmin ? "Sin pagos vencidos." : "Visible para administradores."}
-              items={overduePayments.map((p) => ({
-                title: p.clients?.name ?? "Cliente",
-                meta: p.service,
-              }))}
+              empty={
+                canViewFinancialMetrics ? "Sin pagos vencidos." : "Visible para administradores."
+              }
+              items={
+                canViewFinancialMetrics
+                  ? overduePayments.map((p) => ({
+                      title: p.clients?.name ?? "Cliente",
+                      meta: p.service,
+                    }))
+                  : []
+              }
             />
             <WorkBucket
               icon={CalendarClock}
@@ -251,10 +264,10 @@ function Dashboard() {
             <WorkBucket
               icon={Users}
               label="Clientes sin contacto"
-              empty="Todos tienen telefono o correo."
+              empty="Todos tienen teléfono o correo."
               items={clientsWithoutContact.map((client) => ({
                 title: client.name,
-                meta: client.process_type,
+                meta: client.process_type ?? "—",
               }))}
             />
             <WorkBucket
@@ -272,7 +285,7 @@ function Dashboard() {
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-base font-semibold">Proximas actividades</h3>
+              <h3 className="text-base font-semibold">Próximas actividades</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 Audiencias, plazos, reuniones y tareas
               </p>
@@ -286,7 +299,7 @@ function Dashboard() {
           </div>
           <div className="space-y-3">
             {upcomingEvents.slice(0, 7).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay actividades proximas.</p>
+              <p className="text-sm text-muted-foreground">No hay actividades próximas.</p>
             ) : (
               upcomingEvents.slice(0, 7).map((event) => (
                 <div
@@ -320,7 +333,7 @@ function Dashboard() {
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold">Expedientes en revision</h3>
+            <h3 className="text-base font-semibold">Expedientes en revisión</h3>
             <Link
               to={"/casos" as never}
               className="text-xs font-semibold text-primary hover:underline"

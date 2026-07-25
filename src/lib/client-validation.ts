@@ -27,7 +27,7 @@ export type ClientDuplicateMatch = {
   strength: "exact" | "approximate";
 };
 
-const emailSchema = z.string().email("Ingresa un correo valido.").or(z.literal(""));
+const emailSchema = z.string().email("Ingresa un correo válido.").or(z.literal(""));
 
 export function normalizeDigits(value: string | null | undefined) {
   return (value ?? "").replace(/\D/g, "");
@@ -83,28 +83,28 @@ export function buildClientInitials(name: string) {
 
 export function validateClientForm(input: ClientFormValues): ClientFormValues {
   const form = normalizeClientForm(input);
-  if (!form.name) throw new Error("Ingresa el nombre completo o razon social.");
+  if (!form.name) throw new Error("Ingresa el nombre completo o razón social.");
   if (!form.process_type) throw new Error("Describe el proceso o materia principal del cliente.");
   if (!form.document_number) throw new Error("Ingresa el DNI o RUC del cliente.");
 
   const docType = form.document_type.toUpperCase();
   if (docType === "DNI" && form.document_number.length !== 8) {
-    throw new Error("El DNI debe tener exactamente 8 digitos.");
+    throw new Error("El DNI debe tener exactamente 8 dígitos.");
   }
   if (docType === "RUC" && form.document_number.length !== 11) {
-    throw new Error("El RUC debe tener exactamente 11 digitos.");
+    throw new Error("El RUC debe tener exactamente 11 dígitos.");
   }
   if (docType !== "DNI" && docType !== "RUC" && form.document_number.length < 6) {
-    throw new Error("El documento debe tener al menos 6 digitos.");
+    throw new Error("El documento debe tener al menos 6 dígitos.");
   }
 
-  if (form.phone.length !== 9) throw new Error("El telefono principal debe tener 9 digitos.");
+  if (form.phone.length !== 9) throw new Error("El teléfono principal debe tener 9 dígitos.");
   if (form.whatsapp && form.whatsapp.length !== 9) {
-    throw new Error("El telefono alternativo debe tener 9 digitos.");
+    throw new Error("El teléfono alternativo debe tener 9 dígitos.");
   }
   const emailResult = emailSchema.safeParse(form.email);
   if (!emailResult.success) {
-    throw new Error(emailResult.error.issues[0]?.message ?? "Ingresa un correo valido.");
+    throw new Error(emailResult.error.issues[0]?.message ?? "Ingresa un correo válido.");
   }
   return form;
 }
@@ -139,11 +139,11 @@ export function findClientDuplicates(
       continue;
     }
     if (phone && (phone === clientPhone || phone === clientWhatsapp)) {
-      add(client, "Mismo telefono", "exact");
+      add(client, "Mismo teléfono", "exact");
       continue;
     }
     if (whatsapp && (whatsapp === clientPhone || whatsapp === clientWhatsapp)) {
-      add(client, "Mismo telefono alternativo", "exact");
+      add(client, "Mismo teléfono alternativo", "exact");
       continue;
     }
     if (email && clientEmail && email === clientEmail) {

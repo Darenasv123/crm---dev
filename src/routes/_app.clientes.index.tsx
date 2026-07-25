@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { useClients, useCreateClient, useUpdateClient } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
@@ -6,24 +6,22 @@ import { usePayments } from "@/hooks/use-payments";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/lib/permissions";
 import { exportClientsExcel } from "@/lib/export-excel";
 import { CSVImport } from "@/components/csv-import";
 import { ZipImport } from "@/components/zip-import";
+import { FolderImport } from "@/components/folder-import";
 import {
   Search,
   Download,
   Plus,
-  ChevronDown,
   Eye,
   X,
   Loader2,
   FolderArchive,
+  FolderOpen,
   FileSpreadsheet,
   Pencil,
-  Briefcase,
-  FileUp,
-  CreditCard,
-  CalendarClock,
   AlertTriangle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -119,12 +117,13 @@ function isActiveCaseStatus(status: string) {
 }
 
 function ClientsPage() {
-  const navigate = useNavigate();
   const { data: clients = [], isLoading, isError, error, refetch } = useClients();
   const { data: cases = [] } = useCases();
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "Administrador";
-  const { data: payments = [] } = usePayments({ enabled: isAdmin });
+  const { canViewPayments, canExportPayments } = usePermissions(profile);
+  const isAdmin = canExportPayments; // retrocompatibilidad: solo admins pueden exportar
+  // Payments solo se cargan para poder filtrar "Con pagos pendientes" cuando el rol tiene acceso
+  const { data: payments = [] } = usePayments({ enabled: canViewPayments });
   const { data: agendaEvents = [] } = useAgendaEvents();
   const { data: profiles = [] } = useProfiles();
   const createClient = useCreateClient();
@@ -141,6 +140,7 @@ function ClientsPage() {
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showZipImportModal, setShowZipImportModal] = useState(false);
+  const [showFolderImportModal, setShowFolderImportModal] = useState(false);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
   const [form, setForm] = useState<ClientFormValues>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -200,7 +200,7 @@ function ClientsPage() {
       const base = (item.legal_area || item.process_type || item.case_type || "")
         .split(/\s*[—-]\s*/)[0]
         .trim();
-      if (base && base !== "Pendiente de clasificacion") types.add(base);
+      if (base && base !== "Pendiente de clasificación") types.add(base);
     }
     return ["Todos", ...Array.from(types).sort()];
   }, [cases]);
@@ -264,7 +264,7 @@ function ClientsPage() {
         !q ||
         client.name.toLowerCase().includes(q) ||
         documentNumber.includes(q) ||
-        client.phone.includes(q) ||
+        (client.phone ?? "").includes(q) ||
         (client.whatsapp ?? "").includes(q) ||
         (client.email ?? "").toLowerCase().includes(q);
       const matchStatus =
@@ -289,7 +289,7 @@ function ClientsPage() {
         (caseFilter === "Con expedientes activos" && activeClientCases.length > 0) ||
         (caseFilter === "Sin expediente" && clientCases.length === 0) ||
         (caseFilter === "Con pagos pendientes" && pendingBalance > 0) ||
-        (caseFilter === "Con proxima actividad" && !!nextActivity);
+        (caseFilter === "Con próxima actividad" && !!nextActivity);
 
       return matchSearch && matchStatus && matchSpecialty && matchResponsible && matchCaseFilter;
     });
@@ -333,12 +333,12 @@ function ClientsPage() {
     setForm({
       name: client.name,
       document_type: client.document_type || "DNI",
-      document_number: client.document_number || client.dni,
-      phone: client.phone,
+      document_number: (client.document_number || client.dni) ?? "",
+      phone: client.phone ?? "",
       whatsapp: client.whatsapp ?? "",
       email: client.email ?? "",
       occupation: client.occupation ?? "",
-      process_type: client.process_type,
+      process_type: client.process_type ?? "",
       status: client.status,
       address: client.address ?? "",
       notes: client.notes ?? "",
@@ -375,7 +375,7 @@ function ClientsPage() {
         return;
       }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Datos incompletos o invalidos.");
+      setFormError(err instanceof Error ? err.message : "Datos incompletos o inválidos.");
       return;
     }
 
@@ -425,6 +425,12 @@ function ClientsPage() {
             </button>
           )}
           <button
+            onClick={() => setShowFolderImportModal(true)}
+            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
+          >
+            <FolderOpen className="h-4 w-4" /> Importar carpeta
+          </button>
+          <button
             onClick={() => setShowZipImportModal(true)}
             className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60 transition"
           >
@@ -452,7 +458,7 @@ function ClientsPage() {
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Buscar cliente, DNI/RUC, telefono o correo..."
+              placeholder="Buscar cliente, DNI/RUC, teléfono o correo..."
               className="w-full h-10 pl-10 pr-3 rounded-lg bg-muted/40 border border-border focus:bg-card focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm"
             />
           </div>
@@ -466,8 +472,8 @@ function ClientsPage() {
               "Todos",
               "Con expedientes activos",
               "Sin expediente",
-              "Con pagos pendientes",
-              "Con proxima actividad",
+              ...(canViewPayments ? ["Con pagos pendientes"] : []),
+              "Con próxima actividad",
             ]}
           />
           <FilterSelect
@@ -611,7 +617,7 @@ function ClientsPage() {
                           </div>
                         </td>
                         <td className="py-3 px-3">
-                          <div className="font-mono text-xs">{client.phone}</div>
+                          <div className="font-mono text-xs">{client.phone ?? "—"}</div>
                           <div className="text-[10px] text-muted-foreground">
                             {client.whatsapp ? `Alt. ${client.whatsapp}` : "Sin alternativo"}
                           </div>
@@ -652,60 +658,23 @@ function ClientsPage() {
                           )}
                         </td>
                         <td className="py-3 pr-5">
-                          <div className="flex flex-wrap justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-2">
                             <Link
                               to={"/clientes/$id" as never}
                               params={{ id: client.id } as never}
-                              className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
+                              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition"
                               aria-label={`Ver ficha de ${client.name}`}
                             >
-                              <Eye className="h-3.5 w-3.5" /> Ver
+                              <Eye className="h-3.5 w-3.5" /> Ver ficha
                             </Link>
                             <button
                               type="button"
                               onClick={() => openEdit(client)}
-                              className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-border text-xs font-semibold hover:bg-muted/60"
+                              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border text-xs font-semibold hover:bg-muted/60 transition"
                               aria-label={`Editar cliente ${client.name}`}
+                              title="Editar datos del cliente"
                             >
                               <Pencil className="h-3.5 w-3.5" /> Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => navigate({ to: "/casos" as never })}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                              aria-label={`Crear expediente para ${client.name}`}
-                            >
-                              <Briefcase className="h-3.5 w-3.5" />
-                              Expediente
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => navigate({ to: "/documentos" as never })}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                              aria-label={`Subir documento para ${client.name}`}
-                            >
-                              <FileUp className="h-3.5 w-3.5" />
-                              Documento
-                            </button>
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => navigate({ to: "/pagos" as never })}
-                                className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                                aria-label={`Registrar pago de ${client.name}`}
-                              >
-                                <CreditCard className="h-3.5 w-3.5" />
-                                Pago
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => navigate({ to: "/agenda" as never })}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                              aria-label={`Agendar actividad para ${client.name}`}
-                            >
-                              <CalendarClock className="h-3.5 w-3.5" />
-                              Agenda
                             </button>
                           </div>
                         </td>
@@ -776,6 +745,16 @@ function ClientsPage() {
         <ZipImport
           onClose={() => setShowZipImportModal(false)}
           onSuccess={() => {
+            refetch();
+          }}
+        />
+      )}
+
+      {showFolderImportModal && (
+        <FolderImport
+          onClose={() => setShowFolderImportModal(false)}
+          onSuccess={() => {
+            setShowFolderImportModal(false);
             refetch();
           }}
         />
@@ -864,7 +843,7 @@ function ClientFormModal({
 
         <form onSubmit={onSubmit} className="space-y-4">
           <InputField
-            label="Nombre completo o razon social *"
+            label="Nombre completo o razón social *"
             value={form.name}
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
             required
@@ -904,7 +883,7 @@ function ClientFormModal({
                   (documentType === "RUC" && form.document_number.length < 11)) && (
                   <p className="mt-1 text-[11px] text-amber-600">
                     Faltan {(documentType === "RUC" ? 11 : 8) - form.document_number.length}{" "}
-                    digitos.
+                    dígitos.
                   </p>
                 )}
             </div>
@@ -912,7 +891,7 @@ function ClientFormModal({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <InputField
-              label="Telefono principal *"
+              label="Teléfono principal *"
               value={form.phone}
               onChange={(value) =>
                 setForm((current) => ({
@@ -924,7 +903,7 @@ function ClientFormModal({
               required
             />
             <InputField
-              label="Telefono alternativo"
+              label="Teléfono alternativo"
               value={form.whatsapp}
               onChange={(value) =>
                 setForm((current) => ({
@@ -944,14 +923,14 @@ function ClientFormModal({
               type="email"
             />
             <InputField
-              label="Ocupacion"
+              label="Ocupación"
               value={form.occupation}
               onChange={(value) => setForm((current) => ({ ...current, occupation: value }))}
             />
           </div>
 
           <InputField
-            label="Direccion"
+            label="Dirección"
             value={form.address}
             onChange={(value) => setForm((current) => ({ ...current, address: value }))}
           />

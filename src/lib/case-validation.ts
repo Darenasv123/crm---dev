@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 export const CASE_STATUS_OPTIONS = [
-  "Pendiente de clasificacion",
-  "En preparacion",
+  "Pendiente de clasificación",
+  "En preparación",
   "Presentado",
-  "En tramite",
+  "En trámite",
   "En audiencia",
-  "En ejecucion",
+  "En ejecución",
   "Concluido",
   "Archivado",
 ] as const;
@@ -37,21 +37,21 @@ export type CaseFormValues = {
 };
 
 const STATUS_ALIASES: Record<string, CaseStatus> = {
-  consulta: "Pendiente de clasificacion",
-  "pendiente revision": "Pendiente de clasificacion",
-  "pendiente de revision": "Pendiente de clasificacion",
-  "pendiente de clasificacion": "Pendiente de clasificacion",
-  documentacion: "En preparacion",
-  "en preparacion": "En preparacion",
+  consulta: "Pendiente de clasificación",
+  "pendiente revision": "Pendiente de clasificación",
+  "pendiente de revisión": "Pendiente de clasificación",
+  "pendiente de clasificacion": "Pendiente de clasificación",
+  documentacion: "En preparación",
+  "en preparacion": "En preparación",
   "demanda presentada": "Presentado",
   presentado: "Presentado",
-  "en proceso": "En tramite",
-  "en tramite": "En tramite",
+  "en proceso": "En trámite",
+  "en tramite": "En trámite",
   audiencia: "En audiencia",
   "en audiencia": "En audiencia",
   sentencia: "Concluido",
   concluido: "Concluido",
-  "en ejecucion": "En ejecucion",
+  "en ejecucion": "En ejecución",
   archivado: "Archivado",
 };
 
@@ -67,11 +67,11 @@ function clean(value: unknown) {
 
 export function normalizeCaseStatus(status: unknown): CaseStatus {
   const normalized = stripAccents(clean(status)).toLowerCase();
-  return STATUS_ALIASES[normalized] ?? "Pendiente de clasificacion";
+  return STATUS_ALIASES[normalized] ?? "Pendiente de clasificación";
 }
 
 export function displayCaseNumber(expediente?: string | null, caseNumber?: string | null) {
-  return clean(expediente) || clean(caseNumber) || "Sin numero";
+  return clean(expediente) || clean(caseNumber) || "Sin número";
 }
 
 export function normalizeCaseForm(values: CaseFormValues) {

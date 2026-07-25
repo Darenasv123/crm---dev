@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { Upload, X, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { getAuthClient } from "@/lib/supabase";
+import { stripUtf8Bom } from "@/lib/text-utils";
 import ExcelJS from "exceljs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,7 +117,7 @@ function parseCSVLine(line: string): string[] {
 }
 
 function parseCSV(text: string): ParsedRow[] {
-  const lines = text.trim().split(/\r?\n/);
+  const lines = stripUtf8Bom(text).trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
   const headerLine = parseCSVLine(lines[0]).map((h) =>
@@ -271,12 +272,12 @@ function validateFileType(f: File): { ok: boolean; error?: string } {
       return {
         ok: false,
         error:
-          "El formato .xls (Excel 97-2003) no está soportado. Guarda el archivo como .xlsx (Excel moderno) e inténtalo de nuevo.",
+          "El formato .xls (Excel 97-2003) no es compatible. Guarda el archivo como .xlsx (Excel moderno) e inténtalo de nuevo.",
       };
     }
     return {
       ok: false,
-      error: `Formato no soportado: "${f.name}". Solo se aceptan archivos .csv o .xlsx.`,
+      error: `Formato no compatible: "${f.name}". Selecciona un archivo .csv o .xlsx.`,
     };
   }
 
@@ -514,7 +515,7 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                   • <strong>dni</strong> — DNI de 8 dígitos (requerido)
                 </p>
                 <p>
-                  • <strong>telefono</strong> — Teléfono de 9 dígitos (requerido)
+                  • <strong>telefono / teléfono</strong> — Teléfono de 9 dígitos (requerido)
                 </p>
                 <p>
                   • <strong>email</strong> — Correo electrónico (opcional)
@@ -526,7 +527,7 @@ export function CSVImport({ onClose, onSuccess }: Props) {
                   • <strong>estado</strong> — Activo / En espera / Cerrado (opcional)
                 </p>
                 <p className="pt-1 text-amber-700 font-medium">
-                  ⚠ El formato .xls (Excel 97-2003) no está soportado. Usa .xlsx o .csv.
+                  ⚠ El formato .xls (Excel 97-2003) no es compatible. Usa .xlsx o .csv.
                 </p>
               </div>
             </div>

@@ -41,12 +41,12 @@ const statusTone: Record<
   CaseStatus,
   "default" | "info" | "warning" | "navy" | "gold" | "danger" | "success"
 > = {
-  "Pendiente de clasificacion": "default",
-  "En preparacion": "info",
+  "Pendiente de clasificación": "default",
+  "En preparación": "info",
   Presentado: "gold",
-  "En tramite": "navy",
+  "En trámite": "navy",
   "En audiencia": "warning",
-  "En ejecucion": "danger",
+  "En ejecución": "danger",
   Concluido: "success",
   Archivado: "default",
 };
@@ -93,7 +93,7 @@ function CasesPage() {
     expediente: "",
     process_type: "",
     priority: "Media" as "Alta" | "Media" | "Baja",
-    status: "Pendiente de clasificacion" as CaseStatus,
+    status: "Pendiente de clasificación" as CaseStatus,
     juzgado: "",
     next_hearing: "",
     internal_code: "",
@@ -154,7 +154,7 @@ function CasesPage() {
       !workflowFilter ||
       (workflowFilter === "with_next_action" && hasNextAction) ||
       (workflowFilter === "without_number" && !hasNumber) ||
-      (workflowFilter === "pending_classification" && status === "Pendiente de clasificacion") ||
+      (workflowFilter === "pending_classification" && status === "Pendiente de clasificación") ||
       (workflowFilter === "archived" && status === "Archivado");
     const matchOverdue = !overdueOnly || overdueCaseIds.has(c.id);
     return (
@@ -212,7 +212,7 @@ function CasesPage() {
       expediente &&
       cases.find((item) => item.expediente.trim().toLowerCase() === expediente.toLowerCase());
     if (duplicate) {
-      setFormError(`Ya existe un expediente con el numero ${form.expediente}.`);
+      setFormError(`Ya existe un expediente con el número ${form.expediente}.`);
       return;
     }
     setSaving(true);
@@ -251,7 +251,7 @@ function CasesPage() {
         expediente: "",
         process_type: "",
         priority: "Media",
-        status: "Pendiente de clasificacion",
+        status: "Pendiente de clasificación",
         juzgado: "",
         next_hearing: "",
         internal_code: "",
@@ -439,9 +439,9 @@ function CasesPage() {
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
           >
             <option value="">Todos los flujos</option>
-            <option value="with_next_action">Con proxima accion</option>
-            <option value="without_number">Sin numero</option>
-            <option value="pending_classification">Pendientes de clasificacion</option>
+            <option value="with_next_action">Con próxima acción</option>
+            <option value="without_number">Sin número</option>
+            <option value="pending_classification">Pendientes de clasificación</option>
             <option value="archived">Archivados</option>
           </select>
           <select
@@ -498,7 +498,7 @@ function CasesPage() {
                   <th className="py-3 px-3 font-semibold">Contraparte</th>
                   <th className="py-3 px-3 font-semibold">Juzgado</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
-                  <th className="py-3 px-3 font-semibold">Proxima accion</th>
+                  <th className="py-3 px-3 font-semibold">Próxima acción</th>
                   <th className="py-3 px-3 font-semibold">Documentos</th>
                   <th className="py-3 px-3 font-semibold">Actualizado</th>
                   <th className="py-3 pr-5 font-semibold text-right">Acciones</th>
@@ -799,7 +799,7 @@ function CasesPage() {
                   type="text"
                   value={form.expediente}
                   onChange={(e) => setForm((f) => ({ ...f, expediente: e.target.value }))}
-                  placeholder="Puede quedar vacio si aun no existe numero judicial"
+                  placeholder="Puede quedar vacío si aún no existe número judicial"
                   className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm font-mono"
                 />
                 {/* Expediente file */}

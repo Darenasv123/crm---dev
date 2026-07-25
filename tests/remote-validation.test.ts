@@ -1,30 +1,48 @@
+/**
+ * remote-validation.test.ts
+ *
+ * Validación técnica de tablas AI y flujos de análisis contra Supabase.
+ * Solo se ejecuta cuando se proveen explícitamente las variables de entorno
+ * de autorización — nunca durante CI ni npm run test estándar.
+ *
+ * Uso:
+ *   $env:ALLOW_REMOTE_TESTS="true"
+ *   $env:SUPABASE_PROJECT_REF="<ref del proyecto>"
+ *   $env:REMOTE_TEST_CONFIRMATION="WRITE_TO_REMOTE_SUPABASE"
+ *   $env:SUPABASE_SERVICE_ROLE_KEY="<service role key>"
+ *   $env:VITE_SUPABASE_URL="https://<ref>.supabase.co"
+ *   $env:VITE_SUPABASE_ANON_KEY="<anon key>"
+ *   npm run test:remote
+ *
+ * IMPORTANTE: Todas las credenciales deben provenir de variables de entorno.
+ * Nunca hardcodear URLs, claves ni referencias de proyecto en este archivo.
+ */
+
 import { describe, expect, it } from "vitest";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
 const allowRemote = process.env.ALLOW_REMOTE_TESTS === "true";
-const projectRef = process.env.SUPABASE_PROJECT_REF;
-const remoteConfirmation = process.env.REMOTE_TEST_CONFIRMATION;
+const projectRef = process.env.SUPABASE_PROJECT_REF ?? "";
+const remoteConfirmation = process.env.REMOTE_TEST_CONFIRMATION ?? "";
+const supabaseUrl = process.env.VITE_SUPABASE_URL ?? "";
+const anonKey = process.env.VITE_SUPABASE_ANON_KEY ?? "";
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-const EXPECTED_PROJECT_REF = "pnqdgwpxcxngeueosmnh";
 const EXPECTED_CONFIRMATION = "WRITE_TO_REMOTE_SUPABASE";
 
+// Todas las condiciones deben cumplirse explícitamente
 const isAuthorized =
   allowRemote &&
-  projectRef === EXPECTED_PROJECT_REF &&
-  remoteConfirmation === EXPECTED_CONFIRMATION;
+  remoteConfirmation === EXPECTED_CONFIRMATION &&
+  projectRef.length > 0 &&
+  supabaseUrl.length > 0 &&
+  anonKey.length > 0 &&
+  serviceKey.length > 0;
 
-describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", () => {
-  const url = process.env.VITE_SUPABASE_URL || `https://${EXPECTED_PROJECT_REF}.supabase.co`;
-  const anonKey =
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucWRnd3B4Y3huZ2V1ZW9zbW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NDEwMTMsImV4cCI6MjA5ODMxNzAxM30._IQph5gAHaCwdOEDlG-uGmjiciZ1aJQxxCsQAk9GZiY";
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucWRnd3B4Y3huZ2V1ZW9zbW5oIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4Mjc0MTAxMywiZXhwIjoyMDk4MzE3MDEzfQ.CeRyOo1oexbAktyvRADPYKD3qDviLknQb8lu_4jYcvo";
-
-  const adminClient = createClient(url, serviceKey);
-  const anonClient = createClient(url, anonKey);
+describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", () => {
+  const adminClient = createClient(supabaseUrl, serviceKey);
+  const anonClient = createClient(supabaseUrl, anonKey);
 
   const TEST_PREFIX = `TEST_RUN_${Date.now()}`;
   const TEST_JOB_ID = crypto.randomUUID();
@@ -35,20 +53,14 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
 
   it("inserta registros técnicos controlados de prueba con UUID dinámicos", async () => {
     try {
-      // 1. import_jobs
       const { data: job, error: jobErr } = await adminClient
         .from("import_jobs")
-        .insert({
-          id: TEST_JOB_ID,
-          name: `${TEST_PREFIX}_JOB`,
-          status: "completed",
-        })
+        .insert({ id: TEST_JOB_ID, name: `${TEST_PREFIX}_JOB`, status: "completed" })
         .select()
         .single();
       expect(jobErr).toBeNull();
       expect(job.id).toBe(TEST_JOB_ID);
 
-      // 2. ai_analysis_runs
       const { data: run, error: runErr } = await adminClient
         .from("ai_analysis_runs")
         .insert({
@@ -65,7 +77,6 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
       expect(runErr).toBeNull();
       expect(run.id).toBe(TEST_RUN_ID);
 
-      // 3. ai_findings
       const { data: finding1, error: f1Err } = await adminClient
         .from("ai_findings")
         .insert({
@@ -98,7 +109,6 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
       expect(f2Err).toBeNull();
       expect(finding2.id).toBe(TEST_FINDING_2);
 
-      // 4. source_references
       const { data: ref, error: refErr } = await adminClient
         .from("source_references")
         .insert({
@@ -115,7 +125,6 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
       expect(refErr).toBeNull();
       expect(ref.id).toBe(TEST_REF_ID);
     } finally {
-      // Limpieza garantizada en teardown
       await adminClient.from("source_references").delete().eq("id", TEST_REF_ID);
       await adminClient.from("ai_findings").delete().in("id", [TEST_FINDING_1, TEST_FINDING_2]);
       await adminClient.from("ai_analysis_runs").delete().eq("id", TEST_RUN_ID);
@@ -123,9 +132,8 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
     }
   });
 
-  it("persiste actualizaciones de decisión humana (Aprobación, Edición, Rechazo, Conflicto)", async () => {
+  it("persiste actualizaciones de decisión humana (Aprobación, Edición, Rechazo)", async () => {
     try {
-      // Setup para decisión
       await adminClient
         .from("import_jobs")
         .insert({ id: TEST_JOB_ID, name: `${TEST_PREFIX}_JOB2`, status: "completed" });
@@ -159,28 +167,21 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
 
       const now = new Date().toISOString();
 
-      // Aprobar
       const { data: approved, error: appErr } = await adminClient
         .from("ai_findings")
-        .update({
-          verification_status: "approved",
-          reviewed_at: now,
-          review_notes: "Aprobado en prueba técnica",
-        })
+        .update({ verification_status: "approved", reviewed_at: now, review_notes: "Aprobado" })
         .eq("id", TEST_FINDING_1)
         .select()
         .single();
       expect(appErr).toBeNull();
       expect(approved.verification_status).toBe("approved");
 
-      // Editar
       const { data: edited, error: edErr } = await adminClient
         .from("ai_findings")
         .update({
           verification_status: "edited",
           normalized_value: JSON.stringify("Juan Pérez Test Editado"),
           reviewed_at: now,
-          review_notes: "Editado en prueba técnica",
         })
         .eq("id", TEST_FINDING_1)
         .select()
@@ -188,13 +189,9 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
       expect(edErr).toBeNull();
       expect(edited.verification_status).toBe("edited");
 
-      // Rechazar
       const { data: rejected, error: rejErr } = await adminClient
         .from("ai_findings")
-        .update({
-          verification_status: "rejected",
-          review_notes: "Rechazado en prueba técnica",
-        })
+        .update({ verification_status: "rejected", review_notes: "Rechazado" })
         .eq("id", TEST_FINDING_2)
         .select()
         .single();
@@ -207,7 +204,7 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
     }
   });
 
-  it("verifica que el rol anon recibe 42501 permission denied al intentar consultar o modificar datos", async () => {
+  it("verifica que el rol anon recibe error de permisos al intentar consultar datos", async () => {
     const { error: anonReadErr } = await anonClient.from("ai_findings").select("*");
     expect(anonReadErr).not.toBeNull();
     expect(anonReadErr?.code).toBe("42501");
@@ -218,5 +215,27 @@ describe.runIf(isAuthorized)("Validación remota de Fase 2A contra Supabase", ()
       .eq("id", TEST_FINDING_1);
     expect(anonWriteErr).not.toBeNull();
     expect(anonWriteErr?.code).toBe("42501");
+  });
+});
+
+describe("Estado de autorización para tests remotos", () => {
+  it("informa si las variables de entorno de autorización están configuradas", () => {
+    if (!isAuthorized) {
+      const missing: string[] = [];
+      if (process.env.ALLOW_REMOTE_TESTS !== "true") missing.push("ALLOW_REMOTE_TESTS=true");
+      if (!projectRef) missing.push("SUPABASE_PROJECT_REF");
+      if (remoteConfirmation !== EXPECTED_CONFIRMATION)
+        missing.push(`REMOTE_TEST_CONFIRMATION=${EXPECTED_CONFIRMATION}`);
+      if (!supabaseUrl) missing.push("VITE_SUPABASE_URL");
+      if (!anonKey) missing.push("VITE_SUPABASE_ANON_KEY");
+      if (!serviceKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+
+      console.info(
+        "\n📋 Tests remotos omitidos. Variables faltantes:\n" +
+          missing.map((v) => `   • ${v}`).join("\n") +
+          "\n",
+      );
+    }
+    expect(true).toBe(true);
   });
 });

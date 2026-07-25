@@ -7,6 +7,7 @@
  *       documented in HANDOFF.md.
  */
 import { describe, expect, it } from "vitest";
+import { stripUtf8Bom } from "../src/lib/text-utils";
 
 // ─── Replicated helpers (same logic as csv-import.tsx) ─────────────────────
 
@@ -74,7 +75,7 @@ function buildColIndex(headers: string[]): Record<string, number> {
 }
 
 function parseCSV(text: string) {
-  const lines = text.trim().split(/\r?\n/);
+  const lines = stripUtf8Bom(text).trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const headerLine = parseCSVLine(lines[0]).map((h) =>
     h.toLowerCase().replace(/^["'\s]+|["'\s]+$/g, ""),
@@ -251,6 +252,14 @@ describe("parseCSV", () => {
     const csv = "nombre,dni,telefono\r\nJuan,12345678,987654321";
     const rows = parseCSV(csv);
     expect(rows[0].name).toBe("Juan");
+    expect(rows[0].valid).toBe(true);
+  });
+
+  it("handles UTF-8 BOM and accented headers", () => {
+    const csv = "\uFEFFnombre,dni,teléfono\nMaría Ñúñez,12345678,987654321";
+    const rows = parseCSV(csv);
+    expect(rows[0].name).toBe("María Ñúñez");
+    expect(rows[0].phone).toBe("987654321");
     expect(rows[0].valid).toBe(true);
   });
 

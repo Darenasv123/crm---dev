@@ -48,10 +48,10 @@ function styleDataRow(row: ExcelJS.Row, index: number) {
 // ──────────────────────────────────────────────
 export interface ExportClient {
   name: string;
-  dni: string;
-  phone: string;
+  dni: string | null;
+  phone: string | null;
   email: string | null;
-  process_type: string;
+  process_type: string | null;
   status: string;
   registered_at: string;
 }
@@ -78,7 +78,10 @@ export async function exportClientsExcel(clients: ExportClient[]) {
   clients.forEach((c, i) => {
     const row = ws.addRow({
       ...c,
+      dni: c.dni ?? "",
+      phone: c.phone ?? "",
       email: c.email ?? "",
+      process_type: c.process_type ?? "",
       registered_at: formatPeruDate(c.registered_at),
     });
     styleDataRow(row, i);
