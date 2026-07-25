@@ -3,6 +3,7 @@
  * Orchestrates the actual Supabase writes for bulk folder imports.
  * Depends on folder-import.ts for types and pure analysis functions.
  */
+import type { Json } from "@/lib/database.types";
 import { getAuthClient, supabase } from "@/lib/supabase";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 import { buildClientInitials } from "@/lib/client-validation";
@@ -399,7 +400,7 @@ export async function runImport(params: RunImportParams): Promise<ImportResult> 
         rootName,
         totalClients: clients.length,
         totalDocuments: stats.totalDocuments,
-      } as Record<string, unknown>,
+      } as Json,
     };
     const { data: jobData } = await db.from("import_jobs").insert(jobPayload).select("id").single();
     importJobId = jobData?.id ?? null;

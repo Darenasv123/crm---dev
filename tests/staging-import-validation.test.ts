@@ -20,6 +20,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "../src/lib/database.types";
 
 // ─── Guard: solo ejecutar si el entorno de prueba está configurado ─────────
 
@@ -54,8 +55,8 @@ const PREFIX = `${TEST_PREFIX}${RUN_ID}_`;
 
 // serviceClient: solo para setup, teardown y verificaciones directas en tests
 // No representa el flujo del CRM — el CRM usa el anonClient con sesión activa
-let serviceClient: ReturnType<typeof createClient>;
-let anonClient: ReturnType<typeof createClient>;
+let serviceClient: ReturnType<typeof createClient<Database>>;
+let anonClient: ReturnType<typeof createClient<Database>>;
 
 // IDs de registros creados durante los tests — para limpieza garantizada
 const createdClientIds: string[] = [];
@@ -82,8 +83,8 @@ function makeFakeFile(name: string, content: string): File {
 beforeAll(async () => {
   if (!isStagingConfigured) return;
 
-  serviceClient = createClient(stagingUrl, stagingServiceKey);
-  anonClient = createClient(stagingUrl, stagingAnonKey, {
+  serviceClient = createClient<Database>(stagingUrl, stagingServiceKey);
+  anonClient = createClient<Database>(stagingUrl, stagingAnonKey, {
     auth: { autoRefreshToken: true, persistSession: false },
   });
 });
@@ -119,7 +120,7 @@ afterAll(async () => {
 describe.runIf(isStagingConfigured)(
   "Staging — validación de importación masiva contra Supabase de prueba",
   () => {
-    let authenticatedClient: ReturnType<typeof createClient>;
+    let authenticatedClient: ReturnType<typeof createClient<Database>>;
     let userId: string;
 
     // ── Autenticación ──────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ describe.runIf(isStagingConfigured)(
       userId = data.user!.id;
 
       // Crear cliente autenticado con el token de sesión (igual que getAuthClient())
-      authenticatedClient = createClient(stagingUrl, stagingAnonKey, {
+      authenticatedClient = createClient<Database>(stagingUrl, stagingAnonKey, {
         auth: { autoRefreshToken: false, persistSession: false },
         global: {
           headers: { Authorization: `Bearer ${data.session!.access_token}` },
@@ -334,7 +335,7 @@ describe.runIf(isStagingConfigured)(
     // ── RLS: usuario no autenticado no puede leer ni escribir ─────────────────
 
     it("FASE-4-6: cliente sin sesión recibe error de RLS al intentar leer clients", async () => {
-      const unauthClient = createClient(stagingUrl, stagingAnonKey);
+      const unauthClient = createClient<Database>(stagingUrl, stagingAnonKey);
       const { error } = await unauthClient.from("clients").select("id").limit(1);
       // RLS bloquea: error de permisos o resultado vacío sin sesión activa
       // En Supabase con anon key y RLS habilitado sin política para anon,

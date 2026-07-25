@@ -491,7 +491,7 @@ function StepIdle({
   error,
 }: {
   supportsWebkit: boolean;
-  inputRef: React.RefObject<HTMLInputElement>;
+  inputRef: React.RefObject<HTMLInputElement | null>;
   onFiles: (files: FileList) => void;
   error: string | null;
 }) {

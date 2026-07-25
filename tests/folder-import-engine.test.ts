@@ -359,50 +359,53 @@ describe("ImportEngine — rollback does not delete pre-existing Storage files",
     // Make second client's document insert fail
     const originalGetAuthClient = vi.mocked(getAuthClient);
     let insertCallsForClients = 0;
-    originalGetAuthClient.mockImplementation(async () => ({
-      from: (table: string) => ({
-        insert: (payload: unknown) => {
-          if (table === "clients") {
-            inserted.clients.push(payload);
-            return {
-              select: () => ({
-                single: async () => ({ data: { id: "new-client-uuid" }, error: null }),
-              }),
-            };
-          }
-          if (table === "documents") {
-            insertCallsForClients++;
-            // Second insert fails
-            if (insertCallsForClients === 2) {
-              const err = { code: "42P01", message: "DB error" };
+    originalGetAuthClient.mockImplementation(async () => {
+      const mockDb = {
+        from: (table: string) => ({
+          insert: (payload: unknown) => {
+            if (table === "clients") {
+              inserted.clients.push(payload);
               return {
-                then: (resolve: (v: { error: typeof err }) => void) => resolve({ error: err }),
+                select: () => ({
+                  single: async () => ({ data: { id: "new-client-uuid" }, error: null }),
+                }),
               };
             }
-            inserted.documents.push(payload);
-            return {
-              then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
-            };
-          }
-          if (table === "import_jobs") {
-            inserted.import_jobs.push(payload);
-            return {
-              select: () => ({
-                single: async () => ({ data: { id: "job-uuid" }, error: null }),
-              }),
-            };
-          }
-          return { select: () => ({ single: async () => ({ data: null, error: null }) }) };
-        },
-        select: (_cols: string) => ({
-          eq: (_f: string, _v: string) => ({
-            then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
-              resolve({ data: [], error: null }),
+            if (table === "documents") {
+              insertCallsForClients++;
+              // Second insert fails
+              if (insertCallsForClients === 2) {
+                const err = { code: "42P01", message: "DB error" };
+                return {
+                  then: (resolve: (v: { error: typeof err }) => void) => resolve({ error: err }),
+                };
+              }
+              inserted.documents.push(payload);
+              return {
+                then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
+              };
+            }
+            if (table === "import_jobs") {
+              inserted.import_jobs.push(payload);
+              return {
+                select: () => ({
+                  single: async () => ({ data: { id: "job-uuid" }, error: null }),
+                }),
+              };
+            }
+            return { select: () => ({ single: async () => ({ data: null, error: null }) }) };
+          },
+          select: (_cols: string) => ({
+            eq: (_f: string, _v: string) => ({
+              then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+                resolve({ data: [], error: null }),
+            }),
           }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         }),
-        update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-      }),
-    }));
+      };
+      return mockDb as unknown as Awaited<ReturnType<typeof getAuthClient>>;
+    });
 
     const result = await runImport({ rootName: "CLIENTES", clients, onProgress: vi.fn() });
 
