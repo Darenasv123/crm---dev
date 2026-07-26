@@ -1,9 +1,9 @@
-/**
+﻿/**
  * remote-validation.test.ts
  *
- * Validación técnica de tablas AI y flujos de análisis contra Supabase.
- * Solo se ejecuta cuando se proveen explícitamente las variables de entorno
- * de autorización — nunca durante CI ni npm run test estándar.
+ * ValidaciÃ³n tÃ©cnica de tablas AI y flujos de anÃ¡lisis contra Supabase.
+ * Solo se ejecuta cuando se proveen explÃ­citamente las variables de entorno
+ * de autorizaciÃ³n â€” nunca durante CI ni npm run test estÃ¡ndar.
  *
  * Uso:
  *   $env:ALLOW_REMOTE_TESTS="true"
@@ -31,7 +31,7 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const EXPECTED_CONFIRMATION = "WRITE_TO_REMOTE_SUPABASE";
 
-// Todas las condiciones deben cumplirse explícitamente
+// Todas las condiciones deben cumplirse explÃ­citamente
 const isAuthorized =
   allowRemote &&
   remoteConfirmation === EXPECTED_CONFIRMATION &&
@@ -40,9 +40,11 @@ const isAuthorized =
   anonKey.length > 0 &&
   serviceKey.length > 0;
 
-describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", () => {
-  const adminClient = createClient(supabaseUrl, serviceKey);
-  const anonClient = createClient(supabaseUrl, anonKey);
+describe.runIf(isAuthorized)("ValidaciÃ³n remota de tablas AI contra Supabase", () => {
+  // Clientes inicializados solo cuando isAuthorized es true para evitar
+  // que createClient lance errores con credenciales vacÃ­as.
+  const adminClient = isAuthorized ? createClient(supabaseUrl, serviceKey) : null!;
+  const anonClient = isAuthorized ? createClient(supabaseUrl, anonKey) : null!;
 
   const TEST_PREFIX = `TEST_RUN_${Date.now()}`;
   const TEST_JOB_ID = crypto.randomUUID();
@@ -51,7 +53,7 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
   const TEST_FINDING_2 = crypto.randomUUID();
   const TEST_REF_ID = crypto.randomUUID();
 
-  it("inserta registros técnicos controlados de prueba con UUID dinámicos", async () => {
+  it("inserta registros tÃ©cnicos controlados de prueba con UUID dinÃ¡micos", async () => {
     try {
       const { data: job, error: jobErr } = await adminClient
         .from("import_jobs")
@@ -99,7 +101,7 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
           id: TEST_FINDING_2,
           analysis_run_id: TEST_RUN_ID,
           finding_type: "case_number",
-          field_name: "Número de Expediente",
+          field_name: "NÃºmero de Expediente",
           proposed_value: JSON.stringify(`${TEST_PREFIX}_EXP`),
           confidence_score: 0.88,
           verification_status: "pending",
@@ -132,7 +134,7 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
     }
   });
 
-  it("persiste actualizaciones de decisión humana (Aprobación, Edición, Rechazo)", async () => {
+  it("persiste actualizaciones de decisiÃ³n humana (AprobaciÃ³n, EdiciÃ³n, Rechazo)", async () => {
     try {
       await adminClient
         .from("import_jobs")
@@ -159,7 +161,7 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
         id: TEST_FINDING_2,
         analysis_run_id: TEST_RUN_ID,
         finding_type: "case_number",
-        field_name: "Número de Expediente",
+        field_name: "NÃºmero de Expediente",
         proposed_value: JSON.stringify(`${TEST_PREFIX}_EXP`),
         confidence_score: 0.88,
         verification_status: "pending",
@@ -180,7 +182,7 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
         .from("ai_findings")
         .update({
           verification_status: "edited",
-          normalized_value: JSON.stringify("Juan Pérez Test Editado"),
+          normalized_value: JSON.stringify("Juan PÃ©rez Test Editado"),
           reviewed_at: now,
         })
         .eq("id", TEST_FINDING_1)
@@ -218,8 +220,8 @@ describe.runIf(isAuthorized)("Validación remota de tablas AI contra Supabase", 
   });
 });
 
-describe("Estado de autorización para tests remotos", () => {
-  it("informa si las variables de entorno de autorización están configuradas", () => {
+describe("Estado de autorizaciÃ³n para tests remotos", () => {
+  it("informa si las variables de entorno de autorizaciÃ³n estÃ¡n configuradas", () => {
     if (!isAuthorized) {
       const missing: string[] = [];
       if (process.env.ALLOW_REMOTE_TESTS !== "true") missing.push("ALLOW_REMOTE_TESTS=true");
@@ -231,8 +233,8 @@ describe("Estado de autorización para tests remotos", () => {
       if (!serviceKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
 
       console.info(
-        "\n📋 Tests remotos omitidos. Variables faltantes:\n" +
-          missing.map((v) => `   • ${v}`).join("\n") +
+        "\nðŸ“‹ Tests remotos omitidos. Variables faltantes:\n" +
+          missing.map((v) => `   â€¢ ${v}`).join("\n") +
           "\n",
       );
     }

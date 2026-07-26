@@ -85,11 +85,13 @@ export function useUploadDocument() {
       type,
       clientId,
       caseId,
+      folderId,
     }: {
       file: File;
       type: string;
       clientId?: string;
       caseId?: string;
+      folderId?: string | null;
     }) => {
       validateDocumentFile(file);
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -123,6 +125,7 @@ export function useUploadDocument() {
         verification_status: "pending",
         client_id: clientId ?? null,
         case_id: caseId ?? null,
+        folder_id: folderId ?? null,
       } as const;
 
       let { data, error } = await db

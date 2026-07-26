@@ -9,13 +9,14 @@ import {
   type ZipCaseCandidate,
   type ZipFileEntry,
 } from "@/lib/imports/zip-import";
+import { normalizeFolderName } from "@/lib/folder-utils";
 
 type ClientInsert = Database["public"]["Tables"]["clients"]["Insert"];
 type ClientUpdate = Database["public"]["Tables"]["clients"]["Update"];
 type CaseInsert = Database["public"]["Tables"]["cases"]["Insert"];
 type DocumentInsert = Database["public"]["Tables"]["documents"]["Insert"];
 
-type TableName = "clients" | "cases" | "documents";
+type TableName = "clients" | "cases" | "documents" | "document_folders";
 type DbError = { message: string; code?: string };
 type DbResult<T = unknown> = { data?: T | null; error?: DbError | null };
 
@@ -24,12 +25,18 @@ type DbQuery = {
   update: (payload: unknown) => DbQuery;
   select: (columns?: string) => DbQuery;
   eq: (column: string, value: unknown) => DbQuery;
+  is: (column: string, value: unknown) => DbQuery;
+  limit: (n: number) => DbQuery;
   single: () => Promise<DbResult<{ id: string }>>;
   maybeSingle: () => Promise<DbResult<{ id: string }>>;
   then: <TResult1 = DbResult, TResult2 = never>(
     onfulfilled?: ((value: DbResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ) => Promise<TResult1 | TResult2>;
+};
+
+type DbQueryArray = DbQuery & {
+  then: (resolve: (v: { data: Array<{ id: string }>; error: DbError | null }) => void) => void;
 };
 
 type DbClient = {
@@ -56,15 +63,10 @@ export type PersistStatus = "success" | "partial" | "failed" | "skipped";
  * Surfaced in the UI as a collapsible "Ver detalle" panel.
  */
 export interface OperationError {
-  /** Human-readable summary of what failed */
   summary: string;
-  /** The stage where the error occurred */
   stage: "client" | "case" | "document" | "storage";
-  /** PostgreSQL/Supabase error code (e.g. "23514", "23505", "42501") */
   code?: string;
-  /** Full technical error message for copy-paste reporting */
   detail?: string;
-  /** Suggested user action */
   action?: string;
 }
 
@@ -76,11 +78,6 @@ export interface PersistZipCandidateParams {
   buildInitials: (name: string) => string;
   randomColor: () => string;
   now?: () => number;
-  /**
-   * When retrying, pass the clientId of the already-created client.
-   * This prevents duplicate creation and allows the retry to start
-   * directly from the case/document stage.
-   */
   existingClientIdOverride?: string;
 }
 
@@ -88,12 +85,10 @@ export interface PersistZipCandidateResult {
   folderName: string;
   status: PersistStatus;
   clientId?: string;
-  /** True when the client was found to already exist (created in a prior attempt) */
   clientAlreadyExisted?: boolean;
   documentsImported: number;
   documentsSkipped: number;
   error?: string;
-  /** Structured error detail for display with "Ver detalle" */
   errorDetail?: OperationError;
   errors: string[];
   compensations: string[];
@@ -199,13 +194,12 @@ function prepareCasesForPersistence(candidate: ReviewCandidate): {
   const activeFiles = candidate.files.filter(
     (file) => file.data.byteLength > 0 && !candidate.excludedFiles.has(file.zipPath),
   );
-
   if (!candidate.caseCandidates?.length && caseCandidates[0]) {
     for (const file of activeFiles) documentCaseMap[file.zipPath] = caseCandidates[0].id;
   }
-
   return { caseCandidates, documentCaseMap };
 }
+
 function provisionalExpediente(
   clientId: string,
   caseCandidate: ZipCaseCandidate,
@@ -249,7 +243,6 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
       .join("\n"),
   };
   let { data, error } = await fromDb(db, "clients").insert(payload).select("id").single();
-
   if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: ClientInsert = {
       name: payload.name,
@@ -263,7 +256,6 @@ async function createClient(params: PersistZipCandidateParams): Promise<string> 
     };
     ({ data, error } = await fromDb(db, "clients").insert(legacyPayload).select("id").single());
   }
-
   return ensureSupabaseData<{ id: string }>(data, error, "Crear cliente").id;
 }
 
@@ -286,12 +278,6 @@ async function updateExistingClient(candidate: ReviewCandidate, db: DbClient): P
   return candidate.existingClientId;
 }
 
-/**
- * Maps a new-style status value back to the legacy CHECK set.
- * Used as a fallback when the migration has not yet been applied to the
- * remote database (isMissingSchemaFieldError does not cover check violations,
- * so we proactively downgrade for the legacy INSERT attempt).
- */
 function toLegacyCaseStatus(status: string): string {
   const map: Record<string, string> = {
     "Pendiente de clasificación": "Consulta",
@@ -307,9 +293,6 @@ function toLegacyCaseStatus(status: string): string {
   return map[status] ?? "Consulta";
 }
 
-/**
- * Produces a structured OperationError from a raw DB error for the case stage.
- */
 function buildCaseError(
   raw: DbError | null | undefined,
   expediente: string,
@@ -317,15 +300,13 @@ function buildCaseError(
 ): OperationError {
   const code = raw?.code ?? "";
   const msg = raw?.message ?? "Error desconocido";
-
   if (code === "23514") {
     return {
-      summary: `Falló la creación del expediente ${expediente}. El valor de estado no está permitido por la base de datos.`,
+      summary: `Falló la creación del expediente ${expediente}. El valor de estado no está permitido.`,
       stage: "case",
       code,
       detail: msg,
-      action:
-        "Aplica la migración 20260724120000_fix_cases_status_check_constraint.sql en Supabase y reintenta.",
+      action: "Aplica la migración 20260724120000 en Supabase y reintenta.",
     };
   }
   if (code === "23505") {
@@ -334,8 +315,7 @@ function buildCaseError(
       stage: "case",
       code,
       detail: msg,
-      action:
-        "El expediente ya existe en la base de datos. Puedes reutilizarlo o revisar la numeración.",
+      action: "El expediente ya existe. Puedes reutilizarlo o revisar la numeración.",
     };
   }
   if (code === "23502") {
@@ -374,13 +354,7 @@ async function createCase(
   const expediente =
     caseCandidate.caseNumber ?? provisionalExpediente(clientId, caseCandidate, files);
   const processType = safeProcessType(caseCandidate.processType);
-
-  // normalizeCaseStatus returns values from the new status set
-  // ('Pendiente de clasificación', 'En trámite', etc.).
-  // These are valid after migration 20260724120000. If the migration
-  // has not been applied yet, we fall back to the legacy set below.
   const newStatus = normalizeCaseStatus(caseCandidate.status);
-
   const payload: CaseInsert = {
     client_id: clientId,
     expediente,
@@ -398,23 +372,15 @@ async function createCase(
     current_status_description: caseCandidate.isProvisional ? "pendiente_revision" : null,
     internal_code: caseCandidate.isProvisional ? expediente : null,
   };
-
-  // Track the last raw DB error across retries so we can always produce a
-  // structured OperationError — even when a retry clears `error` to null but
-  // still returns `data: null` (RLS silencing or race condition).
   let lastError: DbError | null | undefined = undefined;
-
   let { data, error } = await fromDb(db, "cases").insert(payload).select("id").single();
   if (error) lastError = error;
-
-  // Schema cache miss (new columns not yet recognized) → strip new-only columns
   if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: CaseInsert = {
       client_id: payload.client_id,
       expediente: payload.expediente,
       juzgado: payload.juzgado,
       process_type: payload.process_type,
-      // Map new status values back to the legacy CHECK set
       status: toLegacyCaseStatus(newStatus),
       priority: payload.priority,
       demandante: payload.demandante,
@@ -423,10 +389,6 @@ async function createCase(
     ({ data, error } = await fromDb(db, "cases").insert(legacyPayload).select("id").single());
     if (error) lastError = error;
   }
-
-  // Check constraint violation on status (23514): the migration has not been
-  // applied yet. Retry with the legacy status value against the full payload
-  // minus the new-only columns to avoid a second PGRST204.
   if (error?.code === "23514") {
     const legacyStatusPayload: CaseInsert = {
       client_id: payload.client_id,
@@ -448,36 +410,16 @@ async function createCase(
     ({ data, error } = await fromDb(db, "cases").insert(legacyStatusPayload).select("id").single());
     if (error) lastError = error;
   }
-
-  // Determine if we have a final error: prefer the current `error`, fall back
-  // to `lastError` from a previous retry attempt.  This covers the edge case
-  // where a retry clears `error` to null but still returns `data: null`
-  // (e.g., RLS silently blocking the row return, or a race on unique index).
   const finalError = error ?? (!data ? lastError : null);
-
   if (finalError) {
-    // Build a structured error and attach it to the thrown Error so the
-    // caller can surface it in the UI with full detail.
     const structured = buildCaseError(finalError, expediente, caseCandidate.title);
     const thrown = new Error(structured.summary);
     (thrown as Error & { operationError?: OperationError }).operationError = structured;
     throw thrown;
   }
-
-  // If we reach here with no error but also no data, this is an unexpected
-  // Supabase response (e.g., RLS USING clause filtered the returning row).
-  // Surface it as a structured error rather than the raw ensureSupabaseData
-  // message, which would produce the truncated "Crear expediente Expediente
-  // 070…" text that the user sees.
   if (!data) {
     const structured = buildCaseError(
-      {
-        message:
-          "Supabase no devolvió el id del expediente creado. " +
-          "Es posible que una política RLS esté bloqueando la lectura del registro recién insertado, " +
-          "o que el expediente ya exista con el mismo número.",
-        code: "PGRST000",
-      },
+      { message: "Supabase no devolvió el id del expediente creado.", code: "PGRST000" },
       expediente,
       caseCandidate.title,
     );
@@ -485,22 +427,178 @@ async function createCase(
     (thrown as Error & { operationError?: OperationError }).operationError = structured;
     throw thrown;
   }
-
   return data.id;
 }
 
+// ─── Folder resolution for ZIP imports ───────────────────────────────────────
+//
+// Centralizes the create-or-reuse algorithm also used in folder-import-engine.ts.
+// The same normalized name + parent_id uniqueness is respected here.
+
+/** In-memory cache per import run: "clientId:parentId_or_null:normalizedName" → folderId */
+type ZipFolderCacheMap = Map<string, string>;
+
+function zipFolderCacheKey(
+  clientId: string,
+  parentId: string | null,
+  normalizedName: string,
+): string {
+  return `${clientId}:${parentId ?? "__root__"}:${normalizedName}`;
+}
+
+/**
+ * Ensures a document_folders row exists for the given segment.
+ * Reuses existing folders (idempotent). Creates only when absent.
+ * Handles race conditions via 23505 retry-and-re-query.
+ */
+async function ensureZipFolder(
+  db: DbClient,
+  clientId: string,
+  parentId: string | null,
+  segmentName: string,
+  createdBy: string | null,
+  cache: ZipFolderCacheMap,
+): Promise<string> {
+  const normalized = normalizeFolderName(segmentName);
+  const key = zipFolderCacheKey(clientId, parentId, normalized);
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  // Query existing — must handle null parentId with .is() instead of .eq()
+  async function queryExisting(): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      let chain = fromDb(db, "document_folders")
+        .select("id")
+        .eq("client_id", clientId)
+        .eq("normalized_name", normalized) as DbQueryArray;
+      if (parentId) {
+        chain = (chain as unknown as DbQuery).eq("parent_id", parentId) as DbQueryArray;
+      } else {
+        chain = (chain as unknown as DbQuery).is("parent_id", null) as DbQueryArray;
+      }
+      (chain as unknown as DbQuery).limit(1).then(
+        (res) => {
+          const rows = (res as { data: Array<{ id: string }> | null }).data;
+          resolve(rows && rows.length > 0 ? rows[0].id : null);
+        },
+        () => resolve(null),
+      );
+    });
+  }
+
+  const existingId = await queryExisting();
+  if (existingId) {
+    cache.set(key, existingId);
+    return existingId;
+  }
+
+  const { data: created, error: createError } = await fromDb(db, "document_folders")
+    .insert({
+      client_id: clientId,
+      parent_id: parentId ?? null,
+      name: segmentName.trim(),
+      normalized_name: normalized,
+      created_by: createdBy ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (createError) {
+    if (createError.code === "23505") {
+      const raceId = await queryExisting();
+      if (raceId) {
+        cache.set(key, raceId);
+        return raceId;
+      }
+    }
+    throw new Error(`ensureZipFolder "${segmentName}": ${createError.message}`);
+  }
+  if (!created) throw new Error(`ensureZipFolder "${segmentName}": no data returned`);
+  cache.set(key, created.id);
+  return created.id;
+}
+
+/**
+ * Resolves the folder_id for a ZIP document based on its path within the client folder.
+ * e.g. zipPath = "CLIENTE/Proceso de alimentos/Demanda/demanda.pdf"
+ *      clientFolderPath = "CLIENTE"
+ * → folder id for "Proceso de alimentos/Demanda" (two levels deep)
+ * Returns null for files at the client root (no folder segments).
+ */
+async function resolveZipFolderIdForPath(
+  db: DbClient,
+  zipPath: string,
+  clientFolderPath: string,
+  clientId: string,
+  createdBy: string | null,
+  cache: ZipFolderCacheMap,
+): Promise<string | null> {
+  const prefix = clientFolderPath ? `${clientFolderPath}/` : "";
+  const relPath = prefix && zipPath.startsWith(prefix) ? zipPath.slice(prefix.length) : zipPath;
+  const parts = relPath.split("/").filter(Boolean);
+  const folderSegments = parts.slice(0, -1); // drop the filename
+  if (folderSegments.length === 0) return null;
+
+  let currentParentId: string | null = null;
+  for (const segment of folderSegments) {
+    try {
+      currentParentId = await ensureZipFolder(
+        db,
+        clientId,
+        currentParentId,
+        segment,
+        createdBy,
+        cache,
+      );
+    } catch {
+      return null; // non-fatal: fall back to no folder assignment
+    }
+  }
+  return currentParentId;
+}
+
+// ─── Document dedup and insertion ─────────────────────────────────────────────
+
+/**
+ * Checks if a document with the same content (checksum) already exists
+ * at the same logical path within the same client.
+ *
+ * Deduplication rule:
+ * - client_id + checksum + relative_path → duplicate
+ * - client_id + checksum + different relative_path → NOT a duplicate
+ * - same path + different checksum → NOT a duplicate
+ * - different client → NOT a duplicate
+ *
+ * This prevents:
+ * - Duplicating the exact same file in the same location
+ * - Creating orphans if reinvoked
+ *
+ * Allows:
+ * - Same file in different logical paths
+ * - Same name with different content
+ * - Same content in different clients
+ */
 async function documentAlreadyExists(
   db: DbClient,
   clientId: string,
   checksum: string,
+  relativePath: string | null,
 ): Promise<boolean> {
-  const { data, error } = await fromDb(db, "documents")
+  // Query: client_id + checksum + relative_path
+  let query = fromDb(db, "documents")
     .select("id")
     .eq("client_id", clientId)
-    .eq("checksum", checksum)
-    .maybeSingle();
+    .eq("checksum", checksum) as DbQuery;
+
+  if (relativePath) {
+    query = query.eq("relative_path", relativePath);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
   if (error && !isMissingSchemaFieldError(error ?? null))
     throw new Error(`Verificar duplicado: ${error.message}`);
+
   return Boolean(data?.id);
 }
 
@@ -508,8 +606,10 @@ async function insertDocument(
   db: DbClient,
   clientId: string,
   caseId: string | null,
+  folderId: string | null,
   docFile: ZipFileEntry,
   storagePath: string,
+  relativePath: string | null,
 ): Promise<string> {
   const payload: DocumentInsert = {
     name: docFile.name,
@@ -523,7 +623,10 @@ async function insertDocument(
     storage_path: storagePath,
     client_id: clientId,
     case_id: caseId,
+    folder_id: folderId ?? null,
     checksum: docFile.checksum || null,
+    content_hash: docFile.checksum || null,
+    relative_path: relativePath ?? null,
     source_type: "zip_import_individual",
     source_provider: "google_drive_zip_individual",
     external_file_id: docFile.zipPath,
@@ -532,7 +635,6 @@ async function insertDocument(
     processing_status: docFile.extractionStatus === "ocr_required" ? "ocr_required" : "pending",
     verification_status: "pending",
   };
-
   let { data, error } = await fromDb(db, "documents").insert(payload).select("id").single();
   if (isMissingSchemaFieldError(error ?? null)) {
     const legacyPayload: DocumentInsert = {
@@ -564,12 +666,7 @@ export async function persistZipCandidate(
   let clientAlreadyExisted = false;
   let firstErrorDetail: OperationError | undefined;
 
-  // ── Client stage ────────────────────────────────────────────────────────────
-  //
-  // If existingClientIdOverride is provided (retry path), skip client creation
-  // entirely and reuse the already-created client. This ensures the retry is
-  // idempotent: the client is never duplicated.
-
+  // ── Client stage ─────────────────────────────────────────────────────────────
   if (existingClientIdOverride) {
     clientId = existingClientIdOverride;
     clientAlreadyExisted = true;
@@ -646,125 +743,198 @@ export async function persistZipCandidate(
     (file) => file.data.byteLength > 0 && !candidate.excludedFiles.has(file.zipPath),
   );
 
-  async function persistDocumentFile(docFile: ZipFileEntry, caseId: string | null) {
-    if (
-      docFile.checksum &&
-      (await documentAlreadyExists(db, persistedClientId, docFile.checksum))
-    ) {
-      documentsSkipped++;
-      return;
-    }
+  // Per-import folder cache — shared across all documents of this candidate
+  const folderCache: ZipFolderCacheMap = new Map<string, string>();
 
-    const storagePath = `${persistedClientId}/${now()}_${safeNamePart(docFile.name)}`;
-    let uploaded = false;
-    try {
+  // Retrieve the session userId for folder created_by (best-effort)
+  let sessionUserId: string | null = null;
+  try {
+    const dbTyped = db as unknown as {
+      auth?: { getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }> };
+    };
+    if (dbTyped.auth?.getSession) {
+      const {
+        data: { session },
+      } = await dbTyped.auth.getSession();
+      sessionUserId = session?.user?.id ?? null;
+    }
+  } catch {
+    /* non-fatal */
+  }
+
+  // ── Helper: persist a list of documents for a given caseId (or null) ────────
+
+  async function persistDocuments(
+    filesToPersist: ZipFileEntry[],
+    caseId: string | null,
+  ): Promise<void> {
+    for (const docFile of filesToPersist) {
+      // Dedup by checksum + relative_path
+      if (docFile.checksum) {
+        // Calculate relative_path: remove client folder path prefix
+        const prefix = candidate.folderPath ? `${candidate.folderPath}/` : "";
+        const relativePath =
+          prefix && docFile.zipPath.startsWith(prefix)
+            ? docFile.zipPath.slice(prefix.length)
+            : docFile.zipPath;
+
+        let isDup = false;
+        try {
+          isDup = await documentAlreadyExists(
+            db,
+            persistedClientId,
+            docFile.checksum,
+            relativePath,
+          );
+        } catch {
+          // non-fatal: proceed
+        }
+        if (isDup) {
+          documentsSkipped++;
+          continue;
+        }
+      }
+
+      // Resolve folder_id from ZIP path structure
+      const folderId = await resolveZipFolderIdForPath(
+        db,
+        docFile.zipPath,
+        candidate.folderPath,
+        persistedClientId,
+        sessionUserId,
+        folderCache,
+      );
+
+      // Calculate relative_path: remove client folder path prefix
+      const prefix = candidate.folderPath ? `${candidate.folderPath}/` : "";
+      const relativePath =
+        prefix && docFile.zipPath.startsWith(prefix)
+          ? docFile.zipPath.slice(prefix.length)
+          : docFile.zipPath;
+
+      // Upload to Storage
+      const safeName = safeNamePart(docFile.name);
+      const storagePath = `${persistedClientId}/${now()}_${safeName}`;
       const blob = new Blob([docFile.data], { type: mimeTypeFor(docFile.ext) });
-      const { error: uploadError } = await storageBucket.upload(storagePath, blob, {
-        upsert: false,
+      const { error: uploadErr } = await storageBucket.upload(storagePath, blob, {
         contentType: mimeTypeFor(docFile.ext),
       });
-      if (uploadError) throw new Error(`Subir ${docFile.name}: ${uploadError.message}`);
-      uploaded = true;
-      const documentId = await insertDocument(db, persistedClientId, caseId, docFile, storagePath);
-      documentIds.push({ id: documentId, name: docFile.name, storagePath, caseId });
-      documentsImported++;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : `Error importando ${docFile.name}`;
-      errors.push(msg);
-      failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
-      if (uploaded) {
-        const { error: removeError } = await storageBucket.remove([storagePath]);
-        if (removeError)
-          compensations.push(`No se pudo retirar ${storagePath}: ${removeError.message}`);
-        else compensations.push(`Storage revertido: ${storagePath}`);
+
+      if (uploadErr) {
+        const msg = uploadErr.message;
+        errors.push(msg);
+        if (!firstErrorDetail) firstErrorDetail = { summary: msg, stage: "storage", detail: msg };
+        failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
+        continue;
       }
+
+      // Insert document record
+      let documentId: string;
+      try {
+        documentId = await insertDocument(
+          db,
+          persistedClientId,
+          caseId,
+          folderId,
+          docFile,
+          storagePath,
+          relativePath,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Error desconocido";
+        errors.push(msg);
+        if (!firstErrorDetail) firstErrorDetail = { summary: msg, stage: "document", detail: msg };
+        failedFiles.push({ name: docFile.name, path: docFile.zipPath, error: msg });
+        // Compensate Storage upload
+        try {
+          await storageBucket.remove([storagePath]);
+          compensations.push(`Storage revertido: ${storagePath}`);
+        } catch {
+          // best-effort
+        }
+        continue;
+      }
+
+      documentsImported++;
+      documentIds.push({
+        id: documentId,
+        name: docFile.name,
+        storagePath,
+        caseId: caseId ?? null,
+      });
     }
   }
 
-  // ── Case stage ──────────────────────────────────────────────────────────────
+  // ── Unclassified documents (caseId = null) ────────────────────────────────
+
+  const unclassifiedFiles = activeFiles.filter(
+    (f) => documentCaseMap[f.zipPath] === "__unclassified",
+  );
+  if (unclassifiedFiles.length > 0) {
+    await persistDocuments(unclassifiedFiles, null);
+  }
+
+  // ── Case stage + Document stage ──────────────────────────────────────────────
 
   for (const caseCandidate of caseCandidates) {
-    const files = activeFilesForCase(candidate, caseCandidate, documentCaseMap);
-    if (files.length === 0) continue;
+    const caseFiles = activeFilesForCase(candidate, caseCandidate, documentCaseMap);
+    if (caseFiles.length === 0) continue;
 
-    let caseId: string;
+    let caseId: string | null = null;
     try {
-      caseId = await createCase(db, clientId, caseCandidate, files);
+      caseId = await createCase(db, persistedClientId, caseCandidate, caseFiles);
       caseIds.push({
         id: caseId,
         title: caseCandidate.title,
         caseNumber: caseCandidate.caseNumber,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error creando expediente";
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      const opErr =
+        (err as Error & { operationError?: OperationError }).operationError ??
+        buildCaseError(
+          { message: msg },
+          caseCandidate.caseNumber ?? caseCandidate.id,
+          caseCandidate.title,
+        );
+      if (!firstErrorDetail) firstErrorDetail = opErr;
       errors.push(msg);
-      // Capture the structured error detail from the first case failure
-      const structured = (err as Error & { operationError?: OperationError }).operationError;
-      if (!firstErrorDetail) firstErrorDetail = structured;
-      // Documents for this case cannot be uploaded without a caseId.
-      // Mark them as failed so the retry can pick them up.
-      for (const docFile of files) {
-        failedFiles.push({
-          name: docFile.name,
-          path: docFile.zipPath,
-          error: `Expediente no creado: ${msg}`,
-        });
+      for (const f of caseFiles) {
+        failedFiles.push({ name: f.name, path: f.zipPath, error: msg });
       }
-      continue;
+      continue; // proceed with other cases
     }
 
-    for (const docFile of files) await persistDocumentFile(docFile, caseId);
+    const filesForCase = caseFiles;
+
+    await persistDocuments(filesForCase, caseId);
   }
 
-  const unclassifiedFiles = activeFiles.filter(
-    (file) => !documentCaseMap[file.zipPath] || documentCaseMap[file.zipPath] === "__unclassified",
-  );
-  if (unclassifiedFiles.length > 0) {
-    warnings.push(
-      `${formatCount(unclassifiedFiles.length, "documento importado", "documentos importados")} sin expediente asignado.`,
-    );
-    for (const docFile of unclassifiedFiles) await persistDocumentFile(docFile, null);
-  }
+  // ── Determine final status ────────────────────────────────────────────────────
 
-  // ── Status computation ──────────────────────────────────────────────────────
-  //
-  // Distinguish between:
-  //   "partial" — client created/existed and at least something failed
-  //   "failed"  — client itself was never created (no clientId at all)
-  //   "success" — everything succeeded with no errors
-  //
-  // Key rule: if we have a clientId (either freshly created OR pre-existing),
-  // the client stage succeeded.  Any downstream failure (case, document) makes
-  // the result "partial", NOT "failed".  This prevents "0 clientes importados
-  // correctamente" when the client was created but the case failed.
-
-  const hasAnySuccess = documentsImported > 0 || caseIds.length > 0;
   const hasErrors = errors.length > 0;
-  // clientId is always set by the time we reach this point (we return early
-  // above if it is falsy), so clientCreatedOrExisted is always true here.
-  // We keep the variable for clarity and future-proofing.
-  const clientCreatedOrExisted = Boolean(clientId);
+  const hasSuccess = documentsImported > 0 || caseIds.length > 0;
+  let finalStatus: PersistStatus;
 
-  let status: PersistStatus;
-  if (!hasErrors) {
-    status = "success";
-  } else if (clientCreatedOrExisted) {
-    // Client exists — any error is partial (not a total failure).
-    // "partial" is correct even when hasAnySuccess is false: the client was
-    // created but the case (and therefore its documents) failed entirely.
-    status = "partial";
+  if (!hasErrors && !hasSuccess && documentsSkipped > 0) {
+    // All documents were duplicates — treat as success
+    finalStatus = "success";
+  } else if (!hasErrors) {
+    finalStatus = "success";
+  } else if (hasSuccess) {
+    finalStatus = "partial";
   } else {
-    status = "failed";
+    finalStatus = "partial"; // client was created but all docs/cases failed
   }
 
   return {
     folderName: candidate.folderName,
-    status,
-    clientId,
+    status: finalStatus,
+    clientId: persistedClientId,
     clientAlreadyExisted,
     documentsImported,
     documentsSkipped,
-    error: errors[0],
+    error: firstErrorDetail?.summary,
     errorDetail: firstErrorDetail,
     errors,
     compensations,

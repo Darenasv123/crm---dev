@@ -831,6 +831,61 @@ export type Database = {
           },
         ];
       };
+      document_folders: {
+        Row: {
+          id: string;
+          client_id: string;
+          parent_id: string | null;
+          name: string;
+          normalized_name: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          parent_id?: string | null;
+          name: string;
+          normalized_name: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          parent_id?: string | null;
+          name?: string;
+          normalized_name?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "document_folders_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "document_folders_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "document_folders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "document_folders_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       documents: {
         Row: {
           case_id: string | null;
@@ -863,6 +918,8 @@ export type Database = {
           relative_path: string | null;
           /** SHA-256 hex of file content. Added by migration 20260724000000. */
           content_hash: string | null;
+          /** Logical folder assignment. Added by migration 20260725120000. */
+          folder_id: string | null;
         };
         Insert: {
           case_id?: string | null;
@@ -893,6 +950,7 @@ export type Database = {
           verification_status?: string;
           relative_path?: string | null;
           content_hash?: string | null;
+          folder_id?: string | null;
         };
         Update: {
           case_id?: string | null;
@@ -923,6 +981,7 @@ export type Database = {
           verification_status?: string;
           relative_path?: string | null;
           content_hash?: string | null;
+          folder_id?: string | null;
         };
         Relationships: [
           {

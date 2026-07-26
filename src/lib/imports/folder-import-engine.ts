@@ -8,6 +8,7 @@ import { getAuthClient, supabase } from "@/lib/supabase";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 import { buildClientInitials } from "@/lib/client-validation";
 import { sha256 } from "@/lib/imports/zip-import";
+import { normalizeFolderName } from "@/lib/folder-utils";
 import {
   sanitizeStoragePath,
   type ClientEntry,
@@ -206,11 +207,119 @@ async function formatFileSize(bytes: number): Promise<string> {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+// ─── Folder resolution cache ──────────────────────────────────────────────────
+
+/** In-memory cache per import run: "clientId:parentId:normalizedName" → folderId */
+type FolderCacheMap = Map<string, string>;
+
+function folderCacheKey(clientId: string, parentId: string | null, normalizedName: string): string {
+  return `${clientId}:${parentId ?? "__root__"}:${normalizedName}`;
+}
+
+/**
+ * Ensures a document_folders row exists for the given segment.
+ * Reutilizes existing folders. Creates only when absent.
+ * Returns the folder id.
+ */
+async function ensureImportFolder(
+  clientId: string,
+  parentId: string | null,
+  segmentName: string,
+  createdBy: string,
+  cache: FolderCacheMap,
+): Promise<string> {
+  const normalized = normalizeFolderName(segmentName);
+  const key = folderCacheKey(clientId, parentId, normalized);
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const db = await getAuthClient();
+  let query = db
+    .from("document_folders")
+    .select("id")
+    .eq("client_id", clientId)
+    .eq("normalized_name", normalized);
+  if (parentId) {
+    query = query.eq("parent_id", parentId);
+  } else {
+    query = query.is("parent_id", null);
+  }
+  const { data: existing } = await query.limit(1);
+  if (existing && existing.length > 0) {
+    const id = (existing[0] as { id: string }).id;
+    cache.set(key, id);
+    return id;
+  }
+
+  const { data: created, error } = await db
+    .from("document_folders")
+    .insert({
+      client_id: clientId,
+      parent_id: parentId ?? null,
+      name: segmentName.trim(),
+      normalized_name: normalized,
+      created_by: createdBy,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      // Race condition — query again
+      const { data: raceResult } = await query.limit(1);
+      if (raceResult && raceResult.length > 0) {
+        const id = (raceResult[0] as { id: string }).id;
+        cache.set(key, id);
+        return id;
+      }
+    }
+    // Non-fatal: continue without folder assignment
+    throw new Error(`ensureImportFolder: ${error.message}`);
+  }
+  if (!created) throw new Error(`ensureImportFolder: no data returned`);
+  cache.set(key, created.id);
+  return created.id;
+}
+
+/**
+ * Resolves the folder_id for a document based on its relative path within the client folder.
+ * e.g. relPathWithinClient = "Resoluciones/2024/res01.pdf" → folder for "Resoluciones/2024"
+ * Returns null if there are no folder segments (file at client root).
+ */
+async function resolveFolderIdForPath(
+  relPathWithinClient: string,
+  clientId: string,
+  createdBy: string,
+  cache: FolderCacheMap,
+): Promise<string | null> {
+  const parts = relPathWithinClient.split("/").filter(Boolean);
+  const folderSegments = parts.slice(0, -1); // drop the filename
+  if (folderSegments.length === 0) return null;
+
+  let currentParentId: string | null = null;
+  for (const segment of folderSegments) {
+    try {
+      currentParentId = await ensureImportFolder(
+        clientId,
+        currentParentId,
+        segment,
+        createdBy,
+        cache,
+      );
+    } catch {
+      // Non-fatal: if folder creation fails, fall back to no folder assignment
+      return null;
+    }
+  }
+  return currentParentId;
+}
+
 async function uploadDocument(
   entry: DocumentEntry,
   clientId: string,
   createdBy: string,
   existingDocs: ExistingDocInfo[],
+  folderCache: FolderCacheMap,
   onDocDone: (status: "done" | "duplicate_skipped" | "failed", msg?: string) => void,
 ): Promise<void> {
   // 1. Build the relative path within the client folder (segments after the client name)
@@ -249,6 +358,14 @@ async function uploadDocument(
   const storagePath = `${clientId}/${sanitizeStoragePath(relPathWithinClient)}`;
   entry.storagePath = storagePath;
 
+  // 4b. Resolve folder_id for the logical folder hierarchy
+  const folderId = await resolveFolderIdForPath(
+    relPathWithinClient,
+    clientId,
+    createdBy,
+    folderCache,
+  );
+
   // 5. Upload to Storage
   const { error: uploadError } = await supabase.storage
     .from("documents")
@@ -272,6 +389,7 @@ async function uploadDocument(
     display_name: entry.originalName,
     relative_path: relPathWithinClient,
     content_hash: contentHash ?? null,
+    folder_id: folderId ?? null,
     type: "Importado",
     document_type: "Importado",
     size: sizeStr,
@@ -455,11 +573,14 @@ export async function runImport(params: RunImportParams): Promise<ImportResult> 
     // Fetch existing documents for this client
     const existingDocs = await fetchExistingDocs(clientId);
 
+    // Per-client folder cache for this import run
+    const folderCache: FolderCacheMap = new Map();
+
     // Build upload tasks for valid pending documents
     const pendingDocs = client.documents.filter((d) => d.status === "pending");
 
     const tasks = pendingDocs.map((doc) => async () => {
-      await uploadDocument(doc, clientId!, userId, existingDocs, (status, msg) => {
+      await uploadDocument(doc, clientId!, userId, existingDocs, folderCache, (status, msg) => {
         if (status === "done") stats.documentsUploaded++;
         else if (status === "duplicate_skipped") stats.documentsDuplicateSkipped++;
         else if (status === "failed") stats.documentsFailed++;
