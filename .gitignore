@@ -42,3 +42,16 @@ bunfig.toml
 
 supabase/.temp/
 .local-backups/
+
+# Local audit and stabilization artifacts (backed up externally)
+/.analysis/
+/.kiro/
+/INFORME_FASE_C_REPORTES_WHATSAPP.md
+/INFORME_FINAL_MIGRACION.md
+/MANIFIESTO_COMMIT_FINAL.md
+/README_COMMIT.md
+/commit-message.txt
+/deploy-migrations.cmd
+/prepare-commit.cmd
+/validate-commit.cmd
+/src/lib/database.types.new.ts
