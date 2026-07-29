@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card } from "@/components/app-layout";
+import { TaskCenter } from "@/components/tasks/task-center";
+import { TaskDetailSheet } from "@/components/tasks/task-views";
 import {
   useAgendaEvents,
   useCreateAgendaEvent,
@@ -8,7 +10,13 @@ import {
 } from "@/hooks/use-agenda";
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
-import { useCaseTasks } from "@/hooks/legal/use-case-management";
+import {
+  useDailyTasks,
+  useDeleteDailyTask,
+  useUpdateDailyTask,
+  type DailyTask,
+} from "@/hooks/use-daily-tasks";
+import { useAuth } from "@/hooks/use-auth";
 import { exportAgendaICS, openEventInGoogleCalendar } from "@/lib/export-ics";
 import { isGoogleCalendarConnected } from "@/lib/google-calendar";
 import {
@@ -32,6 +40,7 @@ import {
   CheckSquare,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import type { TaskStatus } from "@/lib/tasks";
 
 export const Route = createFileRoute("/_app/agenda/")({
   head: () => ({ meta: [{ title: "Agenda — CRM Jurídico" }] }),
@@ -67,17 +76,101 @@ function buildMonth(year: number, month: number) {
   return cells.slice(0, 42);
 }
 
+function taskDateISO(value: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+type AgendaWorkspace = "today" | "upcoming" | "calendar";
+
 function AgendaPage() {
+  const [workspace, setWorkspace] = useState<AgendaWorkspace>("today");
+
+  if (workspace === "calendar") {
+    return <CalendarPage workspace={workspace} onWorkspaceChange={setWorkspace} />;
+  }
+
+  return (
+    <AppLayout
+      title="Agenda y tareas"
+      subtitle="Centro de trabajo diario, próximos plazos y calendario"
+    >
+      <AgendaTabs value={workspace} onChange={setWorkspace} />
+      <TaskCenter mode={workspace} />
+    </AppLayout>
+  );
+}
+
+function AgendaTabs({
+  value,
+  onChange,
+}: {
+  value: AgendaWorkspace;
+  onChange: (value: AgendaWorkspace) => void;
+}) {
+  return (
+    <nav
+      aria-label="Vistas de agenda"
+      className="mb-5 flex gap-1 overflow-x-auto border-b border-border"
+    >
+      {[
+        ["today", "Mi día"],
+        ["upcoming", "Próximas"],
+        ["calendar", "Calendario"],
+      ].map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-current={value === key ? "page" : undefined}
+          onClick={() => onChange(key as AgendaWorkspace)}
+          className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold ${
+            value === key
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function CalendarPage({
+  workspace,
+  onWorkspaceChange,
+}: {
+  workspace: AgendaWorkspace;
+  onWorkspaceChange: (value: AgendaWorkspace) => void;
+}) {
   const todayISO = getPeruTodayISO();
   const [todayYear, todayMonth, todayDay] = todayISO.split("-").map(Number);
   const today = new Date(todayYear, todayMonth - 1, todayDay);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const cells = buildMonth(viewYear, viewMonth);
+  const calendarStart = localDateToISO(cells[0].date);
+  const calendarEnd = localDateToISO(cells[cells.length - 1].date);
 
   const { data: events = [], isLoading } = useAgendaEvents();
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
-  const { data: tasks = [] } = useCaseTasks();
+  const { data: tasks = [], isLoading: tasksLoading } = useDailyTasks({
+    view: "calendar",
+    selectedDate: calendarStart,
+    endDate: calendarEnd,
+    showCompleted: true,
+    limit: 200,
+  });
+  const updateTask = useUpdateDailyTask();
+  const deleteTask = useDeleteDailyTask();
+  const { user, profile } = useAuth();
   const createEvent = useCreateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
   const importGCal = useImportFromGoogleCalendar();
@@ -96,6 +189,7 @@ function AgendaPage() {
   });
   // Día seleccionado para ver sus eventos
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
 
   // ── Auto-sync al abrir la agenda ──────────────────────────────────────────
   const syncedRef = useRef(false);
@@ -132,11 +226,17 @@ function AgendaPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-  const cells = buildMonth(viewYear, viewMonth);
   const eventsByDay = new Map<string, typeof events>();
   events.forEach((e) => {
     if (!eventsByDay.has(e.event_date)) eventsByDay.set(e.event_date, []);
     eventsByDay.get(e.event_date)!.push(e);
+  });
+  const tasksByDay = new Map<string, DailyTask[]>();
+  tasks.forEach((task) => {
+    if (!task.due_date) return;
+    const day = taskDateISO(task.due_date);
+    if (!tasksByDay.has(day)) tasksByDay.set(day, []);
+    tasksByDay.get(day)!.push(task);
   });
 
   const monthNames = [
@@ -206,6 +306,21 @@ function AgendaPage() {
     .filter((task) => !["completed", "cancelled"].includes(task.status))
     .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
 
+  async function changeTaskStatus(task: DailyTask, status: TaskStatus) {
+    const saved = await updateTask.mutateAsync({
+      id: task.id,
+      updates: { status },
+      current: task,
+    });
+    setSelectedTask(saved);
+  }
+
+  async function removeTask(task: DailyTask) {
+    if (!window.confirm(`¿Eliminar la tarea “${task.title}”?`)) return;
+    await deleteTask.mutateAsync(task);
+    setSelectedTask(null);
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout
@@ -245,6 +360,7 @@ function AgendaPage() {
         </div>
       }
     >
+      <AgendaTabs value={workspace} onChange={onWorkspaceChange} />
       <Card className="mb-4 p-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -260,13 +376,13 @@ function AgendaPage() {
               const relatedCase = cases.find((item) => item.id === task.case_id);
               const overdue = !!task.due_date && new Date(task.due_date) < new Date();
               return (
-                <Link
+                <button
+                  type="button"
                   key={task.id}
-                  to={"/casos/$id" as never}
-                  params={{ id: task.case_id } as never}
+                  onClick={() => setSelectedTask(task)}
                   className={`rounded-lg border p-3 transition hover:bg-muted/30 ${
                     overdue ? "border-red-200 bg-red-50/50" : "border-border"
-                  }`}
+                  } text-left`}
                 >
                   <div className="truncate text-sm font-semibold">{task.title}</div>
                   <div
@@ -286,7 +402,7 @@ function AgendaPage() {
                   <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
                     {relatedCase?.expediente ?? "Expediente"}
                   </div>
-                </Link>
+                </button>
               );
             })}
           </div>
@@ -342,7 +458,7 @@ function AgendaPage() {
             ))}
           </div>
 
-          {isLoading ? (
+          {isLoading || tasksLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
@@ -351,6 +467,7 @@ function AgendaPage() {
               {cells.map((c, i) => {
                 const iso = localDateToISO(c.date);
                 const evts = eventsByDay.get(iso) || [];
+                const dayTasks = tasksByDay.get(iso) || [];
                 const isToday = iso === todayISO;
                 const isSelected = iso === selectedDay;
                 return (
@@ -368,7 +485,7 @@ function AgendaPage() {
                       {c.date.getDate()}
                     </div>
                     <div className="space-y-0.5">
-                      {evts.slice(0, 3).map((e) => {
+                      {evts.slice(0, 2).map((e) => {
                         // Eventos importados de Google (gcal_event_id pero sin tipo manual) usan color neutro
                         const fromGoogle = !!e.gcal_event_id;
                         const tc = fromGoogle
@@ -390,9 +507,23 @@ function AgendaPage() {
                           </div>
                         );
                       })}
-                      {evts.length > 3 && (
+                      {dayTasks.slice(0, 2).map((task) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedTask(task);
+                          }}
+                          className="flex w-full items-center gap-1 truncate rounded border border-violet-200 bg-violet-50 px-1 py-0.5 text-left text-[9px] font-medium text-violet-700"
+                        >
+                          <CheckSquare className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{task.title}</span>
+                        </button>
+                      ))}
+                      {evts.length + dayTasks.length > 4 && (
                         <div className="text-[9px] text-primary font-semibold pl-1">
-                          +{evts.length - 3} más
+                          +{evts.length + dayTasks.length - 4} más
                         </div>
                       )}
                     </div>
@@ -764,6 +895,18 @@ function AgendaPage() {
           </Card>
         </div>
       )}
+      <TaskDetailSheet
+        task={selectedTask}
+        role={profile?.role}
+        userId={user?.id}
+        onClose={() => setSelectedTask(null)}
+        onEdit={() => {
+          setSelectedTask(null);
+          onWorkspaceChange("today");
+        }}
+        onStatus={changeTaskStatus}
+        onDelete={removeTask}
+      />
     </AppLayout>
   );
 }
