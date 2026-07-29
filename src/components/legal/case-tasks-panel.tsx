@@ -13,8 +13,10 @@ import { peruDateTimeToISO, formatPeruDateTime } from "@/lib/peru-time";
 
 const taskStatusLabel = {
   pending: "Pendiente",
-  in_progress: "En curso",
-  completed: "Completada",
+  in_progress: "En proceso",
+  ready_to_file: "Listo para ingresar",
+  completed: "Terminado",
+  blocked: "Bloqueado",
   cancelled: "Cancelada",
   overdue: "Vencida",
 } as const;
@@ -25,13 +27,13 @@ export function CaseTasksPanel({ caseId, clientId }: { caseId: string; clientId:
   const createTask = useCreateCaseTask();
   const updateTask = useUpdateCaseTask();
   const deleteTask = useDeleteCaseTask();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "",
     description: "",
-    priority: "Media" as "Alta" | "Media" | "Baja",
+    priority: "Normal" as "Baja" | "Normal" | "Alta" | "Urgente",
     due_date: "",
     assigned_to: "",
   });
@@ -47,13 +49,13 @@ export function CaseTasksPanel({ caseId, clientId }: { caseId: string; clientId:
         description: form.description.trim() || null,
         priority: form.priority,
         due_date: peruDateTimeToISO(form.due_date),
-        assigned_to: form.assigned_to || null,
+        assigned_to: profile?.role === "Personal" ? (user?.id ?? null) : form.assigned_to || null,
         status: "pending",
         source: "manual",
         created_by_ai: false,
         verification_status: "approved",
       });
-      setForm({ title: "", description: "", priority: "Media", due_date: "", assigned_to: "" });
+      setForm({ title: "", description: "", priority: "Normal", due_date: "", assigned_to: "" });
       setShowForm(false);
     } catch (caught) {
       setFormError(caught instanceof Error ? caught.message : "No se pudo crear la tarea.");
@@ -113,9 +115,10 @@ export function CaseTasksPanel({ caseId, clientId }: { caseId: string; clientId:
               }
               className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none"
             >
-              <option>Alta</option>
-              <option>Media</option>
               <option>Baja</option>
+              <option>Normal</option>
+              <option>Alta</option>
+              <option>Urgente</option>
             </select>
             <input
               type="datetime-local"
@@ -126,11 +129,12 @@ export function CaseTasksPanel({ caseId, clientId }: { caseId: string; clientId:
               className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none"
             />
             <select
-              value={form.assigned_to}
+              value={profile?.role === "Personal" ? (user?.id ?? "") : form.assigned_to}
+              disabled={profile?.role !== "Administrador"}
               onChange={(event) =>
                 setForm((current) => ({ ...current, assigned_to: event.target.value }))
               }
-              className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none"
+              className="h-10 rounded-lg border border-border bg-card px-3 text-sm outline-none disabled:opacity-60"
             >
               <option value="">Sin responsable</option>
               {profiles
