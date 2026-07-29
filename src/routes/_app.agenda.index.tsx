@@ -1,6 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card } from "@/components/app-layout";
-import { TaskCenter } from "@/components/tasks/task-center";
 import { TaskDetailSheet } from "@/components/tasks/task-views";
 import {
   useAgendaEvents,
@@ -44,7 +43,7 @@ import type { TaskStatus } from "@/lib/tasks";
 
 export const Route = createFileRoute("/_app/agenda/")({
   head: () => ({ meta: [{ title: "Agenda — CRM Jurídico" }] }),
-  component: AgendaPage,
+  component: CalendarPage,
 });
 
 type EventType = "Audiencia" | "Cita" | "Recordatorio";
@@ -87,68 +86,8 @@ function taskDateISO(value: string) {
   return `${map.year}-${map.month}-${map.day}`;
 }
 
-type AgendaWorkspace = "today" | "upcoming" | "calendar";
-
-function AgendaPage() {
-  const [workspace, setWorkspace] = useState<AgendaWorkspace>("today");
-
-  if (workspace === "calendar") {
-    return <CalendarPage workspace={workspace} onWorkspaceChange={setWorkspace} />;
-  }
-
-  return (
-    <AppLayout
-      title="Agenda y tareas"
-      subtitle="Centro de trabajo diario, próximos plazos y calendario"
-    >
-      <AgendaTabs value={workspace} onChange={setWorkspace} />
-      <TaskCenter mode={workspace} />
-    </AppLayout>
-  );
-}
-
-function AgendaTabs({
-  value,
-  onChange,
-}: {
-  value: AgendaWorkspace;
-  onChange: (value: AgendaWorkspace) => void;
-}) {
-  return (
-    <nav
-      aria-label="Vistas de agenda"
-      className="mb-5 flex gap-1 overflow-x-auto border-b border-border"
-    >
-      {[
-        ["today", "Mi día"],
-        ["upcoming", "Próximas"],
-        ["calendar", "Calendario"],
-      ].map(([key, label]) => (
-        <button
-          key={key}
-          type="button"
-          aria-current={value === key ? "page" : undefined}
-          onClick={() => onChange(key as AgendaWorkspace)}
-          className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold ${
-            value === key
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-function CalendarPage({
-  workspace,
-  onWorkspaceChange,
-}: {
-  workspace: AgendaWorkspace;
-  onWorkspaceChange: (value: AgendaWorkspace) => void;
-}) {
+function CalendarPage() {
+  const navigate = useNavigate();
   const todayISO = getPeruTodayISO();
   const [todayYear, todayMonth, todayDay] = todayISO.split("-").map(Number);
   const today = new Date(todayYear, todayMonth - 1, todayDay);
@@ -190,6 +129,7 @@ function CalendarPage({
   // Día seleccionado para ver sus eventos
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
+  const [calendarFilter, setCalendarFilter] = useState<"Todos" | EventType | "Tareas">("Todos");
 
   // ── Auto-sync al abrir la agenda ──────────────────────────────────────────
   const syncedRef = useRef(false);
@@ -227,12 +167,18 @@ function CalendarPage({
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const eventsByDay = new Map<string, typeof events>();
-  events.forEach((e) => {
-    if (!eventsByDay.has(e.event_date)) eventsByDay.set(e.event_date, []);
-    eventsByDay.get(e.event_date)!.push(e);
-  });
+  events
+    .filter(
+      (event) =>
+        calendarFilter === "Todos" ||
+        (calendarFilter !== "Tareas" && event.type === calendarFilter),
+    )
+    .forEach((e) => {
+      if (!eventsByDay.has(e.event_date)) eventsByDay.set(e.event_date, []);
+      eventsByDay.get(e.event_date)!.push(e);
+    });
   const tasksByDay = new Map<string, DailyTask[]>();
-  tasks.forEach((task) => {
+  (calendarFilter === "Todos" || calendarFilter === "Tareas" ? tasks : []).forEach((task) => {
     if (!task.due_date) return;
     const day = taskDateISO(task.due_date);
     if (!tasksByDay.has(day)) tasksByDay.set(day, []);
@@ -302,10 +248,6 @@ function CalendarPage({
   const modalCases = form.client_id
     ? cases.filter((item) => item.client_id === form.client_id)
     : cases;
-  const pendingTasks = tasks
-    .filter((task) => !["completed", "cancelled"].includes(task.status))
-    .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
-
   async function changeTaskStatus(task: DailyTask, status: TaskStatus) {
     const saved = await updateTask.mutateAsync({
       id: task.id,
@@ -324,8 +266,8 @@ function CalendarPage({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout
-      title="Agenda y tareas"
-      subtitle="Audiencias, citas, recordatorios y próximas acciones"
+      title="Agenda"
+      subtitle="Calendario de audiencias, citas, eventos y vencimientos"
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -360,54 +302,6 @@ function CalendarPage({
         </div>
       }
     >
-      <AgendaTabs value={workspace} onChange={onWorkspaceChange} />
-      <Card className="mb-4 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <CheckSquare className="h-4 w-4 text-primary" /> Próximas tareas
-          </h2>
-          <span className="text-xs text-muted-foreground">{pendingTasks.length} pendientes</span>
-        </div>
-        {pendingTasks.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No hay tareas jurídicas pendientes.</p>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {pendingTasks.slice(0, 6).map((task) => {
-              const relatedCase = cases.find((item) => item.id === task.case_id);
-              const overdue = !!task.due_date && new Date(task.due_date) < new Date();
-              return (
-                <button
-                  type="button"
-                  key={task.id}
-                  onClick={() => setSelectedTask(task)}
-                  className={`rounded-lg border p-3 transition hover:bg-muted/30 ${
-                    overdue ? "border-red-200 bg-red-50/50" : "border-border"
-                  } text-left`}
-                >
-                  <div className="truncate text-sm font-semibold">{task.title}</div>
-                  <div
-                    className={`mt-1 text-xs ${
-                      overdue ? "font-semibold text-red-600" : "text-muted-foreground"
-                    }`}
-                  >
-                    {task.due_date
-                      ? formatPeruDateTime(task.due_date, {
-                          day: "2-digit",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "Sin fecha límite"}
-                  </div>
-                  <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-                    {relatedCase?.expediente ?? "Expediente"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Card>
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
         {/* Sync status banner */}
         {syncStatus && (
@@ -421,7 +315,7 @@ function CalendarPage({
 
         {/* ── Calendario ── */}
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 lg:px-6">
             <div className="flex items-center gap-3">
               <button
                 onClick={prevMonth}
@@ -447,6 +341,23 @@ function CalendarPage({
               >
                 Hoy
               </button>
+            </div>
+            <div aria-label="Filtrar calendario por tipo" className="flex flex-wrap gap-1">
+              {(["Todos", "Audiencia", "Cita", "Recordatorio", "Tareas"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  type="button"
+                  aria-pressed={calendarFilter === filter}
+                  onClick={() => setCalendarFilter(filter)}
+                  className={`h-8 rounded-lg px-2.5 text-xs font-semibold ${
+                    calendarFilter === filter
+                      ? "bg-primary text-primary-foreground"
+                      : "border border-border text-muted-foreground hover:bg-muted/60"
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -549,6 +460,10 @@ function CalendarPage({
                 <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/60" />
                 <span className="text-foreground/80">Importado de Google</span>
               </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                <span className="text-foreground/80">Tareas</span>
+              </div>
             </div>
           </Card>
 
@@ -571,6 +486,31 @@ function CalendarPage({
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
+              {(tasksByDay.get(selectedDay) ?? []).length > 0 && (
+                <div className="mb-3 space-y-2">
+                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tareas
+                  </h4>
+                  {(tasksByDay.get(selectedDay) ?? []).map((task) => (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => setSelectedTask(task)}
+                      className="flex w-full items-start gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-3 text-left transition hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-900 dark:bg-violet-950/30"
+                    >
+                      <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold leading-tight text-foreground">
+                          {task.title}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {task.assignee?.full_name ?? "Sin responsable"}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {(eventsByDay.get(selectedDay) ?? []).length === 0 ? (
                 <div className="py-4 text-center">
                   <p className="text-xs text-muted-foreground mb-3">Sin eventos este día.</p>
@@ -902,7 +842,7 @@ function CalendarPage({
         onClose={() => setSelectedTask(null)}
         onEdit={() => {
           setSelectedTask(null);
-          onWorkspaceChange("today");
+          navigate({ to: "/tareas" as never });
         }}
         onStatus={changeTaskStatus}
         onDelete={removeTask}
