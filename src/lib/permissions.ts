@@ -60,6 +60,35 @@ export function resolvePaymentPermissions(role: string | null | undefined): Paym
 }
 
 // ---------------------------------------------------------------------------
+// Permisos de migración documental
+// ---------------------------------------------------------------------------
+
+export interface MigrationPermissions {
+  /** Puede ver la herramienta de migración documental en Configuración. */
+  canViewDocumentMigration: boolean;
+  /** Puede ejecutar análisis dry-run de migración documental. */
+  canRunDocumentMigrationDryRun: boolean;
+  /** Puede ejecutar la migración real de documentos. */
+  canRunDocumentMigration: boolean;
+}
+
+/**
+ * Resuelve los permisos de la herramienta de migración documental.
+ * Solo Administrador Activo puede acceder. Para Personal todos son false.
+ */
+export function resolveMigrationPermissions(
+  role: string | null | undefined,
+  status: string | null | undefined,
+): MigrationPermissions {
+  const admin = isAdminRole(role) && (status ?? "").trim() === "Activo";
+  return {
+    canViewDocumentMigration: admin,
+    canRunDocumentMigrationDryRun: admin,
+    canRunDocumentMigration: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Hook-friendly helper
 // ---------------------------------------------------------------------------
 
@@ -72,6 +101,9 @@ export function resolvePaymentPermissions(role: string | null | undefined): Paym
  */
 export function usePermissions(
   profile: Database["public"]["Tables"]["profiles"]["Row"] | null | undefined,
-): PaymentPermissions {
-  return resolvePaymentPermissions(profile?.role);
+): PaymentPermissions & MigrationPermissions {
+  return {
+    ...resolvePaymentPermissions(profile?.role),
+    ...resolveMigrationPermissions(profile?.role, profile?.status),
+  };
 }

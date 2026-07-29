@@ -7,6 +7,7 @@ import { usePayments } from "@/hooks/use-payments";
 import { saveAgendaGoogleIds, useAgendaEvents } from "@/hooks/use-agenda";
 import { useImportJobsFilter } from "@/hooks/use-ai-findings";
 import { MassImportDryRun } from "@/components/mass-import-dry-run";
+import { MigrationTool } from "@/components/migration-tool";
 import {
   exportFullBackup,
   exportClientsExcel,
@@ -1088,6 +1089,14 @@ function AdministrativeImportToolsPanel() {
           <Wrench className="h-4 w-4 text-primary" /> Diagnóstico
         </div>
         <MassImportDryRun />
+      </div>
+
+      {/* ── Sección administrativa: Migración de organización documental ── */}
+      <div>
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
+          <FolderArchive className="h-4 w-4 text-primary" /> Migración de organización documental
+        </div>
+        <MigrationTool />
       </div>
 
       <Card className="p-6">
