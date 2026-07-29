@@ -1,6 +1,13 @@
 -- ============================================================
--- CRM Estudio Jurídico Arenas — Schema v2 (limpio y ordenado)
--- Ejecutar completo en Supabase > SQL Editor > New query > Run
+-- CRM Estudio Jurídico Arenas — SNAPSHOT DE REFERENCIA
+-- ============================================================
+-- NO ES LA FUENTE CANÓNICA DEL ESQUEMA NI DEBE EJECUTARSE EN
+-- PRODUCCIÓN. La fuente de verdad es supabase/migrations/, en orden
+-- cronológico. Este snapshot no incorpora de forma inequívoca todas
+-- las migraciones posteriores y debe regenerarse desde un entorno
+-- validado antes de volver a utilizarse como bootstrap.
+--
+-- Véase docs/current-state/DATABASE_SCHEMA_SOURCE_OF_TRUTH.md.
 -- ============================================================
 
 -- ============================================================
@@ -484,17 +491,25 @@ create policy "cases_delete" on public.cases for delete using (public.is_admin()
 drop policy if exists "payments_select" on public.payments;
 drop policy if exists "payments_insert" on public.payments;
 drop policy if exists "payments_update" on public.payments;
-create policy "payments_select" on public.payments for select using (public.is_staff());
+drop policy if exists "payments_delete" on public.payments;
+create policy "payments_select" on public.payments for select using (public.is_admin());
 create policy "payments_insert" on public.payments for insert with check (public.is_admin());
 create policy "payments_update" on public.payments
   for update using (public.is_admin()) with check (public.is_admin());
+create policy "payments_delete" on public.payments for delete using (public.is_admin());
 
 drop policy if exists "payment_records_select" on public.payment_records;
 drop policy if exists "payment_records_insert" on public.payment_records;
+drop policy if exists "payment_records_update" on public.payment_records;
+drop policy if exists "payment_records_delete" on public.payment_records;
 create policy "payment_records_select" on public.payment_records
   for select using (public.is_admin());
 create policy "payment_records_insert" on public.payment_records
   for insert with check (public.is_admin());
+create policy "payment_records_update" on public.payment_records
+  for update using (public.is_admin()) with check (public.is_admin());
+create policy "payment_records_delete" on public.payment_records
+  for delete using (public.is_admin());
 
 drop policy if exists "agenda_select" on public.agenda_events;
 drop policy if exists "agenda_insert" on public.agenda_events;

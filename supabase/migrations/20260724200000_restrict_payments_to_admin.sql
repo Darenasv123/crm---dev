@@ -17,6 +17,8 @@
 -- los datos existentes.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+begin;
+
 -- ── payments ─────────────────────────────────────────────────────────────────
 
 -- Eliminar políticas anteriores
@@ -136,6 +138,8 @@ create policy "payment_records_delete" on public.payment_records
         and p.status = 'Activo'
     )
   );
+
+commit;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Verificación rápida (comentada para ejecución manual):

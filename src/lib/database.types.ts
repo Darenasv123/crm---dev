@@ -535,6 +535,7 @@ export type Database = {
           juzgado: string;
           last_action_date: string | null;
           legal_area: string | null;
+          materia: string | null;
           next_action: string | null;
           next_hearing: string | null;
           priority: string;
@@ -567,6 +568,7 @@ export type Database = {
           juzgado: string;
           last_action_date?: string | null;
           legal_area?: string | null;
+          materia?: string | null;
           next_action?: string | null;
           next_hearing?: string | null;
           priority?: string;
@@ -599,6 +601,7 @@ export type Database = {
           juzgado?: string;
           last_action_date?: string | null;
           legal_area?: string | null;
+          materia?: string | null;
           next_action?: string | null;
           next_hearing?: string | null;
           priority?: string;
@@ -639,7 +642,13 @@ export type Database = {
           category: string;
           client_id: string;
           created_at: string;
+          current_status: string | null;
+          final_text: string | null;
           id: string;
+          informative_message: string | null;
+          materia: string | null;
+          reminder_days: number | null;
+          status_date: string | null;
           title: string;
         };
         Insert: {
@@ -649,7 +658,13 @@ export type Database = {
           category?: string;
           client_id: string;
           created_at?: string;
+          current_status?: string | null;
+          final_text?: string | null;
           id?: string;
+          informative_message?: string | null;
+          materia?: string | null;
+          reminder_days?: number | null;
+          status_date?: string | null;
           title: string;
         };
         Update: {
@@ -659,7 +674,13 @@ export type Database = {
           category?: string;
           client_id?: string;
           created_at?: string;
+          current_status?: string | null;
+          final_text?: string | null;
           id?: string;
+          informative_message?: string | null;
+          materia?: string | null;
+          reminder_days?: number | null;
+          status_date?: string | null;
           title?: string;
         };
         Relationships: [
@@ -1343,6 +1364,17 @@ export type Database = {
     Functions: {
       is_admin: { Args: never; Returns: boolean };
       is_staff: { Args: never; Returns: boolean };
+      register_payment_record_atomic: {
+        Args: {
+          p_amount: number;
+          p_method: string;
+          p_notes?: string | null;
+          p_payment_date?: string | null;
+          p_payment_id: string;
+          p_receipt?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;
