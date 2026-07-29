@@ -4,8 +4,10 @@ import { TaskCenter } from "@/components/tasks/task-center";
 
 export function TasksPage({
   mode,
+  board = false,
 }: {
   mode: "today" | "upcoming";
+  board?: boolean;
 }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const tabs = [
@@ -38,7 +40,7 @@ export function TasksPage({
           );
         })}
       </nav>
-      <TaskCenter mode={mode} />
+      <TaskCenter mode={mode} initialLayout={board ? "board" : "list"} lockLayout={board} />
     </AppLayout>
   );
 }

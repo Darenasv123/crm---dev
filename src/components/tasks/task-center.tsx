@@ -5,12 +5,19 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Filter,
   List,
   Plus,
   RotateCcw,
   Search,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/app-layout";
+import {
+  countActiveTaskFilters,
+  type TaskAdvancedFilters,
+} from "@/components/tasks/task-filter-utils";
+import { TaskFiltersSheet } from "@/components/tasks/task-filters-sheet";
 import { TaskFormSheet } from "@/components/tasks/task-form-sheet";
 import { TaskBoard, TaskDetailSheet, TaskError, TaskList } from "@/components/tasks/task-views";
 import { useAuth } from "@/hooks/use-auth";
@@ -26,9 +33,6 @@ import {
 import { useProfiles } from "@/hooks/use-profiles";
 import { addDaysToISO, formatPeruDate, getPeruTodayISO } from "@/lib/peru-time";
 import {
-  TASK_PRIORITIES,
-  TASK_STATUSES,
-  TASK_STATUS_LABELS,
   canManageTask,
   classifyTask,
   compareTasks,
@@ -40,10 +44,18 @@ import {
 type TaskCenterMode = "today" | "upcoming";
 type LayoutMode = "list" | "board";
 
-export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
+export function TaskCenter({
+  mode,
+  initialLayout = "list",
+  lockLayout = false,
+}: {
+  mode: TaskCenterMode;
+  initialLayout?: LayoutMode;
+  lockLayout?: boolean;
+}) {
   const today = getPeruTodayISO();
   const [selectedDate, setSelectedDate] = useState(today);
-  const [layout, setLayout] = useState<LayoutMode>("list");
+  const [layout, setLayout] = useState<LayoutMode>(initialLayout);
   const { user, profile } = useAuth();
   const personalDefault = profile?.role === "Personal";
   const [mineOnly, setMineOnly] = useState(personalDefault);
@@ -55,6 +67,10 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
   const [caseId, setCaseId] = useState("");
   const [search, setSearch] = useState("");
   const [showCompleted, setShowCompleted] = useState(mode === "today");
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [withoutClient, setWithoutClient] = useState(false);
+  const [withoutCase, setWithoutCase] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [indicator, setIndicator] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [formOpen, setFormOpen] = useState(false);
@@ -88,6 +104,9 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
     caseId: caseId || undefined,
     search: search || undefined,
     showCompleted,
+    overdueOnly,
+    withoutClient,
+    withoutCase,
     limit: mode === "today" ? 200 : 100,
     enabled: !effectiveMineOnly || !!user?.id,
   } as const;
@@ -157,6 +176,108 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
   }, [mode, selectedDate, tasks]);
 
   const permissions = canManageTask(profile?.role, user?.id, editingTask?.assigned_to ?? null);
+  const advancedFilters: TaskAdvancedFilters = {
+    assignee,
+    status,
+    priority,
+    clientId,
+    caseId,
+    overdueOnly,
+    showCompleted,
+    withoutClient,
+    withoutCase,
+  };
+  const activeChips = [
+    assignee
+      ? {
+          key: "assignee",
+          label: profiles.find((item) => item.id === assignee)?.full_name ?? "Responsable",
+          clear: () => setAssignee(""),
+        }
+      : null,
+    status
+      ? {
+          key: "status",
+          label: `Estado: ${statusLabel(status)}`,
+          clear: () => setStatus(""),
+        }
+      : null,
+    priority
+      ? {
+          key: "priority",
+          label: `Prioridad: ${priority}`,
+          clear: () => setPriority(""),
+        }
+      : null,
+    clientId
+      ? {
+          key: "client",
+          label: clients.find((item) => item.id === clientId)?.name ?? "Cliente",
+          clear: () => {
+            setClientId("");
+            setCaseId("");
+          },
+        }
+      : null,
+    caseId
+      ? {
+          key: "case",
+          label: caseLabel(cases.find((item) => item.id === caseId)) ?? "Expediente",
+          clear: () => setCaseId(""),
+        }
+      : null,
+    overdueOnly
+      ? {
+          key: "overdue",
+          label: "Solo vencidas",
+          clear: () => setOverdueOnly(false),
+        }
+      : null,
+    showCompleted !== (mode === "today")
+      ? {
+          key: "completed",
+          label: showCompleted ? "Mostrar terminadas" : "Ocultar terminadas",
+          clear: () => setShowCompleted(mode === "today"),
+        }
+      : null,
+    withoutClient
+      ? {
+          key: "without-client",
+          label: "Sin cliente",
+          clear: () => setWithoutClient(false),
+        }
+      : null,
+    withoutCase
+      ? {
+          key: "without-case",
+          label: "Sin expediente",
+          clear: () => setWithoutCase(false),
+        }
+      : null,
+    indicator !== "all"
+      ? {
+          key: "indicator",
+          label: `Métrica: ${indicatorLabel(indicator)}`,
+          clear: () => setIndicator("all"),
+        }
+      : null,
+  ].filter((item): item is { key: string; label: string; clear: () => void } => item !== null);
+  const activeFilterCount = countActiveTaskFilters(advancedFilters, mode === "today", indicator);
+
+  function updateAdvancedFilters(updates: Partial<TaskAdvancedFilters>) {
+    if (updates.assignee !== undefined) {
+      setAssignee(updates.assignee);
+      if (updates.assignee) setMineOnly(false);
+    }
+    if (updates.status !== undefined) setStatus(updates.status);
+    if (updates.priority !== undefined) setPriority(updates.priority);
+    if (updates.clientId !== undefined) setClientId(updates.clientId);
+    if (updates.caseId !== undefined) setCaseId(updates.caseId);
+    if (updates.overdueOnly !== undefined) setOverdueOnly(updates.overdueOnly);
+    if (updates.showCompleted !== undefined) setShowCompleted(updates.showCompleted);
+    if (updates.withoutClient !== undefined) setWithoutClient(updates.withoutClient);
+    if (updates.withoutCase !== undefined) setWithoutCase(updates.withoutCase);
+  }
 
   function resetFilters() {
     setMineOnly(personalDefault);
@@ -167,6 +288,9 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
     setCaseId("");
     setSearch("");
     setShowCompleted(mode === "today");
+    setOverdueOnly(false);
+    setWithoutClient(false);
+    setWithoutCase(false);
     setIndicator("all");
   }
 
@@ -253,22 +377,19 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
     );
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-        <div>
-          <h1 className="font-display text-2xl font-bold">
-            {mode === "today" ? "Mi día" : "Próximas tareas"}
-          </h1>
-          <p className="mt-1 text-sm capitalize text-muted-foreground">
+    <div className="w-full max-w-none space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-40">
+          <h2 className="text-base font-bold">{mode === "today" ? "Mi día" : "Próximas tareas"}</h2>
+          <p className="text-xs capitalize text-muted-foreground">
             {formatPeruDate(`${selectedDate}T12:00:00-05:00`, {
               weekday: "long",
               day: "numeric",
               month: "long",
-              year: "numeric",
             })}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-border p-1">
             <button
               type="button"
@@ -294,6 +415,57 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
+          <label className="relative min-w-48 flex-1 lg:min-w-72">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <span className="sr-only">Buscar tarea</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por título"
+              className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm"
+            />
+          </label>
+          <div
+            aria-label="Alcance de tareas"
+            className="inline-flex h-10 rounded-lg border border-border p-1"
+          >
+            <button
+              type="button"
+              aria-pressed={effectiveMineOnly}
+              onClick={() => {
+                setMineOnly(true);
+                setAssignee("");
+              }}
+              className={`rounded-md px-3 text-xs font-semibold ${
+                effectiveMineOnly ? "bg-muted text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              Mis tareas
+            </button>
+            <button
+              type="button"
+              aria-pressed={!effectiveMineOnly && !assignee}
+              onClick={() => {
+                setMineOnly(false);
+                setAssignee("");
+              }}
+              className={`rounded-md px-3 text-xs font-semibold ${
+                !effectiveMineOnly && !assignee
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Todas
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold hover:bg-muted/60"
+          >
+            <Filter className="h-4 w-4" />
+            Filtros{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}
+          </button>
           {canManageTask(profile?.role, user?.id, null).canCreate && (
             <button
               type="button"
@@ -310,9 +482,12 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
       </div>
 
       {mode === "today" && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <div
+          aria-label="Resumen de tareas"
+          className="flex overflow-x-auto rounded-lg border border-border bg-card"
+        >
           {[
-            ["overdue", "Atrasadas", counts.overdue],
+            ["overdue", "Vencidas", counts.overdue],
             ["today", "Para hoy", counts.today],
             ["in_progress", "En proceso", counts.inProgress],
             ["ready_to_file", "Listas para ingresar", counts.ready],
@@ -321,132 +496,69 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
             <button
               key={key}
               type="button"
+              aria-pressed={indicator === key}
               onClick={() => {
                 if (key === "completed_today") setShowCompleted(true);
                 setIndicator(indicator === key ? "all" : String(key));
               }}
-              className={`rounded-xl border p-4 text-left transition ${
+              className={`flex min-w-fit flex-1 items-center justify-center gap-2 border-r border-border px-3 py-2 text-xs last:border-r-0 ${
                 indicator === key
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card hover:border-primary/40"
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "text-muted-foreground hover:bg-muted/40"
               }`}
             >
-              <span className="block text-2xl font-bold">{value}</span>
-              <span className="text-xs text-muted-foreground">{label}</span>
+              <span className="font-bold text-foreground">{value}</span>
+              <span>{label}</span>
             </button>
           ))}
         </div>
       )}
 
-      <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="relative xl:col-span-2">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <span className="sr-only">Buscar tarea</span>
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por título"
-              className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm"
-            />
-          </label>
-          <FilterSelect
-            label="Responsable"
-            value={effectiveMineOnly ? "mine" : assignee}
-            onChange={(value) => {
-              setMineOnly(value === "mine");
-              setAssignee(value === "mine" ? "" : value);
-            }}
-          >
-            <option value="">Todos los responsables</option>
-            <option value="mine">Mis tareas</option>
-            {profiles
-              .filter((item) => item.status === "Activo")
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.full_name}
-                </option>
-              ))}
-          </FilterSelect>
-          <FilterSelect label="Estado" value={status} onChange={setStatus}>
-            <option value="">Todos los estados</option>
-            {TASK_STATUSES.map((item) => (
-              <option key={item} value={item}>
-                {TASK_STATUS_LABELS[item]}
-              </option>
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Prioridad" value={priority} onChange={setPriority}>
-            <option value="">Todas las prioridades</option>
-            {TASK_PRIORITIES.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </FilterSelect>
-          <FilterSelect
-            label="Cliente"
-            value={clientId}
-            onChange={(value) => {
-              setClientId(value);
-              if (caseId && cases.find((item) => item.id === caseId)?.client_id !== value) {
-                setCaseId("");
-              }
-            }}
-          >
-            <option value="">Todos los clientes</option>
-            {clients.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </FilterSelect>
-          <FilterSelect label="Expediente" value={caseId} onChange={setCaseId}>
-            <option value="">Todos los expedientes</option>
-            {cases
-              .filter((item) => !clientId || item.client_id === clientId)
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.case_number || item.expediente || item.process_type}
-                </option>
-              ))}
-          </FilterSelect>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showCompleted}
-                onChange={(event) => setShowCompleted(event.target.checked)}
-              />
-              Mostrar terminadas
-            </label>
+      {activeChips.length > 0 && (
+        <div aria-label="Filtros activos" className="flex flex-wrap items-center gap-2">
+          {activeChips.map((chip) => (
             <button
+              key={chip.key}
               type="button"
-              onClick={resetFilters}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+              onClick={chip.clear}
+              aria-label={`Quitar filtro ${chip.label}`}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 text-xs font-medium text-primary"
             >
-              <RotateCcw className="h-3.5 w-3.5" /> Limpiar
+              {chip.label} <X className="h-3.5 w-3.5" />
             </button>
-          </div>
+          ))}
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="inline-flex min-h-8 items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Limpiar todo
+          </button>
         </div>
-      </Card>
+      )}
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
+        <p aria-live="polite" className="text-xs text-muted-foreground">
           {tasks.length} tarea{tasks.length === 1 ? "" : "s"}
         </p>
-        <div className="inline-flex rounded-lg border border-border p-1">
-          <LayoutButton active={layout === "list"} label="Lista" onClick={() => setLayout("list")}>
-            <List className="h-4 w-4" />
-          </LayoutButton>
-          <LayoutButton
-            active={layout === "board"}
-            label="Tablero"
-            onClick={() => setLayout("board")}
-          >
-            <Columns3 className="h-4 w-4" />
-          </LayoutButton>
-        </div>
+        {!lockLayout && (
+          <div className="inline-flex rounded-lg border border-border p-1">
+            <LayoutButton
+              active={layout === "list"}
+              label="Lista"
+              onClick={() => setLayout("list")}
+            >
+              <List className="h-4 w-4" />
+            </LayoutButton>
+            <LayoutButton
+              active={layout === "board"}
+              label="Tablero"
+              onClick={() => setLayout("board")}
+            >
+              <Columns3 className="h-4 w-4" />
+            </LayoutButton>
+          </div>
+        )}
       </div>
 
       {actionError && <TaskError message={actionError} />}
@@ -503,6 +615,16 @@ export function TaskCenter({ mode }: { mode: TaskCenterMode }) {
         </div>
       )}
 
+      <TaskFiltersSheet
+        open={filtersOpen}
+        filters={advancedFilters}
+        clients={clients}
+        cases={cases}
+        profiles={profiles}
+        onOpenChange={setFiltersOpen}
+        onChange={updateAdvancedFilters}
+        onClear={resetFilters}
+      />
       <TaskFormSheet
         open={formOpen}
         task={editingTask}
@@ -545,30 +667,40 @@ function formatTaskISO(value: string) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  children,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  children: React.ReactNode;
-}) {
+function statusLabel(status: string) {
   return (
-    <label>
-      <span className="sr-only">{label}</span>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
-      >
-        {children}
-      </select>
-    </label>
+    {
+      pending: "Pendiente",
+      in_progress: "En proceso",
+      ready_to_file: "Listo para ingresar",
+      completed: "Terminado",
+      blocked: "Bloqueado",
+    }[status] ?? status
   );
+}
+
+function indicatorLabel(indicator: string) {
+  return (
+    {
+      overdue: "Vencidas",
+      today: "Para hoy",
+      in_progress: "En proceso",
+      ready_to_file: "Listas para ingresar",
+      completed_today: "Terminadas hoy",
+    }[indicator] ?? indicator
+  );
+}
+
+function caseLabel(
+  item:
+    | {
+        expediente: string;
+        case_number: string | null;
+        process_type: string;
+      }
+    | undefined,
+) {
+  return item?.case_number || item?.expediente || item?.process_type;
 }
 
 function LayoutButton({

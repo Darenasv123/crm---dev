@@ -7,6 +7,7 @@ import {
   Circle,
   Clock3,
   ExternalLink,
+  History,
   Pencil,
   Trash2,
   UserRound,
@@ -101,9 +102,9 @@ export function TaskList({
 }) {
   return (
     <>
-      <div className="hidden overflow-auto rounded-xl border border-border md:block">
-        <table className="w-full min-w-[1050px] border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-muted/90 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+      <div className="hidden overflow-hidden rounded-xl border border-border md:block">
+        <table className="w-full table-fixed border-collapse text-left text-sm">
+          <thead className="sticky top-14 z-10 bg-muted/95 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur">
             <tr>
               {[
                 "N.°",
@@ -116,7 +117,16 @@ export function TaskList({
                 "Observaciones",
                 "Acciones",
               ].map((label) => (
-                <th key={label} className="border-b border-border px-3 py-3 font-semibold">
+                <th
+                  key={label}
+                  className={`border-b border-border px-2 py-2.5 font-semibold ${
+                    label === "Observaciones"
+                      ? "hidden xl:table-cell"
+                      : label === "Tarea"
+                        ? "w-[25%]"
+                        : ""
+                  }`}
+                >
                   {label}
                 </th>
               ))}
@@ -135,13 +145,15 @@ export function TaskList({
                       : "border-l-2 border-l-transparent"
                   }`}
                 >
-                  <td className="px-3 py-3 font-mono text-xs text-muted-foreground">{index + 1}</td>
-                  <td className="max-w-40 px-3 py-3">
+                  <td className="px-2 py-2.5 font-mono text-xs text-muted-foreground">
+                    {index + 1}
+                  </td>
+                  <td className="px-2 py-2.5">
                     <div className="truncate font-medium">
                       {task.assignee?.full_name ?? "Sin responsable"}
                     </div>
                   </td>
-                  <td className="max-w-44 px-3 py-3">
+                  <td className="px-2 py-2.5">
                     {client ? (
                       <Link
                         to={"/clientes/$id" as never}
@@ -154,7 +166,7 @@ export function TaskList({
                       <span className="text-muted-foreground">General</span>
                     )}
                   </td>
-                  <td className="max-w-40 px-3 py-3 font-mono text-xs">
+                  <td className="px-2 py-2.5 font-mono text-xs">
                     {task.case_id ? (
                       <Link
                         to={"/casos/$id" as never}
@@ -167,11 +179,11 @@ export function TaskList({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="max-w-64 px-3 py-3">
+                  <td className="px-2 py-2.5">
                     <button
                       type="button"
                       onClick={() => onOpen(task)}
-                      className="block max-w-full truncate text-left font-semibold hover:text-primary"
+                      className="block max-w-full text-left font-semibold leading-snug hover:text-primary"
                     >
                       {task.title}
                     </button>
@@ -179,16 +191,16 @@ export function TaskList({
                       Prioridad {normalizeTaskPriority(task.priority)}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-xs">
+                  <td className="px-2 py-2.5 text-xs">
                     <DueLabel task={task} />
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-2 py-2.5">
                     {permissions.canUpdateStatus ? (
                       <select
                         aria-label={`Estado de ${task.title}`}
                         value={normalizeTaskStatus(task.status)}
                         onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
-                        className="h-9 max-w-44 rounded-lg border border-input bg-background px-2 text-xs font-semibold"
+                        className="h-9 w-full rounded-lg border border-input bg-background px-2 text-xs font-semibold"
                       >
                         {TASK_STATUSES.map((status) => (
                           <option key={status} value={status}>
@@ -200,7 +212,7 @@ export function TaskList({
                       <TaskStatusChip status={task.status} />
                     )}
                   </td>
-                  <td className="max-w-56 px-3 py-3">
+                  <td className="hidden px-2 py-2.5 xl:table-cell">
                     <span
                       title={task.description ?? ""}
                       className="block truncate text-xs text-muted-foreground"
@@ -208,7 +220,7 @@ export function TaskList({
                       {task.description || "—"}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-2 py-2.5">
                     <div className="flex items-center gap-1">
                       {(permissions.canEditAll || permissions.canUpdateStatus) && (
                         <button
@@ -365,7 +377,7 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={!!task} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-[500px]">
         {task && (
           <>
             <SheetHeader>
@@ -401,6 +413,37 @@ export function TaskDetailSheet({
               <p className="mt-2 whitespace-pre-wrap rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">
                 {task.description || "Sin observaciones."}
               </p>
+            </div>
+
+            <div className="mt-6">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <History className="h-4 w-4" /> Historial
+              </h3>
+              <ol className="mt-3 space-y-3 border-l border-border pl-4 text-xs">
+                <li>
+                  <div className="font-semibold">Tarea creada</div>
+                  <div className="text-muted-foreground">
+                    {formatPeruDateTime(task.created_at)} · {task.creator?.full_name ?? "Usuario"}
+                  </div>
+                </li>
+                {task.updated_at !== task.created_at && (
+                  <li>
+                    <div className="font-semibold">Última actualización</div>
+                    <div className="text-muted-foreground">
+                      {formatPeruDateTime(task.updated_at)}
+                    </div>
+                  </li>
+                )}
+                {task.completed_at && (
+                  <li>
+                    <div className="font-semibold">Tarea terminada</div>
+                    <div className="text-muted-foreground">
+                      {formatPeruDateTime(task.completed_at)} ·{" "}
+                      {task.completer?.full_name ?? "Usuario"}
+                    </div>
+                  </li>
+                )}
+              </ol>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
