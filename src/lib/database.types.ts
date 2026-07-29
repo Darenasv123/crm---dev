@@ -427,15 +427,17 @@ export type Database = {
       case_tasks: {
         Row: {
           assigned_to: string | null;
-          case_id: string;
+          case_id: string | null;
           client_id: string | null;
           completed_at: string | null;
+          completed_by: string | null;
           created_at: string;
           created_by: string | null;
           created_by_ai: boolean;
           description: string | null;
           due_date: string | null;
           id: string;
+          is_all_day: boolean;
           priority: string;
           source: string;
           status: string;
@@ -445,15 +447,17 @@ export type Database = {
         };
         Insert: {
           assigned_to?: string | null;
-          case_id: string;
+          case_id?: string | null;
           client_id?: string | null;
           completed_at?: string | null;
+          completed_by?: string | null;
           created_at?: string;
           created_by?: string | null;
           created_by_ai?: boolean;
           description?: string | null;
           due_date?: string | null;
           id?: string;
+          is_all_day?: boolean;
           priority?: string;
           source?: string;
           status?: string;
@@ -463,15 +467,17 @@ export type Database = {
         };
         Update: {
           assigned_to?: string | null;
-          case_id?: string;
+          case_id?: string | null;
           client_id?: string | null;
           completed_at?: string | null;
+          completed_by?: string | null;
           created_at?: string;
           created_by?: string | null;
           created_by_ai?: boolean;
           description?: string | null;
           due_date?: string | null;
           id?: string;
+          is_all_day?: boolean;
           priority?: string;
           source?: string;
           status?: string;
@@ -504,6 +510,13 @@ export type Database = {
           {
             foreignKeyName: "case_tasks_created_by_fkey";
             columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "case_tasks_completed_by_fkey";
+            columns: ["completed_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];

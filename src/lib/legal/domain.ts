@@ -67,15 +67,24 @@ export const caseEventDraftSchema = z.object({
 });
 
 export const caseTaskDraftSchema = z.object({
-  caseId: z.string().uuid(),
+  caseId: z.string().uuid().nullable().optional(),
   clientId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(2),
   description: nullableText,
-  priority: z.enum(["Alta", "Media", "Baja"]).default("Media"),
+  priority: z.enum(["Baja", "Normal", "Media", "Alta", "Urgente"]).default("Normal"),
   status: z
-    .enum(["pending", "in_progress", "completed", "cancelled", "overdue"])
+    .enum([
+      "pending",
+      "in_progress",
+      "ready_to_file",
+      "completed",
+      "blocked",
+      "cancelled",
+      "overdue",
+    ])
     .default("pending"),
   dueDate: z.string().datetime().nullable().optional(),
+  isAllDay: z.boolean().default(false),
   assignedTo: z.string().uuid().nullable().optional(),
   source: z.string().trim().min(1).default("manual"),
 });
@@ -142,7 +151,7 @@ export function buildDocumentRecord(input: DocumentRecordDraft) {
   const parsed = documentRecordSchema.parse(input);
   return {
     client_id: parsed.clientId ?? null,
-    case_id: parsed.caseId ?? null,
+    case_id: parsed.caseId,
     name: parsed.displayName,
     original_name: parsed.originalName,
     display_name: parsed.displayName,
@@ -158,7 +167,7 @@ export function buildDocumentRecord(input: DocumentRecordDraft) {
 export function buildCaseEvent(input: CaseEventDraft) {
   const parsed = caseEventDraftSchema.parse(input);
   return {
-    case_id: parsed.caseId,
+    case_id: parsed.caseId ?? null,
     document_id: parsed.documentId ?? null,
     event_type: parsed.eventType,
     title: parsed.title,
@@ -172,13 +181,14 @@ export function buildCaseEvent(input: CaseEventDraft) {
 export function buildCaseTask(input: CaseTaskDraft) {
   const parsed = caseTaskDraftSchema.parse(input);
   return {
-    case_id: parsed.caseId,
+    case_id: parsed.caseId ?? null,
     client_id: parsed.clientId ?? null,
     title: parsed.title,
     description: parsed.description ?? null,
     priority: parsed.priority,
     status: parsed.status,
     due_date: parsed.dueDate ?? null,
+    is_all_day: parsed.isAllDay,
     assigned_to: parsed.assignedTo ?? null,
     source: parsed.source,
   };
