@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  countActiveTaskFilters,
+  type TaskAdvancedFilters,
+} from "@/components/tasks/task-filter-utils";
+import {
   buildTaskDueISO,
   canManageTask,
   classifyTask,
@@ -236,7 +240,8 @@ describe("contratos de integración de la interfaz", () => {
   });
 
   it("incluye tabla de escritorio, tarjetas móviles y tablero", () => {
-    expect(views).toContain("hidden overflow-auto");
+    expect(views).toContain("hidden overflow-hidden");
+    expect(views).toContain("table-fixed");
     expect(views).toContain("md:hidden");
     expect(views).toContain("lg:grid-cols-5");
   });
@@ -250,7 +255,45 @@ describe("contratos de integración de la interfaz", () => {
 
   it("incorpora el widget de tareas del dashboard", () => {
     expect(dashboard).toContain("Tareas de hoy");
-    expect(dashboard).toContain("useDailyTasks");
+    expect(dashboard).toContain("useTodayTaskSummary");
     expect(dashboard).toContain("overdueTaskCount");
+  });
+});
+
+describe("filtros unificados", () => {
+  const empty: TaskAdvancedFilters = {
+    assignee: "",
+    status: "",
+    priority: "",
+    clientId: "",
+    caseId: "",
+    overdueOnly: false,
+    showCompleted: true,
+    withoutClient: false,
+    withoutCase: false,
+  };
+
+  it("no cuenta los valores predeterminados de Mi día", () => {
+    expect(countActiveTaskFilters(empty, true)).toBe(0);
+  });
+
+  it("cuenta filtros combinados y la métrica activa", () => {
+    expect(
+      countActiveTaskFilters(
+        {
+          ...empty,
+          status: "blocked",
+          priority: "Urgente",
+          withoutCase: true,
+        },
+        true,
+        "overdue",
+      ),
+    ).toBe(4);
+  });
+
+  it("cuenta el cambio de visibilidad de terminadas respecto de la vista", () => {
+    expect(countActiveTaskFilters({ ...empty, showCompleted: false }, true)).toBe(1);
+    expect(countActiveTaskFilters({ ...empty, showCompleted: true }, false)).toBe(1);
   });
 });
