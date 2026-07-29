@@ -79,13 +79,8 @@ describe("client validation", () => {
         document_type: "DNI",
         document_number: "12345678",
         phone: "987654321",
-        whatsapp: "",
         email: "cliente@mail.com",
-        occupation: "",
-        process_type: "Familia",
         status: "Activo",
-        address: "",
-        notes: "",
       }),
     ).not.toThrow();
 
@@ -95,13 +90,8 @@ describe("client validation", () => {
         document_type: "RUC",
         document_number: "20123456789",
         phone: "987654321",
-        whatsapp: "",
         email: "",
-        occupation: "",
-        process_type: "Civil",
         status: "Activo",
-        address: "",
-        notes: "",
       }),
     ).not.toThrow();
 
@@ -111,15 +101,33 @@ describe("client validation", () => {
         document_type: "DNI",
         document_number: "123",
         phone: "987654321",
-        whatsapp: "",
         email: "",
-        occupation: "",
-        process_type: "Penal",
         status: "Activo",
-        address: "",
-        notes: "",
       }),
     ).toThrow(/DNI/);
+  });
+
+  it("ClientFormValues type excludes retired fields (no whatsapp, occupation, address, notes, process_type)", () => {
+    const validForm = {
+      name: "Cliente Test",
+      document_type: "DNI",
+      document_number: "12345678",
+      phone: "987654321",
+      email: "test@mail.com",
+      status: "Activo",
+    };
+
+    // Verify form validates successfully without retired fields
+    expect(() => validateClientForm(validForm)).not.toThrow();
+
+    // Type-level check: ClientFormValues should NOT have these properties
+    // TypeScript will catch if someone tries to add them
+    const formKeys = Object.keys(validForm);
+    expect(formKeys).not.toContain("whatsapp");
+    expect(formKeys).not.toContain("occupation");
+    expect(formKeys).not.toContain("address");
+    expect(formKeys).not.toContain("notes");
+    expect(formKeys).not.toContain("process_type");
   });
 
   it("warns about exact and approximate duplicates without overwriting", () => {
@@ -156,13 +164,8 @@ describe("client validation", () => {
           document_type: "DNI",
           document_number: "87654321",
           phone: "912345678",
-          whatsapp: "",
           email: "",
-          occupation: "",
-          process_type: "Penal",
           status: "Activo",
-          address: "",
-          notes: "",
         },
         existing,
       )[0]?.strength,
@@ -175,13 +178,8 @@ describe("client validation", () => {
           document_type: "DNI",
           document_number: "12345678",
           phone: "912345678",
-          whatsapp: "",
           email: "",
-          occupation: "",
-          process_type: "Penal",
           status: "Activo",
-          address: "",
-          notes: "",
         },
         existing,
       )[0]?.reason,
@@ -202,17 +200,13 @@ describe("case validation", () => {
       validateCaseForm({
         client_id: "client-1",
         expediente: "",
+        materia: "Familia",
         process_type: "Alimentos",
-        priority: "Media",
         status: "Consulta",
         juzgado: "",
         next_hearing: "",
-        internal_code: "",
-        legal_area: "",
         case_stage: "",
-        responsible_user_id: "",
         next_action: "",
-        filing_date: "",
       }).expediente,
     ).toBe("");
 
