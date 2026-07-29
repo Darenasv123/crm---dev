@@ -155,13 +155,6 @@ function PaymentsContent() {
       return;
     }
 
-    const newPaid = Number(selectedPayment.paid) + amount;
-    const newPaidInstallments = Math.min(
-      selectedPayment.paid_installments + 1,
-      selectedPayment.total_installments,
-    );
-    const newStatus = newPaid >= Number(selectedPayment.fees) ? "Pagado" : ("Parcial" as const);
-
     // Upload voucher file if provided
     let voucherPath: string | null = null;
     if (voucherFile) {
@@ -187,14 +180,14 @@ function PaymentsContent() {
           receipt: voucherPath,
           notes: regForm.notes || null,
         },
-        newPaid,
-        newPaidInstallments,
-        newStatus,
       });
       setModal(null);
       setRegForm({ amount: "", method: "Transferencia bancaria", notes: "" });
       setVoucherFile(null);
     } catch (err: unknown) {
+      if (voucherPath) {
+        await supabase.storage.from("documents").remove([voucherPath]);
+      }
       setFormError(err instanceof Error ? err.message : "Error al registrar.");
     } finally {
       setSaving(false);

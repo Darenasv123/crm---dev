@@ -8,6 +8,70 @@ type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
 type PaymentRecord = Database["public"]["Tables"]["payment_records"]["Row"];
 type PaymentRecordInsert = Database["public"]["Tables"]["payment_records"]["Insert"];
 type QueryOptions = { enabled?: boolean };
+type RegisterPaymentRpcArgs =
+  Database["public"]["Functions"]["register_payment_record_atomic"]["Args"];
+
+export interface RegisterPaymentInput {
+  paymentId: string;
+  record: Omit<PaymentRecordInsert, "payment_id">;
+}
+
+export interface AtomicPaymentResult {
+  payment: Payment;
+  record: PaymentRecord;
+}
+
+interface PaymentRpcClient {
+  rpc: (
+    functionName: "register_payment_record_atomic",
+    args: RegisterPaymentRpcArgs,
+  ) => Promise<{
+    data: Database["public"]["Functions"]["register_payment_record_atomic"]["Returns"];
+    error: { message: string } | null;
+  }>;
+}
+
+export function buildRegisterPaymentRpcArgs({
+  paymentId,
+  record,
+}: RegisterPaymentInput): RegisterPaymentRpcArgs {
+  if (!paymentId) throw new Error("El plan de pago es obligatorio");
+  if (!Number.isFinite(record.amount) || record.amount <= 0) {
+    throw new Error("El monto debe ser mayor a cero");
+  }
+  if (!record.method?.trim()) {
+    throw new Error("El método de pago es obligatorio");
+  }
+
+  return {
+    p_payment_id: paymentId,
+    p_amount: record.amount,
+    p_method: record.method.trim(),
+    p_receipt: record.receipt ?? null,
+    p_notes: record.notes ?? null,
+    p_payment_date: record.payment_date ?? null,
+  };
+}
+
+export async function executeRegisterPaymentAtomic(
+  db: PaymentRpcClient,
+  input: RegisterPaymentInput,
+): Promise<AtomicPaymentResult> {
+  const { data, error } = await db.rpc(
+    "register_payment_record_atomic",
+    buildRegisterPaymentRpcArgs(input),
+  );
+  if (error) throw new Error(error.message);
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("La base de datos devolvió una respuesta de pago inválida");
+  }
+
+  const result = data as unknown as Partial<AtomicPaymentResult>;
+  if (!result.payment?.id || !result.record?.id) {
+    throw new Error("La base de datos no confirmó el pago registrado");
+  }
+  return result as AtomicPaymentResult;
+}
 
 export function validatePaymentInput(
   input: Pick<PaymentInsert, "client_id" | "service" | "fees" | "total_installments">,
@@ -88,31 +152,15 @@ export function useCreatePayment() {
 export function useRegisterPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      paymentId,
-      record,
-      newPaid,
-      newPaidInstallments,
-      newStatus,
-    }: {
-      paymentId: string;
-      record: Omit<PaymentRecordInsert, "payment_id">;
-      newPaid: number;
-      newPaidInstallments: number;
-      newStatus: Payment["status"];
-    }) => {
+    mutationFn: async (input: RegisterPaymentInput) => {
       const db = await getAuthClient();
-      const { error: recError } = await db
-        .from("payment_records")
-        .insert({ ...record, payment_id: paymentId });
-      if (recError) throw new Error(recError.message);
-
-      const { error: updError } = await db
-        .from("payments")
-        .update({ paid: newPaid, paid_installments: newPaidInstallments, status: newStatus })
-        .eq("id", paymentId);
-      if (updError) throw new Error(updError.message);
+      return executeRegisterPaymentAtomic(db as unknown as PaymentRpcClient, input);
     },
-    onSuccess: (_data, { paymentId }) => invalidateCrmQueries(qc, { paymentId }),
+    onSuccess: (result, { paymentId }) =>
+      invalidateCrmQueries(qc, {
+        paymentId,
+        clientId: result.payment.client_id,
+        caseId: result.payment.case_id,
+      }),
   });
 }
