@@ -12,17 +12,23 @@ Supabase remoto durante esta fase.
 
 ## Flujo de trabajo
 
-La ruta `/agenda` abre en **Mi día** y ofrece tres vistas:
+Desde la Fase 4.1, Tareas y Agenda son módulos de navegación independientes:
 
-- **Mi día**: atrasadas, tareas para la fecha seleccionada y terminadas ese día.
-- **Próximas**: vencimientos posteriores, agrupados en los siguientes siete días
-  y más adelante.
-- **Calendario**: eventos de `agenda_events` y plazos de `case_tasks` diferenciados
-  visualmente.
+- `/tareas`: **Mi día**, con atrasadas, tareas de la fecha y terminadas ese día.
+- `/tareas/proximas`: vencimientos posteriores, agrupados en los siguientes siete
+  días y más adelante.
+- `/tareas/tablero`: tablero operativo por estados.
+- `/agenda`: calendario de eventos de `agenda_events` y plazos de `case_tasks`
+  diferenciados visualmente.
 
 La lista es la vista operativa predeterminada y el tablero permite cambiar estados
 sin duplicar registros. Los filtros se aplican en servidor y las consultas tienen
 límites explícitos.
+
+La búsqueda, el alcance Mis tareas/Todas, la fecha, el botón Filtros y Nueva tarea
+permanecen visibles. Responsable, estado, prioridad, cliente, expediente, vencidas,
+terminadas y tareas sin relación se agrupan en una hoja accesible. Los filtros
+activos se muestran como chips removibles.
 
 ## Modelo
 
