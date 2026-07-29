@@ -31,6 +31,7 @@ import {
 import { useMemo, useState } from "react";
 import type { Database } from "@/lib/database.types";
 import { formatPeruDate, formatPeruDateTime, formatPeruTime } from "@/lib/peru-time";
+import { ClientReportForm, type ClientReportFormData } from "@/components/client-report-form";
 
 export const Route = createFileRoute("/_app/reportes/")({
   head: () => ({ meta: [{ title: "Reportes — CRM Jurídico" }] }),
@@ -505,6 +506,7 @@ function ReportsPage() {
   const selectedCase = clientCases.find((c) => c.id === selectedCaseId) ?? clientCases[0] ?? null;
   const loading = loadingClients || loadingCases || loadingReports;
   const reportDraft = selectedClient ? buildReportData(selectedClient, clientCases, form) : null;
+  const [newReportError, setNewReportError] = useState<string | null>(null);
 
   async function handlePreviewReport() {
     if (!reportDraft || !requireReportContent(reportDraft)) return;
@@ -549,6 +551,28 @@ function ReportsPage() {
       setForm({ category: "Reporte", case_id: "", title: "", body: "" });
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "No se pudo publicar el reporte.");
+    }
+  }
+
+  async function handleNewReportSubmit(data: ClientReportFormData, finalText: string) {
+    setNewReportError(null);
+    try {
+      await createReport.mutateAsync({
+        client_id: data.client_id,
+        case_id: data.case_id || null,
+        category: "Reporte",
+        title: `Reporte de ${data.materia} - ${new Date(data.status_date).toLocaleDateString("es-PE")}`,
+        body: data.informative_message,
+        materia: data.materia || null,
+        status_date: data.status_date,
+        current_status: data.current_status,
+        informative_message: data.informative_message,
+        reminder_days: data.reminder_days,
+        final_text: finalText,
+      });
+    } catch (err: unknown) {
+      setNewReportError(err instanceof Error ? err.message : "No se pudo guardar el reporte.");
+      throw err;
     }
   }
 
@@ -657,6 +681,13 @@ function ReportsPage() {
 
             <div className="grid grid-cols-1 2xl:grid-cols-[minmax(360px,0.92fr)_minmax(0,1.08fr)] gap-4">
               <div className="space-y-4 min-w-0">
+                <ClientReportForm
+                  clients={clients}
+                  cases={cases}
+                  onSubmit={handleNewReportSubmit}
+                  saving={createReport.isPending}
+                  error={newReportError}
+                />
                 <ReportComposer
                   form={form}
                   setForm={setForm}

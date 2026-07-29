@@ -161,13 +161,8 @@ function ClientDetail() {
           document_type: editForm.document_type ?? "DNI",
           document_number: editForm.document_number ?? "",
           phone: editForm.phone ?? "",
-          whatsapp: editForm.whatsapp ?? "",
           email: editForm.email ?? "",
-          occupation: editForm.occupation ?? "",
-          process_type: editForm.process_type ?? "",
           status: editForm.status ?? "Activo",
-          address: editForm.address ?? "",
-          notes: editForm.notes ?? "",
         },
         allClients,
         id,
@@ -220,14 +215,9 @@ function ClientDetail() {
       dni: loadedClient.dni ?? "",
       phone: loadedClient.phone ?? "",
       email: loadedClient.email ?? "",
-      process_type: loadedClient.process_type ?? "",
       status: loadedClient.status,
       document_type: loadedClient.document_type || "DNI",
       document_number: loadedClient.document_number ?? loadedClient.dni ?? "",
-      whatsapp: loadedClient.whatsapp ?? loadedClient.phone ?? "",
-      occupation: loadedClient.occupation ?? "",
-      address: loadedClient.address ?? "",
-      notes: loadedClient.notes ?? "",
     });
     setEditing(true);
     setEditError(null);
@@ -245,13 +235,8 @@ function ClientDetail() {
         document_type: editForm.document_type ?? "DNI",
         document_number: editForm.document_number ?? "",
         phone: editForm.phone ?? "",
-        whatsapp: editForm.whatsapp ?? "",
         email: editForm.email ?? "",
-        occupation: editForm.occupation ?? "",
-        process_type: editForm.process_type ?? "",
         status: editForm.status ?? "Activo",
-        address: editForm.address ?? "",
-        notes: editForm.notes ?? "",
       });
       if (editDuplicateMatches.length > 0 && !duplicatesAcknowledged) {
         setEditError("Revisa los posibles duplicados y confirma si deseas continuar.");
@@ -272,14 +257,9 @@ function ClientDetail() {
           dni: normalized.document_number,
           phone: normalized.phone,
           email: normalized.email || null,
-          process_type: normalized.process_type,
           status: normalized.status,
           document_type: normalized.document_type,
           document_number: normalized.document_number,
-          whatsapp: normalized.whatsapp || normalized.phone,
-          occupation: normalized.occupation || null,
-          address: normalized.address || null,
-          notes: normalized.notes || null,
         },
       });
       setEditing(false);
@@ -850,53 +830,10 @@ function ClientDetail() {
                   required
                 />
                 <EF
-                  label="Teléfono alternativo"
-                  v={editForm.whatsapp}
-                  set={(v) =>
-                    setEditForm((f) => ({ ...f, whatsapp: normalizeDigits(v).slice(0, 9) }))
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <EF
                   label="Correo"
                   v={editForm.email}
                   set={(v) => setEditForm((f) => ({ ...f, email: v }))}
                   type="email"
-                />
-                <EF
-                  label="Ocupación"
-                  v={editForm.occupation}
-                  set={(v) => setEditForm((f) => ({ ...f, occupation: v }))}
-                />
-              </div>
-              <EF
-                label="Dirección"
-                v={editForm.address}
-                set={(v) => setEditForm((f) => ({ ...f, address: v }))}
-              />
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Materia o proceso principal *
-                </label>
-                <input
-                  type="text"
-                  value={editForm.process_type}
-                  onChange={(e) => setEditForm((f) => ({ ...f, process_type: e.target.value }))}
-                  required
-                  placeholder="Ej: Defensa penal por robo agravado"
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Observaciones
-                </label>
-                <textarea
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={3}
-                  className="mt-1.5 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none"
                 />
               </div>
               <ES

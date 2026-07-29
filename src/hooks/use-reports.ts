@@ -7,6 +7,8 @@ import { invalidateCrmQueries } from "@/lib/query-invalidation";
 export type ReportCategory =
   "Reporte" | "Noticia" | "Seguimiento" | "Alerta" | "Estado" | "Observacion";
 
+export type ReportMateria = "Familia" | "Penal";
+
 type ClientReport = Database["public"]["Tables"]["client_reports"]["Row"];
 type ClientReportInsert = Database["public"]["Tables"]["client_reports"]["Insert"];
 
@@ -15,6 +17,7 @@ export interface ClientReportWithRelations extends ClientReport {
   cases?: {
     expediente: string;
     process_type: string;
+    materia: string | null;
     status: Database["public"]["Tables"]["cases"]["Row"]["status"];
   } | null;
   profiles?: { full_name: string; initials: string; role: string } | null;
@@ -41,7 +44,7 @@ export function useClientReports() {
       const { data, error } = await db
         .from("client_reports")
         .select(
-          "*, clients(name, initials, color), cases(expediente, process_type, status), profiles(full_name, initials, role)",
+          "*, clients(name, initials, color), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
         )
         .order("created_at", { ascending: false });
 
@@ -66,9 +69,15 @@ export function useCreateClientReport() {
           ...input,
           author_id: user.id,
           case_id: input.case_id || null,
+          materia: input.materia || null,
+          status_date: input.status_date || null,
+          current_status: input.current_status || null,
+          informative_message: input.informative_message || null,
+          reminder_days: input.reminder_days || null,
+          final_text: input.final_text || null,
         })
         .select(
-          "*, clients(name, initials, color), cases(expediente, process_type, status), profiles(full_name, initials, role)",
+          "*, clients(name, initials, color), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
         )
         .single();
 
