@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { useCase, useCases, useUpdateCase } from "@/hooks/use-cases";
 import {
@@ -57,6 +57,9 @@ import {
 import { useState, useRef, useEffect } from "react";
 
 export const Route = createFileRoute("/_app/casos/$id")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    edit: search.edit === "true" ? "true" : undefined,
+  }),
   component: CaseDetail,
 });
 
@@ -74,6 +77,7 @@ type CaseTab = (typeof CASE_TABS)[number];
 
 function CaseDetail() {
   const { id } = Route.useParams();
+  const { edit: editParam } = useSearch({ from: "/_app/casos/$id" });
   const { data: item, isLoading } = useCase(id);
   const { data: allCases = [] } = useCases();
   const { data: allDocs = [] } = useDocuments();
@@ -111,6 +115,17 @@ function CaseDetail() {
   useEffect(() => {
     if (itemId) setNotes(itemNotes ?? "");
   }, [itemId, itemNotes]);
+
+  // Auto-open edit form when navigated with ?edit=true
+  const editParamTriggered = useRef(false);
+  useEffect(() => {
+    if (editParam === "true" && item && !editing && !editParamTriggered.current) {
+      editParamTriggered.current = true;
+      startEdit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, item]);
+
   if (isLoading) {
     return (
       <AppLayout title="Cargando..." subtitle="">
@@ -157,16 +172,13 @@ function CaseDetail() {
     if (!item) return;
     setEditForm({
       expediente: item.expediente,
-      internal_code: item.internal_code ?? caseNumber,
+      materia: item.materia ?? "",
       process_type: item.process_type,
-      legal_area: item.legal_area ?? "",
       case_stage: item.case_stage ?? "",
-      priority: item.priority,
       status: currentStatus,
       juzgado: item.juzgado,
       judicial_district: item.judicial_district ?? "",
       judge_or_prosecutor: item.judge_or_prosecutor ?? "",
-      filing_date: item.filing_date ?? "",
       current_summary:
         ((item as unknown as Record<string, unknown>).current_summary as string | undefined) ??
         ((item as unknown as Record<string, unknown>).notes as string | undefined) ??
@@ -188,17 +200,13 @@ function CaseDetail() {
       const values = validateCaseForm({
         client_id: item.client_id,
         expediente: editForm.expediente,
+        materia: editForm.materia,
         process_type: editForm.process_type,
-        priority: editForm.priority,
         status: editForm.status,
         juzgado: editForm.juzgado,
         next_hearing: editForm.next_hearing,
-        internal_code: editForm.internal_code,
-        legal_area: editForm.legal_area,
         case_stage: editForm.case_stage,
-        responsible_user_id: "",
         next_action: editForm.next_action,
-        filing_date: editForm.filing_date,
         judicial_district: editForm.judicial_district,
         judge_or_prosecutor: editForm.judge_or_prosecutor,
         current_summary: editForm.current_summary,
@@ -208,23 +216,20 @@ function CaseDetail() {
         id,
         updates: {
           expediente: values.expediente,
-          internal_code: values.internal_code || values.expediente || null,
-          case_number: values.expediente || null,
+          case_number: values.expediente || undefined,
           case_name: values.process_type,
           case_type: values.process_type,
           process_type: values.process_type,
-          legal_area: values.legal_area || null,
-          case_stage: values.case_stage || null,
-          priority: values.priority,
+          materia: values.materia,
+          case_stage: values.case_stage || undefined,
           status: values.status,
           juzgado: values.juzgado || "Por determinar",
-          court: values.juzgado || null,
-          judicial_district: values.judicial_district || null,
-          judge_or_prosecutor: values.judge_or_prosecutor || null,
-          filing_date: values.filing_date || null,
-          current_summary: values.current_summary || null,
-          current_status_description: values.current_status_description || null,
-          next_action: values.next_action || null,
+          court: values.juzgado || undefined,
+          judicial_district: values.judicial_district || undefined,
+          judge_or_prosecutor: values.judge_or_prosecutor || undefined,
+          current_summary: values.current_summary || undefined,
+          current_status_description: values.current_status_description || undefined,
+          next_action: values.next_action || undefined,
           next_hearing: peruDateTimeToISO(values.next_hearing || ""),
         },
       });
@@ -422,14 +427,12 @@ function CaseDetail() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
                 <Field k="Expediente" v={caseNumber} mono />
-                <Field k="Código interno" v={item.internal_code || "—"} mono />
+                <Field k="Materia" v={item.materia ?? "Sin materia asignada"} />
                 <Field k="Juzgado" v={item.juzgado} />
                 <Field k="Proceso" v={item.process_type} />
-                <Field k="Área legal" v={item.legal_area || "—"} />
                 <Field k="Etapa procesal" v={item.case_stage || "—"} />
                 <Field k="Distrito judicial" v={item.judicial_district || "—"} />
                 <Field k="Juez o fiscal" v={item.judge_or_prosecutor || "—"} />
-                <Field k="Prioridad" v={item.priority} />
                 <Field k="Cliente" v={item.clients?.name ?? "—"} />
                 <Field k="Registrado" v={new Date(item.created_at).toLocaleDateString("es-PE")} />
               </div>
@@ -712,6 +715,27 @@ function CaseDetail() {
                 set={(v) => setEditForm((f) => ({ ...f, expediente: v }))}
                 placeholder="Puede quedar vacío si aún no existe número judicial"
               />
+              {/* Materia — antes de Proceso */}
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Materia *
+                </label>
+                <div className="relative mt-1.5">
+                  <select
+                    value={editForm.materia ?? ""}
+                    onChange={(e) => setEditForm((f) => ({ ...f, materia: e.target.value }))}
+                    required
+                    className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
+                  >
+                    <option value="" disabled>
+                      Seleccionar materia
+                    </option>
+                    <option value="Familia">Familia</option>
+                    <option value="Penal">Penal</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
               <CF
                 label="Proceso *"
                 v={editForm.process_type}
@@ -719,57 +743,26 @@ function CaseDetail() {
                 required
                 placeholder="Ej: Defensa penal por robo agravado"
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <CF
-                  label="Código interno"
-                  v={editForm.internal_code}
-                  set={(v) => setEditForm((f) => ({ ...f, internal_code: v }))}
-                />
-                <CF
-                  label="Área legal"
-                  v={editForm.legal_area}
-                  set={(v) => setEditForm((f) => ({ ...f, legal_area: v }))}
-                />
-              </div>
               <CF
                 label="Etapa procesal"
-                v={editForm.case_stage}
+                v={editForm.case_stage ?? ""}
                 set={(v) => setEditForm((f) => ({ ...f, case_stage: v }))}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Prioridad
-                  </label>
-                  <div className="relative mt-1.5">
-                    <select
-                      value={editForm.priority}
-                      onChange={(e) => setEditForm((f) => ({ ...f, priority: e.target.value }))}
-                      className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
-                    >
-                      <option>Alta</option>
-                      <option>Media</option>
-                      <option>Baja</option>
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Estado
-                  </label>
-                  <div className="relative mt-1.5">
-                    <select
-                      value={editForm.status}
-                      onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                      className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
-                    >
-                      {CASE_STATUS_OPTIONS.map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  </div>
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Estado
+                </label>
+                <div className="relative mt-1.5">
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
+                  >
+                    {CASE_STATUS_OPTIONS.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
               <CF
@@ -781,40 +774,34 @@ function CaseDetail() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <CF
                   label="Distrito judicial"
-                  v={editForm.judicial_district}
+                  v={editForm.judicial_district ?? ""}
                   set={(v) => setEditForm((f) => ({ ...f, judicial_district: v }))}
                 />
                 <CF
                   label="Juez o fiscal"
-                  v={editForm.judge_or_prosecutor}
+                  v={editForm.judge_or_prosecutor ?? ""}
                   set={(v) => setEditForm((f) => ({ ...f, judge_or_prosecutor: v }))}
                 />
               </div>
               <CF
-                label="Fecha de presentación"
-                v={editForm.filing_date}
-                set={(v) => setEditForm((f) => ({ ...f, filing_date: v }))}
-                type="date"
-              />
-              <CF
                 label="Resumen actual"
-                v={editForm.current_summary}
+                v={editForm.current_summary ?? ""}
                 set={(v) => setEditForm((f) => ({ ...f, current_summary: v }))}
               />
               <CF
                 label="Situación actual"
-                v={editForm.current_status_description}
+                v={editForm.current_status_description ?? ""}
                 set={(v) => setEditForm((f) => ({ ...f, current_status_description: v }))}
               />
               <CF
                 label="Próxima acción"
-                v={editForm.next_action}
+                v={editForm.next_action ?? ""}
                 set={(v) => setEditForm((f) => ({ ...f, next_action: v }))}
               />
               <div>
                 <CF
                   label="Próxima audiencia (opcional)"
-                  v={editForm.next_hearing}
+                  v={editForm.next_hearing ?? ""}
                   set={(v) => setEditForm((f) => ({ ...f, next_hearing: v }))}
                   type="datetime-local"
                 />

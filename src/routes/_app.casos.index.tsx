@@ -3,7 +3,6 @@ import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { useCases, useCreateCase, useUpdateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
 import { useCaseDocumentCounts, useUploadDocument } from "@/hooks/use-documents";
-import { useProfiles } from "@/hooks/use-profiles";
 import { useAuth } from "@/hooks/use-auth";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
 import {
@@ -26,8 +25,6 @@ import {
   FileText,
   Eye,
   Pencil,
-  CreditCard,
-  CalendarPlus,
   AlertTriangle,
 } from "lucide-react";
 import { useState, useRef, useMemo } from "react";
@@ -60,7 +57,6 @@ function CasesPage() {
   const isAdmin = profile?.role === "Administrador";
   const { data: cases = [], isLoading, isError, error } = useCases();
   const { data: clients = [] } = useClients();
-  const { data: profiles = [] } = useProfiles();
   const { data: allTasks = [] } = useCaseTasks();
   const createCase = useCreateCase();
   const updateCase = useUpdateCase();
@@ -68,16 +64,15 @@ function CasesPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
   const [specialtyFilter, setSpecialtyFilter] = useState("");
-  const [matterFilter, setMatterFilter] = useState("");
+  const [materiaFilter, setMateriaFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
-  const [responsibleFilter, setResponsibleFilter] = useState("");
   const [workflowFilter, setWorkflowFilter] = useState("");
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [sortBy, setSortBy] = useState("recent");
   const [page, setPage] = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
@@ -91,17 +86,13 @@ function CasesPage() {
   const [form, setForm] = useState({
     client_id: "",
     expediente: "",
+    materia: "" as "" | "Familia" | "Penal",
     process_type: "",
-    priority: "Media" as "Alta" | "Media" | "Baja",
     status: "Pendiente de clasificación" as CaseStatus,
     juzgado: "",
     next_hearing: "",
-    internal_code: "",
-    legal_area: "",
     case_stage: "",
-    responsible_user_id: "",
     next_action: "",
-    filing_date: "",
   });
 
   // Filtered clients for the search dropdown
@@ -128,9 +119,7 @@ function CasesPage() {
   const specialties = Array.from(
     new Set(cases.map((item) => item.legal_area).filter(isNonEmptyString)),
   ).sort();
-  const matters = Array.from(
-    new Set(cases.map((item) => item.process_type || item.case_type).filter(isNonEmptyString)),
-  ).sort();
+  const materias = ["Familia", "Penal"];
   const filtered = cases.filter((c) => {
     const status = normalizeCaseStatus(c.status);
     const hasNumber = !!(c.expediente.trim() || c.case_number?.trim());
@@ -142,14 +131,9 @@ function CasesPage() {
       (c.internal_code ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (c.next_action ?? "").toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || status === statusFilter;
-    const matchPriority = !priorityFilter || c.priority === priorityFilter;
     const matchSpecialty = !specialtyFilter || c.legal_area === specialtyFilter;
-    const matchMatter = !matterFilter || (c.process_type || c.case_type) === matterFilter;
+    const matchMateria = !materiaFilter || c.materia === materiaFilter;
     const matchClient = !clientFilter || c.client_id === clientFilter;
-    const matchResponsible =
-      !responsibleFilter ||
-      (responsibleFilter === "__unassigned" && !c.responsible_user_id) ||
-      c.responsible_user_id === responsibleFilter;
     const matchWorkflow =
       !workflowFilter ||
       (workflowFilter === "with_next_action" && hasNextAction) ||
@@ -160,21 +144,14 @@ function CasesPage() {
     return (
       matchSearch &&
       matchStatus &&
-      matchPriority &&
       matchSpecialty &&
-      matchMatter &&
+      matchMateria &&
       matchClient &&
-      matchResponsible &&
       matchWorkflow &&
       matchOverdue
     );
   });
   const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "priority")
-      return (
-        ({ Alta: 0, Media: 1, Baja: 2 }[a.priority] ?? 3) -
-        ({ Alta: 0, Media: 1, Baja: 2 }[b.priority] ?? 3)
-      );
     if (sortBy === "hearing")
       return (a.next_hearing ?? "9999").localeCompare(b.next_hearing ?? "9999");
     if (sortBy === "client")
@@ -189,11 +166,9 @@ function CasesPage() {
   const hasActiveFilters =
     !!search ||
     !!statusFilter ||
-    !!priorityFilter ||
     !!specialtyFilter ||
-    !!matterFilter ||
+    !!materiaFilter ||
     !!clientFilter ||
-    !!responsibleFilter ||
     !!workflowFilter ||
     overdueOnly;
 
@@ -218,18 +193,21 @@ function CasesPage() {
     setSaving(true);
     try {
       const newCase = await createCase.mutateAsync({
-        ...values,
-        expediente,
-        internal_code: values.internal_code || expediente || null,
-        case_number: expediente || null,
+        client_id: values.client_id,
+        expediente: expediente,
+        materia: values.materia,
+        case_number: expediente || undefined,
         case_name: values.process_type,
         case_type: values.process_type,
-        court: values.juzgado || null,
+        process_type: values.process_type,
+        status: values.status,
+        court: values.juzgado || undefined,
         juzgado: values.juzgado || "Por determinar",
-        responsible_user_id: values.responsible_user_id || null,
         demandante: "",
         demandado: "",
         next_hearing: peruDateTimeToISO(values.next_hearing || ""),
+        case_stage: values.case_stage || undefined,
+        next_action: values.next_action || undefined,
       });
 
       // Upload expediente file if provided
@@ -249,17 +227,13 @@ function CasesPage() {
       setForm({
         client_id: "",
         expediente: "",
+        materia: "",
         process_type: "",
-        priority: "Media",
         status: "Pendiente de clasificación",
         juzgado: "",
         next_hearing: "",
-        internal_code: "",
-        legal_area: "",
         case_stage: "",
-        responsible_user_id: "",
         next_action: "",
-        filing_date: "",
       });
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Error al guardar.");
@@ -271,11 +245,9 @@ function CasesPage() {
   function clearFilters() {
     setSearch("");
     setStatusFilter("");
-    setPriorityFilter("");
     setSpecialtyFilter("");
-    setMatterFilter("");
+    setMateriaFilter("");
     setClientFilter("");
-    setResponsibleFilter("");
     setWorkflowFilter("");
     setOverdueOnly(false);
     setPage(1);
@@ -336,135 +308,138 @@ function CasesPage() {
             />
           </div>
           <div className="relative">
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="h-9 pl-3 pr-8 rounded-lg bg-card border border-border text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/60"
             >
-              <option value="">Todos los estados</option>
-              {CASE_STATUS_OPTIONS.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Filter className="h-4 w-4" />
+              Filtros
+              {hasActiveFilters && <span className="h-2 w-2 rounded-full bg-primary" />}
+              <ChevronDown className="h-4 w-4" />
+            </button>
+            {showFilters && (
+              <div className="absolute right-0 mt-2 z-50 w-80 bg-card border border-border rounded-lg shadow-lg p-4 space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                    Estado
+                  </label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Todos los estados</option>
+                    {CASE_STATUS_OPTIONS.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                    Materia
+                  </label>
+                  <select
+                    value={materiaFilter}
+                    onChange={(e) => {
+                      setMateriaFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Todas las materias</option>
+                    {materias.map((materia) => (
+                      <option key={materia} value={materia}>
+                        {materia}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                    Especialidad
+                  </label>
+                  <select
+                    value={specialtyFilter}
+                    onChange={(e) => {
+                      setSpecialtyFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Todas las especialidades</option>
+                    {specialties.map((specialty) => (
+                      <option key={specialty} value={specialty}>
+                        {specialty}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                    Cliente
+                  </label>
+                  <select
+                    value={clientFilter}
+                    onChange={(e) => {
+                      setClientFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Todos los clientes</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground mb-1.5 block">
+                    Flujo de trabajo
+                  </label>
+                  <select
+                    value={workflowFilter}
+                    onChange={(e) => {
+                      setWorkflowFilter(e.target.value);
+                      setPage(1);
+                    }}
+                    className="w-full h-9 px-3 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">Todos los flujos</option>
+                    <option value="with_next_action">Con próxima acción</option>
+                    <option value="without_number">Sin número</option>
+                    <option value="pending_classification">Pendientes de clasificación</option>
+                    <option value="archived">Archivados</option>
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={overdueOnly}
+                    onChange={(e) => {
+                      setOverdueOnly(e.target.checked);
+                      setPage(1);
+                    }}
+                  />
+                  Tareas vencidas
+                </label>
+              </div>
+            )}
           </div>
-          <div className="relative">
-            <select
-              value={priorityFilter}
-              onChange={(e) => {
-                setPriorityFilter(e.target.value);
-                setPage(1);
-              }}
-              className="h-9 pl-3 pr-8 rounded-lg bg-card border border-border text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-            >
-              <option value="">Todas las prioridades</option>
-              <option>Alta</option>
-              <option>Media</option>
-              <option>Baja</option>
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          </div>
-          <select
-            value={specialtyFilter}
-            onChange={(e) => {
-              setSpecialtyFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
-          >
-            <option value="">Todas las especialidades</option>
-            {specialties.map((specialty) => (
-              <option key={specialty} value={specialty}>
-                {specialty}
-              </option>
-            ))}
-          </select>
-          <select
-            value={matterFilter}
-            onChange={(e) => {
-              setMatterFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
-          >
-            <option value="">Todas las materias</option>
-            {matters.map((matter) => (
-              <option key={matter} value={matter}>
-                {matter}
-              </option>
-            ))}
-          </select>
-          <select
-            value={clientFilter}
-            onChange={(e) => {
-              setClientFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-9 max-w-[220px] rounded-lg border border-border bg-card px-3 text-sm outline-none"
-          >
-            <option value="">Todos los clientes</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={responsibleFilter}
-            onChange={(e) => {
-              setResponsibleFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-9 max-w-[220px] rounded-lg border border-border bg-card px-3 text-sm outline-none"
-          >
-            <option value="">Todos los responsables</option>
-            <option value="__unassigned">Sin asignar</option>
-            {profiles
-              .filter((item) => item.status === "Activo")
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.full_name}
-                </option>
-              ))}
-          </select>
-          <select
-            value={workflowFilter}
-            onChange={(e) => {
-              setWorkflowFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
-          >
-            <option value="">Todos los flujos</option>
-            <option value="with_next_action">Con próxima acción</option>
-            <option value="without_number">Sin número</option>
-            <option value="pending_classification">Pendientes de clasificación</option>
-            <option value="archived">Archivados</option>
-          </select>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
             className="h-9 rounded-lg border border-border bg-card px-3 text-sm outline-none"
           >
             <option value="recent">Más recientes</option>
-            <option value="priority">Por prioridad</option>
             <option value="hearing">Próxima audiencia</option>
             <option value="client">Por cliente</option>
           </select>
-          <label className="flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm">
-            <input
-              type="checkbox"
-              checked={overdueOnly}
-              onChange={(e) => {
-                setOverdueOnly(e.target.checked);
-                setPage(1);
-              }}
-            />{" "}
-            Tareas vencidas
-          </label>
         </div>
       </Card>
 
@@ -494,8 +469,7 @@ function CasesPage() {
                   <th className="py-3 pl-5 pr-3 font-semibold">Numero/ref.</th>
                   <th className="py-3 px-3 font-semibold">Cliente</th>
                   <th className="py-3 px-3 font-semibold">Materia</th>
-                  <th className="py-3 px-3 font-semibold">Responsable</th>
-                  <th className="py-3 px-3 font-semibold">Contraparte</th>
+                  <th className="py-3 px-3 font-semibold">Proceso</th>
                   <th className="py-3 px-3 font-semibold">Juzgado</th>
                   <th className="py-3 px-3 font-semibold">Estado</th>
                   <th className="py-3 px-3 font-semibold">Próxima acción</th>
@@ -507,7 +481,7 @@ function CasesPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={10} className="py-12 text-center text-sm text-muted-foreground">
                       {search
                         ? "No se encontraron expedientes."
                         : "Aún no hay expedientes registrados."}
@@ -516,7 +490,6 @@ function CasesPage() {
                 ) : (
                   paginated.map((c) => {
                     const status = normalizeCaseStatus(c.status);
-                    const opposingParty = c.demandado || c.demandante || "—";
                     return (
                       <tr
                         key={c.id}
@@ -536,13 +509,9 @@ function CasesPage() {
                             <span className="font-semibold truncate">{c.clients?.name ?? "—"}</span>
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-muted-foreground">{c.process_type}</td>
-                        <td className="py-3 px-3 text-xs text-muted-foreground">
-                          {profiles.find((profile) => profile.id === c.responsible_user_id)
-                            ?.full_name ?? "—"}
-                        </td>
-                        <td className="py-3 px-3 text-xs text-muted-foreground max-w-[150px] truncate">
-                          {opposingParty}
+                        <td className="py-3 px-3 text-muted-foreground">{c.materia ?? "—"}</td>
+                        <td className="py-3 px-3 text-xs text-muted-foreground max-w-[180px] truncate">
+                          {c.process_type}
                         </td>
                         <td className="py-3 px-3 text-xs text-muted-foreground max-w-[160px] truncate">
                           {c.juzgado}
@@ -591,56 +560,18 @@ function CasesPage() {
                               aria-label={`Ver expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
                             >
                               <Eye className="h-3.5 w-3.5" />
-                              Ver
+                              Ver ficha
                             </Link>
                             <Link
                               to={"/casos/$id" as never}
                               params={{ id: c.id } as never}
+                              search={{ edit: "true" } as never}
                               className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
                               aria-label={`Editar expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                               Editar
                             </Link>
-                            <Link
-                              to={"/documentos" as never}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                              aria-label={`Subir documento al expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
-                            >
-                              <FileUp className="h-3.5 w-3.5" />
-                              Documento
-                            </Link>
-                            <Link
-                              to={"/agenda" as never}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                              aria-label={`Agendar actividad del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
-                            >
-                              <CalendarPlus className="h-3.5 w-3.5" />
-                              Agenda
-                            </Link>
-                            {isAdmin && (
-                              <Link
-                                to={"/pagos" as never}
-                                className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-muted/60"
-                                aria-label={`Registrar pago del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
-                              >
-                                <CreditCard className="h-3.5 w-3.5" />
-                                Pago
-                              </Link>
-                            )}
-                            <select
-                              value={status}
-                              onChange={(event) =>
-                                handleStatusChange(c.id, event.target.value as CaseStatus)
-                              }
-                              disabled={changingStatusId === c.id}
-                              aria-label={`Cambiar estado del expediente ${displayCaseNumber(c.expediente, c.case_number)}`}
-                              className="h-8 rounded-md border border-border bg-card px-2 text-xs font-semibold outline-none disabled:opacity-50"
-                            >
-                              {CASE_STATUS_OPTIONS.map((option) => (
-                                <option key={option}>{option}</option>
-                              ))}
-                            </select>
                           </div>
                         </td>
                       </tr>
@@ -839,6 +770,27 @@ function CasesPage() {
                 />
               </div>
 
+              {/* Materia — select con Familia y Penal */}
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Materia *
+                </label>
+                <select
+                  value={form.materia}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, materia: e.target.value as typeof form.materia }))
+                  }
+                  required
+                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
+                >
+                  <option value="" disabled>
+                    Seleccionar materia
+                  </option>
+                  <option value="Familia">Familia</option>
+                  <option value="Penal">Penal</option>
+                </select>
+              </div>
+
               {/* Proceso — free text */}
               <CaseField
                 label="Proceso *"
@@ -847,20 +799,6 @@ function CasesPage() {
                 required
                 placeholder="Ej: Defensa penal por robo agravado"
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <CaseField
-                  label="Código interno"
-                  value={form.internal_code}
-                  onChange={(v) => setForm((f) => ({ ...f, internal_code: v }))}
-                  placeholder="Ej: FAM-2026-014"
-                />
-                <CaseField
-                  label="Área legal"
-                  value={form.legal_area}
-                  onChange={(v) => setForm((f) => ({ ...f, legal_area: v }))}
-                  placeholder="Ej: Derecho de Familia"
-                />
-              </div>
               <CaseField
                 label="Etapa procesal"
                 value={form.case_stage}
@@ -868,39 +806,19 @@ function CasesPage() {
                 placeholder="Ej: Ejecución de sentencia"
               />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Prioridad
-                  </label>
-                  <select
-                    value={form.priority}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, priority: e.target.value as typeof form.priority }))
-                    }
-                    className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-                  >
-                    <option>Alta</option>
-                    <option>Media</option>
-                    <option>Baja</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Estado
-                  </label>
-                  <select
-                    value={form.status}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, status: e.target.value as CaseStatus }))
-                    }
-                    className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-                  >
-                    {CASE_STATUS_OPTIONS.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Estado
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as CaseStatus }))}
+                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
+                >
+                  {CASE_STATUS_OPTIONS.map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
               </div>
               <CaseField
                 label="Juzgado (opcional)"
@@ -908,35 +826,6 @@ function CasesPage() {
                 onChange={(v) => setForm((f) => ({ ...f, juzgado: v }))}
                 placeholder="Ej: 1° Juzgado Penal de Lima"
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <CaseField
-                  label="Fecha de presentación"
-                  value={form.filing_date}
-                  onChange={(v) => setForm((f) => ({ ...f, filing_date: v }))}
-                  type="date"
-                />
-                <div>
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Responsable
-                  </label>
-                  <select
-                    value={form.responsible_user_id}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, responsible_user_id: e.target.value }))
-                    }
-                    className="mt-1.5 h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none"
-                  >
-                    <option value="">Sin asignar</option>
-                    {profiles
-                      .filter((item) => item.status === "Activo")
-                      .map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.full_name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              </div>
               <CaseField
                 label="Próxima acción"
                 value={form.next_action}

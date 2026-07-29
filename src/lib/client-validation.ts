@@ -11,13 +11,8 @@ export type ClientFormValues = {
   document_type: string;
   document_number: string;
   phone: string;
-  whatsapp: string;
   email: string;
-  occupation: string;
-  process_type: string;
   status: string;
-  address: string;
-  notes: string;
 };
 
 export type ClientDuplicateMatch = {
@@ -50,13 +45,8 @@ export function normalizeClientForm(input: ClientFormValues): ClientFormValues {
     document_type: documentType,
     document_number: normalizeDigits(input.document_number),
     phone: normalizeDigits(input.phone),
-    whatsapp: normalizeDigits(input.whatsapp),
     email: input.email.trim().toLowerCase(),
-    occupation: input.occupation.trim(),
-    process_type: input.process_type.trim(),
     status: input.status.trim() || "Activo",
-    address: input.address.trim(),
-    notes: input.notes.trim(),
   };
 }
 
@@ -66,13 +56,8 @@ export function buildClientInitials(name: string) {
     document_type: "DNI",
     document_number: "",
     phone: "",
-    whatsapp: "",
     email: "",
-    occupation: "",
-    process_type: "",
     status: "Activo",
-    address: "",
-    notes: "",
   }).name.split(/\s+/);
   return (
     (words.length >= 2 ? `${words[0][0]}${words[1][0]}` : (words[0] ?? "CL").slice(0, 2))
@@ -84,7 +69,6 @@ export function buildClientInitials(name: string) {
 export function validateClientForm(input: ClientFormValues): ClientFormValues {
   const form = normalizeClientForm(input);
   if (!form.name) throw new Error("Ingresa el nombre completo o razón social.");
-  if (!form.process_type) throw new Error("Describe el proceso o materia principal del cliente.");
   if (!form.document_number) throw new Error("Ingresa el DNI o RUC del cliente.");
 
   const docType = form.document_type.toUpperCase();
@@ -98,10 +82,8 @@ export function validateClientForm(input: ClientFormValues): ClientFormValues {
     throw new Error("El documento debe tener al menos 6 dígitos.");
   }
 
-  if (form.phone.length !== 9) throw new Error("El teléfono principal debe tener 9 dígitos.");
-  if (form.whatsapp && form.whatsapp.length !== 9) {
-    throw new Error("El teléfono alternativo debe tener 9 dígitos.");
-  }
+  if (form.phone && form.phone.length !== 9)
+    throw new Error("El teléfono principal debe tener 9 dígitos.");
   const emailResult = emailSchema.safeParse(form.email);
   if (!emailResult.success) {
     throw new Error(emailResult.error.issues[0]?.message ?? "Ingresa un correo válido.");
@@ -117,7 +99,6 @@ export function findClientDuplicates(
   const form = normalizeClientForm(input);
   const documentNumber = form.document_number;
   const phone = form.phone;
-  const whatsapp = form.whatsapp;
   const email = form.email;
   const name = normalizeText(form.name);
   const matches = new Map<string, ClientDuplicateMatch>();
@@ -140,10 +121,6 @@ export function findClientDuplicates(
     }
     if (phone && (phone === clientPhone || phone === clientWhatsapp)) {
       add(client, "Mismo teléfono", "exact");
-      continue;
-    }
-    if (whatsapp && (whatsapp === clientPhone || whatsapp === clientWhatsapp)) {
-      add(client, "Mismo teléfono alternativo", "exact");
       continue;
     }
     if (email && clientEmail && email === clientEmail) {

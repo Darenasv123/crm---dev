@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -184,6 +185,16 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
         </nav>
         {/* User info at bottom of drawer */}
         <div className="px-4 py-4 border-t border-sidebar-border">
+          <a
+            href="https://cej.pj.gob.pe/cej/forms/busquedaform.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Consultar expediente en el Portal del Poder Judicial"
+            className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white transition mb-2"
+          >
+            <ExternalLink className="h-5 w-5" />
+            Consultar expediente (CEJ)
+          </a>
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-white text-xs font-bold shrink-0">
               {initials}
@@ -223,6 +234,19 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             <GlobalSearch />
 
             <div className="flex items-center gap-1.5 ml-auto lg:ml-0">
+              {/* Botón CEJ — Consultar expediente */}
+              <a
+                href="https://cej.pj.gob.pe/cej/forms/busquedaform.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Consultar expediente en el CEJ"
+                aria-label="Consultar expediente en el Portal del Poder Judicial"
+                className="hidden lg:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-muted/60 hover:bg-primary/10 hover:text-primary text-sm font-medium transition"
+              >
+                <ExternalLink className="h-[16px] w-[16px]" />
+                <span>Consultar expediente</span>
+              </a>
+
               {/* Notifications bell */}
               <div className="relative">
                 <button

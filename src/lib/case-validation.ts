@@ -13,23 +13,19 @@ export const CASE_STATUS_OPTIONS = [
 
 export type CaseStatus = (typeof CASE_STATUS_OPTIONS)[number];
 
-export const CASE_PRIORITY_OPTIONS = ["Alta", "Media", "Baja"] as const;
-export type CasePriority = (typeof CASE_PRIORITY_OPTIONS)[number];
+export const MATERIA_OPTIONS = ["Familia", "Penal"] as const;
+export type CaseMateria = (typeof MATERIA_OPTIONS)[number];
 
 export type CaseFormValues = {
   client_id: string;
   expediente: string;
+  materia: string;
   process_type: string;
-  priority: string;
   status: string;
   juzgado: string;
   next_hearing?: string;
-  internal_code?: string;
-  legal_area?: string;
   case_stage?: string;
-  responsible_user_id?: string;
   next_action?: string;
-  filing_date?: string;
   judicial_district?: string;
   judge_or_prosecutor?: string;
   current_summary?: string;
@@ -75,22 +71,22 @@ export function displayCaseNumber(expediente?: string | null, caseNumber?: strin
 }
 
 export function normalizeCaseForm(values: CaseFormValues) {
+  const materia = MATERIA_OPTIONS.includes(values.materia as CaseMateria)
+    ? (values.materia as CaseMateria)
+    : undefined;
+  if (!materia) {
+    throw new Error("Selecciona la materia del expediente.");
+  }
   return {
-    ...values,
     client_id: clean(values.client_id),
     expediente: clean(values.expediente),
+    materia,
     process_type: clean(values.process_type),
-    priority: CASE_PRIORITY_OPTIONS.includes(values.priority as CasePriority)
-      ? (values.priority as CasePriority)
-      : "Media",
     status: normalizeCaseStatus(values.status),
     juzgado: clean(values.juzgado),
-    internal_code: clean(values.internal_code),
-    legal_area: clean(values.legal_area),
+    next_hearing: clean(values.next_hearing),
     case_stage: clean(values.case_stage),
-    responsible_user_id: clean(values.responsible_user_id),
     next_action: clean(values.next_action),
-    filing_date: clean(values.filing_date),
     judicial_district: clean(values.judicial_district),
     judge_or_prosecutor: clean(values.judge_or_prosecutor),
     current_summary: clean(values.current_summary),
@@ -101,21 +97,19 @@ export function normalizeCaseForm(values: CaseFormValues) {
 const caseFormSchema = z.object({
   client_id: z.string().min(1, "Selecciona un cliente."),
   expediente: z.string(),
-  process_type: z.string().min(2, "Indica la materia o proceso del expediente."),
-  priority: z.enum(CASE_PRIORITY_OPTIONS),
+  materia: z.enum(MATERIA_OPTIONS, {
+    errorMap: () => ({ message: "Selecciona la materia del expediente." }),
+  }),
+  process_type: z.string().min(2, "Indica el proceso del expediente."),
   status: z.enum(CASE_STATUS_OPTIONS),
   juzgado: z.string(),
   next_hearing: z.string().optional(),
-  internal_code: z.string(),
-  legal_area: z.string(),
-  case_stage: z.string(),
-  responsible_user_id: z.string(),
-  next_action: z.string(),
-  filing_date: z.string(),
-  judicial_district: z.string(),
-  judge_or_prosecutor: z.string(),
-  current_summary: z.string(),
-  current_status_description: z.string(),
+  case_stage: z.string().optional(),
+  next_action: z.string().optional(),
+  judicial_district: z.string().optional(),
+  judge_or_prosecutor: z.string().optional(),
+  current_summary: z.string().optional(),
+  current_status_description: z.string().optional(),
 });
 
 export function validateCaseForm(values: CaseFormValues) {
