@@ -4,6 +4,8 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useAuth } from "@/hooks/use-auth";
+import { useDailyTasks } from "@/hooks/use-daily-tasks";
+import { TaskStatusChip } from "@/components/tasks/task-views";
 import { usePayments } from "@/hooks/use-payments";
 import { useClientReports } from "@/hooks/use-reports";
 import { useDocuments } from "@/hooks/use-documents";
@@ -12,6 +14,7 @@ import { ZipImport } from "@/components/zip-import";
 import { usePermissions } from "@/lib/permissions";
 import { displayCaseNumber, normalizeCaseStatus } from "@/lib/case-validation";
 import { formatPeruDate, getPeruHour, getPeruTodayISO } from "@/lib/peru-time";
+import { classifyTask, compareTasks } from "@/lib/tasks";
 import { useState } from "react";
 import {
   Users,
@@ -55,7 +58,7 @@ function activityIcon(t: string) {
 }
 
 function Dashboard() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const { canViewPayments, canViewFinancialMetrics } = usePermissions(profile);
   const [showZipImport, setShowZipImport] = useState(false);
@@ -68,6 +71,19 @@ function Dashboard() {
   const { data: importJobs = [] } = useImportJobsFilter({ enabled: isAdmin });
 
   const today = getPeruTodayISO();
+  const { data: dailyTasks = [], isLoading: tasksLoading } = useDailyTasks({
+    view: "today",
+    selectedDate: today,
+    assignedTo: profile?.role === "Personal" ? user?.id : undefined,
+    showCompleted: true,
+    limit: 12,
+  });
+  const dashboardTasks = [...dailyTasks]
+    .sort((left, right) => compareTasks(left, right))
+    .slice(0, 6);
+  const overdueTaskCount = dailyTasks.filter(
+    (task) => classifyTask(task, today) === "overdue",
+  ).length;
   const activeClients = clients.filter((c) => c.status === "Activo");
   const activeCases = cases.filter(
     (c) => !["Archivado", "Concluido"].includes(normalizeCaseStatus(c.status)),
@@ -205,6 +221,57 @@ function Dashboard() {
           {canViewPayments && <QuickAction icon={Landmark} label="Registrar pago" to="/pagos" />}
           <QuickAction icon={CalendarPlus} label="Agendar actividad" to="/agenda" />
         </div>
+      </Card>
+
+      <Card className="mt-4 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-base font-semibold">
+              <ClipboardList className="h-4 w-4 text-primary" /> Tareas de hoy
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {overdueTaskCount > 0
+                ? `${overdueTaskCount} atrasada${overdueTaskCount === 1 ? "" : "s"}`
+                : "Sin tareas atrasadas"}
+            </p>
+          </div>
+          <Link
+            to={"/agenda" as never}
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            Abrir Mi día
+          </Link>
+        </div>
+        {tasksLoading ? (
+          <div className="mt-4 h-16 animate-pulse rounded-lg bg-muted/50" />
+        ) : dashboardTasks.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">
+            No hay tareas pendientes ni terminadas hoy.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {dashboardTasks.map((task) => (
+              <Link
+                key={task.id}
+                to={"/agenda" as never}
+                className={`rounded-lg border p-3 transition hover:bg-muted/30 ${
+                  classifyTask(task, today) === "overdue"
+                    ? "border-red-200 bg-red-50/40"
+                    : "border-border"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="line-clamp-2 text-sm font-semibold">{task.title}</span>
+                  <TaskStatusChip status={task.status} />
+                </div>
+                <div className="mt-2 truncate text-xs text-muted-foreground">
+                  {task.assignee?.full_name ?? "Sin responsable"} ·{" "}
+                  {task.cases?.clients?.name ?? task.clients?.name ?? "Tarea general"}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
