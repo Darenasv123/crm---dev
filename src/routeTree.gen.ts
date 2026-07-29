@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as GoogleCalendarCallbackRouteImport } from './routes/google-calendar-callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppTareasIndexRouteImport } from './routes/_app.tareas.index'
 import { Route as AppRevisionIaIndexRouteImport } from './routes/_app.revision-ia.index'
 import { Route as AppReportesIndexRouteImport } from './routes/_app.reportes.index'
 import { Route as AppPagosIndexRouteImport } from './routes/_app.pagos.index'
@@ -23,6 +24,8 @@ import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configu
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
+import { Route as AppTareasTableroRouteImport } from './routes/_app.tareas.tablero'
+import { Route as AppTareasProximasRouteImport } from './routes/_app.tareas.proximas'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
 
@@ -48,6 +51,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTareasIndexRoute = AppTareasIndexRouteImport.update({
+  id: '/tareas/',
+  path: '/tareas/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRevisionIaIndexRoute = AppRevisionIaIndexRouteImport.update({
@@ -95,6 +103,16 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
   path: '/agenda/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTareasTableroRoute = AppTareasTableroRouteImport.update({
+  id: '/tareas/tablero',
+  path: '/tareas/tablero',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTareasProximasRoute = AppTareasProximasRouteImport.update({
+  id: '/tareas/proximas',
+  path: '/tareas/proximas',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppClientesIdRoute = AppClientesIdRouteImport.update({
   id: '/clientes/$id',
   path: '/clientes/$id',
@@ -113,6 +131,8 @@ export interface FileRoutesByFullPath {
   '/resonancia': typeof ResonanciaRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
+  '/tareas/proximas': typeof AppTareasProximasRoute
+  '/tareas/tablero': typeof AppTareasTableroRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -122,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/pagos/': typeof AppPagosIndexRoute
   '/reportes/': typeof AppReportesIndexRoute
   '/revision-ia/': typeof AppRevisionIaIndexRoute
+  '/tareas/': typeof AppTareasIndexRoute
 }
 export interface FileRoutesByTo {
   '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
@@ -130,6 +151,8 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
+  '/tareas/proximas': typeof AppTareasProximasRoute
+  '/tareas/tablero': typeof AppTareasTableroRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -139,6 +162,7 @@ export interface FileRoutesByTo {
   '/pagos': typeof AppPagosIndexRoute
   '/reportes': typeof AppReportesIndexRoute
   '/revision-ia': typeof AppRevisionIaIndexRoute
+  '/tareas': typeof AppTareasIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -149,6 +173,8 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
   '/_app/clientes/$id': typeof AppClientesIdRoute
+  '/_app/tareas/proximas': typeof AppTareasProximasRoute
+  '/_app/tareas/tablero': typeof AppTareasTableroRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -158,6 +184,7 @@ export interface FileRoutesById {
   '/_app/pagos/': typeof AppPagosIndexRoute
   '/_app/reportes/': typeof AppReportesIndexRoute
   '/_app/revision-ia/': typeof AppRevisionIaIndexRoute
+  '/_app/tareas/': typeof AppTareasIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -168,6 +195,8 @@ export interface FileRouteTypes {
     | '/resonancia'
     | '/casos/$id'
     | '/clientes/$id'
+    | '/tareas/proximas'
+    | '/tareas/tablero'
     | '/agenda/'
     | '/casos/'
     | '/clientes/'
@@ -177,6 +206,7 @@ export interface FileRouteTypes {
     | '/pagos/'
     | '/reportes/'
     | '/revision-ia/'
+    | '/tareas/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/google-calendar-callback'
@@ -185,6 +215,8 @@ export interface FileRouteTypes {
     | '/'
     | '/casos/$id'
     | '/clientes/$id'
+    | '/tareas/proximas'
+    | '/tareas/tablero'
     | '/agenda'
     | '/casos'
     | '/clientes'
@@ -194,6 +226,7 @@ export interface FileRouteTypes {
     | '/pagos'
     | '/reportes'
     | '/revision-ia'
+    | '/tareas'
   id:
     | '__root__'
     | '/_app'
@@ -203,6 +236,8 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/casos/$id'
     | '/_app/clientes/$id'
+    | '/_app/tareas/proximas'
+    | '/_app/tareas/tablero'
     | '/_app/agenda/'
     | '/_app/casos/'
     | '/_app/clientes/'
@@ -212,6 +247,7 @@ export interface FileRouteTypes {
     | '/_app/pagos/'
     | '/_app/reportes/'
     | '/_app/revision-ia/'
+    | '/_app/tareas/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -256,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tareas/': {
+      id: '/_app/tareas/'
+      path: '/tareas'
+      fullPath: '/tareas/'
+      preLoaderRoute: typeof AppTareasIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/revision-ia/': {
@@ -321,6 +364,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgendaIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/tareas/tablero': {
+      id: '/_app/tareas/tablero'
+      path: '/tareas/tablero'
+      fullPath: '/tareas/tablero'
+      preLoaderRoute: typeof AppTareasTableroRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tareas/proximas': {
+      id: '/_app/tareas/proximas'
+      path: '/tareas/proximas'
+      fullPath: '/tareas/proximas'
+      preLoaderRoute: typeof AppTareasProximasRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/clientes/$id': {
       id: '/_app/clientes/$id'
       path: '/clientes/$id'
@@ -342,6 +399,8 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppCasosIdRoute: typeof AppCasosIdRoute
   AppClientesIdRoute: typeof AppClientesIdRoute
+  AppTareasProximasRoute: typeof AppTareasProximasRoute
+  AppTareasTableroRoute: typeof AppTareasTableroRoute
   AppAgendaIndexRoute: typeof AppAgendaIndexRoute
   AppCasosIndexRoute: typeof AppCasosIndexRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
@@ -351,12 +410,15 @@ interface AppRouteChildren {
   AppPagosIndexRoute: typeof AppPagosIndexRoute
   AppReportesIndexRoute: typeof AppReportesIndexRoute
   AppRevisionIaIndexRoute: typeof AppRevisionIaIndexRoute
+  AppTareasIndexRoute: typeof AppTareasIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppCasosIdRoute: AppCasosIdRoute,
   AppClientesIdRoute: AppClientesIdRoute,
+  AppTareasProximasRoute: AppTareasProximasRoute,
+  AppTareasTableroRoute: AppTareasTableroRoute,
   AppAgendaIndexRoute: AppAgendaIndexRoute,
   AppCasosIndexRoute: AppCasosIndexRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
@@ -366,6 +428,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPagosIndexRoute: AppPagosIndexRoute,
   AppReportesIndexRoute: AppReportesIndexRoute,
   AppRevisionIaIndexRoute: AppRevisionIaIndexRoute,
+  AppTareasIndexRoute: AppTareasIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -8,8 +8,13 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
-import { addDaysToISO, PERU_UTC_OFFSET } from "@/lib/peru-time";
-import { normalizeTaskStatus, type TaskFormValues, validateTaskForm } from "@/lib/tasks";
+import { addDaysToISO, getPeruTodayISO, PERU_UTC_OFFSET } from "@/lib/peru-time";
+import {
+  classifyTask,
+  normalizeTaskStatus,
+  type TaskFormValues,
+  validateTaskForm,
+} from "@/lib/tasks";
 
 type CaseTask = Database["public"]["Tables"]["case_tasks"]["Row"];
 type CaseTaskInsert = Database["public"]["Tables"]["case_tasks"]["Insert"];
@@ -49,6 +54,9 @@ export type DailyTaskFilters = {
   caseId?: string;
   search?: string;
   showCompleted?: boolean;
+  overdueOnly?: boolean;
+  withoutClient?: boolean;
+  withoutCase?: boolean;
   limit?: number;
   enabled?: boolean;
 };
@@ -98,7 +106,9 @@ export function useDailyTasks(filters: DailyTaskFilters) {
         .order("due_date", { ascending: true, nullsFirst: false })
         .limit(filters.limit ?? (filters.view === "upcoming" ? 100 : 200));
 
-      if (filters.view === "today") {
+      if (filters.overdueOnly) {
+        query = query.lt("due_date", new Date().toISOString()).neq("status", "completed");
+      } else if (filters.view === "today") {
         query = query.or(
           `and(due_date.lte.${bounds.end},status.neq.completed),and(completed_at.gte.${bounds.start},completed_at.lte.${bounds.end})`,
         );
@@ -128,6 +138,10 @@ export function useDailyTasks(filters: DailyTaskFilters) {
             : query.eq("client_id", filters.clientId);
       }
       if (filters.caseId) query = query.eq("case_id", filters.caseId);
+      if (filters.withoutClient) {
+        query = query.is("client_id", null).is("case_id", null);
+      }
+      if (filters.withoutCase) query = query.is("case_id", null);
       if (filters.search?.trim()) {
         query = query.ilike("title", `%${filters.search.trim()}%`);
       }
@@ -141,6 +155,33 @@ export function useDailyTasks(filters: DailyTaskFilters) {
     },
     enabled: filters.enabled ?? true,
   });
+}
+
+export function useTodayTaskSummary() {
+  const { user, profile } = useAuth();
+  const selectedDate = getPeruTodayISO();
+  const query = useDailyTasks({
+    view: "today",
+    selectedDate,
+    assignedTo: profile?.role === "Personal" ? user?.id : undefined,
+    showCompleted: true,
+    limit: 200,
+    enabled: !!profile && (profile.role !== "Personal" || !!user?.id),
+  });
+  const rows = query.data ?? [];
+  const overdue = rows.filter((task) => classifyTask(task, selectedDate) === "overdue").length;
+  const pendingToday = rows.filter(
+    (task) =>
+      normalizeTaskStatus(task.status) !== "completed" &&
+      classifyTask(task, selectedDate) === "today",
+  ).length;
+  return {
+    ...query,
+    tasks: rows,
+    overdue,
+    pendingToday,
+    attentionCount: overdue + pendingToday,
+  };
 }
 
 export function useTaskClients() {

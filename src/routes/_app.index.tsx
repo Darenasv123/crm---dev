@@ -4,7 +4,7 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useAuth } from "@/hooks/use-auth";
-import { useDailyTasks } from "@/hooks/use-daily-tasks";
+import { useTodayTaskSummary } from "@/hooks/use-daily-tasks";
 import { TaskStatusChip } from "@/components/tasks/task-views";
 import { usePayments } from "@/hooks/use-payments";
 import { useClientReports } from "@/hooks/use-reports";
@@ -58,7 +58,7 @@ function activityIcon(t: string) {
 }
 
 function Dashboard() {
-  const { profile, user } = useAuth();
+  const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const { canViewPayments, canViewFinancialMetrics } = usePermissions(profile);
   const [showZipImport, setShowZipImport] = useState(false);
@@ -71,19 +71,14 @@ function Dashboard() {
   const { data: importJobs = [] } = useImportJobsFilter({ enabled: isAdmin });
 
   const today = getPeruTodayISO();
-  const { data: dailyTasks = [], isLoading: tasksLoading } = useDailyTasks({
-    view: "today",
-    selectedDate: today,
-    assignedTo: profile?.role === "Personal" ? user?.id : undefined,
-    showCompleted: true,
-    limit: 12,
-  });
+  const {
+    tasks: dailyTasks,
+    isLoading: tasksLoading,
+    overdue: overdueTaskCount,
+  } = useTodayTaskSummary();
   const dashboardTasks = [...dailyTasks]
     .sort((left, right) => compareTasks(left, right))
     .slice(0, 6);
-  const overdueTaskCount = dailyTasks.filter(
-    (task) => classifyTask(task, today) === "overdue",
-  ).length;
   const activeClients = clients.filter((c) => c.status === "Activo");
   const activeCases = cases.filter(
     (c) => !["Archivado", "Concluido"].includes(normalizeCaseStatus(c.status)),
@@ -236,7 +231,7 @@ function Dashboard() {
             </p>
           </div>
           <Link
-            to={"/agenda" as never}
+            to={"/tareas" as never}
             className="text-xs font-semibold text-primary hover:underline"
           >
             Abrir Mi día
@@ -253,7 +248,7 @@ function Dashboard() {
             {dashboardTasks.map((task) => (
               <Link
                 key={task.id}
-                to={"/agenda" as never}
+                to={"/tareas" as never}
                 className={`rounded-lg border p-3 transition hover:bg-muted/30 ${
                   classifyTask(task, today) === "overdue"
                     ? "border-red-200 bg-red-50/40"

@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   ExternalLink,
+  ListTodo,
+  MoreHorizontal,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -21,6 +23,7 @@ import { useNotifications } from "@/hooks/use-notifications";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { Chatbot } from "@/components/chatbot";
 import { GlobalSearch } from "@/components/global-search";
+import { useTodayTaskSummary } from "@/hooks/use-daily-tasks";
 
 type NavItem = {
   to: string;
@@ -31,11 +34,12 @@ type NavItem = {
 };
 
 const nav: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { to: "/", label: "Inicio", icon: LayoutDashboard, exact: true },
   { to: "/clientes", label: "Clientes", icon: Users },
   { to: "/casos", label: "Expedientes", icon: Briefcase },
-  { to: "/documentos", label: "Documentos", icon: FolderOpen },
+  { to: "/tareas", label: "Tareas", icon: ListTodo },
   { to: "/agenda", label: "Agenda", icon: CalendarDays },
+  { to: "/documentos", label: "Documentos", icon: FolderOpen },
   { to: "/pagos", label: "Pagos", icon: CreditCard, adminOnly: true },
   { to: "/reportes", label: "Reportes", icon: ClipboardList },
   { to: "/configuracion", label: "Configuración", icon: Settings, adminOnly: true },
@@ -55,6 +59,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
   const { data: notifications = [] } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { attentionCount: taskAttentionCount } = useTodayTaskSummary();
 
   async function handleSignOut() {
     await signOut();
@@ -71,15 +76,12 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
   // Filter nav items based on role
   const visibleNav = nav.filter((item) => !item.adminOnly || isAdmin);
 
-  // Bottom nav items (5 most important for mobile) — Pagos solo para admin
+  // Four primary mobile destinations; the fifth slot opens the full menu.
   const bottomNav = [
     { to: "/", label: "Inicio", icon: LayoutDashboard, exact: true },
     { to: "/clientes", label: "Clientes", icon: Users },
-    { to: "/casos", label: "Exp.", icon: Briefcase },
+    { to: "/tareas", label: "Tareas", icon: ListTodo },
     { to: "/agenda", label: "Agenda", icon: CalendarDays },
-    ...(isAdmin
-      ? [{ to: "/pagos", label: "Pagos", icon: CreditCard }]
-      : [{ to: "/documentos", label: "Docs", icon: FolderOpen }]),
   ];
 
   return (
@@ -111,6 +113,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               <Link
                 key={item.to}
                 to={item.to as never}
+                aria-current={active ? "page" : undefined}
                 className={[
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                   active
@@ -120,6 +123,11 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               >
                 <Icon className={`h-[18px] w-[18px] ${active ? "text-gold" : ""}`} />
                 <span>{item.label}</span>
+                {item.to === "/tareas" && taskAttentionCount > 0 && (
+                  <span className="ml-auto min-w-5 rounded-full bg-red-500/90 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                    {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -170,6 +178,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 key={item.to}
                 to={item.to as never}
                 onClick={() => setMobileMenuOpen(false)}
+                aria-current={active ? "page" : undefined}
                 className={[
                   "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all",
                   active
@@ -179,6 +188,11 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               >
                 <Icon className={`h-5 w-5 ${active ? "text-gold" : ""}`} />
                 <span>{item.label}</span>
+                {item.to === "/tareas" && taskAttentionCount > 0 && (
+                  <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                    {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -323,14 +337,29 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               <Link
                 key={item.to}
                 to={item.to as never}
-                className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors
+                aria-current={active ? "page" : undefined}
+                className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors
                   ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
                 <span className="truncate">{item.label}</span>
+                {item.to === "/tareas" && taskAttentionCount > 0 && (
+                  <span className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                    {taskAttentionCount > 9 ? "9+" : taskAttentionCount}
+                  </span>
+                )}
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Abrir menú completo"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+            <span>Más</span>
+          </button>
         </div>
       </nav>
 
