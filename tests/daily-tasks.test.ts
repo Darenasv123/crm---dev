@@ -240,9 +240,9 @@ describe("contratos de integración de la interfaz", () => {
   });
 
   it("incluye tabla de escritorio, tarjetas móviles y tablero", () => {
-    expect(views).toContain("hidden overflow-hidden");
+    expect(views).toContain("hidden rounded-xl border border-border xl:block");
     expect(views).toContain("table-fixed");
-    expect(views).toContain("md:hidden");
+    expect(views).toContain("xl:hidden");
     expect(views).toContain("lg:grid-cols-5");
   });
 

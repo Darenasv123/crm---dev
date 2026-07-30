@@ -58,6 +58,7 @@ describe("navegación de Tareas y Agenda", () => {
 describe("contrato UX de filtros, tabla y panel", () => {
   const center = read("src/components/tasks/task-center.tsx");
   const filters = read("src/components/tasks/task-filters-sheet.tsx");
+  const form = read("src/components/tasks/task-form-sheet.tsx");
   const views = read("src/components/tasks/task-views.tsx");
 
   it("mantiene visibles búsqueda, alcance, fecha, filtros y creación", () => {
@@ -86,12 +87,32 @@ describe("contrato UX de filtros, tabla y panel", () => {
     expect(center).toContain("w-full max-w-none");
     expect(views).toContain("table-fixed");
     expect(views).not.toContain("min-w-[1050px]");
-    expect(views).toContain("md:hidden");
+    expect(views).toContain("xl:hidden");
+    expect(views).toContain("hidden rounded-xl border border-border xl:block");
   });
 
   it("mantiene el detalle superpuesto y añade historial", () => {
     expect(views).toContain("sm:max-w-[500px]");
+    expect(views).toContain("w-full max-w-none");
     expect(views).toContain("Historial");
     expect(views).toContain("Tarea terminada");
+  });
+
+  it("prioriza tarea, cliente, expediente y estado en escritorio", () => {
+    expect(views.indexOf('"Tarea"')).toBeLessThan(views.indexOf('"Cliente"'));
+    expect(views.indexOf('"Cliente"')).toBeLessThan(views.indexOf('"N.° de expediente"'));
+    expect(views.indexOf('"N.° de expediente"')).toBeLessThan(views.indexOf('"Estado"'));
+    expect(views).toContain("hidden 2xl:table-cell");
+  });
+
+  it("oculta limpiar todo sin filtros y fija las acciones de paneles largos", () => {
+    expect(filters).toContain("hasActiveFilters &&");
+    expect(filters).toContain("sticky bottom-0");
+    expect(form).toContain("sticky bottom-0");
+  });
+
+  it("permite títulos largos en tabla y tarjetas sin forzar una sola línea", () => {
+    expect(views).toContain("line-clamp-3 max-w-full");
+    expect(views).toContain("line-clamp-3 font-semibold");
   });
 });
