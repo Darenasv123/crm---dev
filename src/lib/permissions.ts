@@ -89,6 +89,159 @@ export function resolveMigrationPermissions(
 }
 
 // ---------------------------------------------------------------------------
+// Permisos de Tareas
+// ---------------------------------------------------------------------------
+
+export interface TaskPermissions {
+  /** Puede ver el botón "Nueva tarea" y crear tareas. */
+  canCreateTasks: boolean;
+  /** Puede ver todas las tareas, filtros administrativos y el tablero. */
+  canManageAllTasks: boolean;
+  /** Puede asignar tareas a otros usuarios. */
+  canAssignTasks: boolean;
+  /** Puede reasignar tareas. */
+  canReassignTasks: boolean;
+  /** Puede eliminar tareas. */
+  canDeleteTasks: boolean;
+  /** Puede ver Tareas disponibles y tomar una. */
+  canClaimTasks: boolean;
+}
+
+export function resolveTaskPermissions(role: string | null | undefined): TaskPermissions {
+  const admin = isAdminRole(role);
+  return {
+    canCreateTasks: admin,
+    canManageAllTasks: admin,
+    canAssignTasks: admin,
+    canReassignTasks: admin,
+    canDeleteTasks: admin,
+    canClaimTasks: true, // Personal también puede tomar tareas disponibles
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permisos de Agenda
+// ---------------------------------------------------------------------------
+
+export interface AgendaPermissions {
+  /** Puede ver el botón "Nuevo evento" y crear eventos. */
+  canCreateEvents: boolean;
+  /** Puede editar eventos. */
+  canEditEvents: boolean;
+  /** Puede eliminar eventos. */
+  canDeleteEvents: boolean;
+  /** Puede resolver conflictos de sincronización. */
+  canResolveSync: boolean;
+  /** Puede configurar Google Calendar. */
+  canConfigureSync: boolean;
+  /** Puede ver la agenda y eventos (siempre true). */
+  canViewAgenda: boolean;
+}
+
+export function resolveAgendaPermissions(role: string | null | undefined): AgendaPermissions {
+  const admin = isAdminRole(role);
+  return {
+    canCreateEvents: admin,
+    canEditEvents: admin,
+    canDeleteEvents: admin,
+    canResolveSync: admin,
+    canConfigureSync: admin,
+    canViewAgenda: true, // Todos pueden ver agenda
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permisos de Documentos
+// ---------------------------------------------------------------------------
+
+export interface DocumentPermissions {
+  /** Puede ver documentos según RLS. */
+  canViewDocuments: boolean;
+  /** Puede descargar documentos. */
+  canDownloadDocuments: boolean;
+  /** Puede eliminar documentos (solo Administrador). */
+  canDeleteDocuments: boolean;
+}
+
+export function resolveDocumentPermissions(role: string | null | undefined): DocumentPermissions {
+  const admin = isAdminRole(role);
+  return {
+    canViewDocuments: true, // Todos ven sus documentos según RLS
+    canDownloadDocuments: true, // Todos pueden descargar
+    canDeleteDocuments: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permisos de Reportes
+// ---------------------------------------------------------------------------
+
+export interface ReportPermissions {
+  /** Puede ver reportes según RLS. */
+  canViewReports: boolean;
+  /** Puede crear reportes (solo Administrador por ahora). */
+  canCreateReports: boolean;
+}
+
+export function resolveReportPermissions(role: string | null | undefined): ReportPermissions {
+  const admin = isAdminRole(role);
+  return {
+    canViewReports: true, // Todos ven reportes según RLS
+    canCreateReports: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permisos de Clientes
+// ---------------------------------------------------------------------------
+
+export interface ClientPermissions {
+  /** Puede ver clientes. */
+  canViewClients: boolean;
+  /** Puede crear clientes (solo Administrador). */
+  canCreateClients: boolean;
+  /** Puede editar clientes (solo Administrador). */
+  canEditClients: boolean;
+  /** Puede eliminar clientes (solo Administrador). */
+  canDeleteClients: boolean;
+}
+
+export function resolveClientPermissions(role: string | null | undefined): ClientPermissions {
+  const admin = isAdminRole(role);
+  return {
+    canViewClients: true, // Todos ven clientes según RLS
+    canCreateClients: admin,
+    canEditClients: admin,
+    canDeleteClients: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Permisos de Expedientes
+// ---------------------------------------------------------------------------
+
+export interface CasePermissions {
+  /** Puede ver expedientes. */
+  canViewCases: boolean;
+  /** Puede crear expedientes (solo Administrador). */
+  canCreateCases: boolean;
+  /** Puede editar expedientes (solo Administrador). */
+  canEditCases: boolean;
+  /** Puede eliminar expedientes (solo Administrador). */
+  canDeleteCases: boolean;
+}
+
+export function resolveCasePermissions(role: string | null | undefined): CasePermissions {
+  const admin = isAdminRole(role);
+  return {
+    canViewCases: true, // Todos ven expedientes según RLS
+    canCreateCases: admin,
+    canEditCases: admin,
+    canDeleteCases: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Hook-friendly helper
 // ---------------------------------------------------------------------------
 
@@ -97,13 +250,27 @@ export function resolveMigrationPermissions(
  * Útil para consumir directamente en componentes React.
  *
  * Uso:
- *   const { canViewPayments } = usePermissions(profile);
+ *   const permissions = usePermissions(profile);
+ *   const { canCreateTasks, canViewAgenda } = permissions;
  */
 export function usePermissions(
   profile: Database["public"]["Tables"]["profiles"]["Row"] | null | undefined,
-): PaymentPermissions & MigrationPermissions {
+): PaymentPermissions &
+  MigrationPermissions &
+  TaskPermissions &
+  AgendaPermissions &
+  DocumentPermissions &
+  ReportPermissions &
+  ClientPermissions &
+  CasePermissions {
   return {
     ...resolvePaymentPermissions(profile?.role),
     ...resolveMigrationPermissions(profile?.role, profile?.status),
+    ...resolveTaskPermissions(profile?.role),
+    ...resolveAgendaPermissions(profile?.role),
+    ...resolveDocumentPermissions(profile?.role),
+    ...resolveReportPermissions(profile?.role),
+    ...resolveClientPermissions(profile?.role),
+    ...resolveCasePermissions(profile?.role),
   };
 }

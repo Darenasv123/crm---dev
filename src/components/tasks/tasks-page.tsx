@@ -27,6 +27,7 @@ import { FormActions, FormErrorSummary, FormField, FormSection } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useClaimDailyTask,
@@ -59,7 +60,7 @@ import {
   type TaskFormValues,
   type TaskStatus,
 } from "@/lib/tasks";
-import { Textarea } from "@/components/ui/textarea";
+import { usePermissions } from "@/lib/permissions";
 
 type PageMode = "available" | "assigned" | "all" | "board";
 
@@ -73,7 +74,9 @@ const EMPTY_FORM: TaskFormValues = {
 
 export function TasksPage({ mode }: { mode: PageMode }) {
   const { user, profile } = useAuth();
-  const isAdmin = profile?.role === "Administrador";
+  const permissions = usePermissions(profile);
+  const isAdmin = permissions.canManageAllTasks;
+  const canCreateTasks = permissions.canCreateTasks;
   const view: DailyTaskView =
     mode === "assigned" ? (isAdmin ? "running" : "mine") : mode === "board" ? "all" : mode;
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -470,7 +473,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
           </SheetContent>
         </Sheet>
 
-        {isAdmin && (
+        {canCreateTasks && (
           <Button type="button" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" /> Nueva tarea
           </Button>

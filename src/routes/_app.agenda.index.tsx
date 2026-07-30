@@ -12,6 +12,7 @@ import {
   type AgendaEventWithClient,
 } from "@/hooks/use-agenda";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/lib/permissions";
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { exportAgendaICS, openEventInGoogleCalendar } from "@/lib/export-ics";
@@ -84,7 +85,11 @@ function buildMonth(year: number, month: number) {
 
 function CalendarPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "Administrador";
+  const permissions = usePermissions(profile);
+  const isAdmin = permissions.canManageAllTasks; // Use admin check for full agenda control
+  const canCreateEvents = permissions.canCreateEvents;
+  const canEditEvents = permissions.canEditEvents;
+  const canDeleteEvents = permissions.canDeleteEvents;
   const todayISO = getPeruTodayISO();
   const [todayYear, todayMonth, todayDay] = todayISO.split("-").map(Number);
   const today = new Date(todayYear, todayMonth - 1, todayDay);
@@ -172,6 +177,17 @@ function CalendarPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+
+    // Verificar permisos
+    if (editingId && !canEditEvents) {
+      setFormError("No tienes permisos para editar eventos");
+      return;
+    }
+    if (!editingId && !canCreateEvents) {
+      setFormError("No tienes permisos para crear eventos");
+      return;
+    }
+
     setSaving(true);
     try {
       const values = {
@@ -231,10 +247,11 @@ function CalendarPage() {
           </button>
           <button
             onClick={() => openNewEvent()}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 shadow-soft"
+            disabled={!canCreateEvents}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 shadow-soft disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" /> Nuevo evento
-          </button>{" "}
+          </button>
         </div>
       }
     >
@@ -445,8 +462,9 @@ function CalendarPage() {
                               <button
                                 type="button"
                                 onClick={() => openEditEvent(e)}
-                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
-                                title="Editar evento"
+                                disabled={!canEditEvents}
+                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title={canEditEvents ? "Editar evento" : "Sin permisos"}
                               >
                                 <Pencil className="h-3 w-3" />
                               </button>
@@ -584,18 +602,22 @@ function CalendarPage() {
                           <button
                             type="button"
                             onClick={() => openEditEvent(e)}
-                            title="Editar evento"
-                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition"
+                            disabled={!canEditEvents}
+                            title={canEditEvents ? "Editar evento" : "Sin permisos"}
+                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
+                            type="button"
+                            disabled={!canDeleteEvents}
                             onClick={() => {
                               if (window.confirm(`¿Eliminar el evento "${e.title}"?`)) {
                                 deleteEvent.mutate({ id: e.id });
                               }
                             }}
-                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition"
+                            title={canDeleteEvents ? "Eliminar evento" : "Sin permisos"}
+                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -723,9 +745,24 @@ function CalendarPage() {
                 >
                   Cancelar
                 </button>
+                {editingId && canDeleteEvents && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("¿Eliminar este evento?")) {
+                        deleteEvent.mutate({ id: editingId });
+                        setShowModal(false);
+                      }
+                    }}
+                    disabled={saving}
+                    className="h-10 px-4 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" /> Eliminar
+                  </button>
+                )}
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || (editingId && !canEditEvents) || (!editingId && !canCreateEvents)}
                   className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
