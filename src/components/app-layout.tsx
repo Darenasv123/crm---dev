@@ -117,14 +117,14 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 className={[
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                   active
-                    ? "bg-sidebar-accent text-white shadow-soft border-l-2 border-gold"
+                    ? "bg-sidebar-accent text-white shadow-soft ring-1 ring-inset ring-sidebar-border"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
                 ].join(" ")}
               >
                 <Icon className={`h-[18px] w-[18px] ${active ? "text-gold" : ""}`} />
                 <span>{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="ml-auto min-w-5 rounded-full bg-red-500/90 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                  <span className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground">
                     {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
                   </span>
                 )}
@@ -182,14 +182,14 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 className={[
                   "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all",
                   active
-                    ? "bg-sidebar-accent text-white shadow-soft border-l-2 border-gold"
+                    ? "bg-sidebar-accent text-white shadow-soft ring-1 ring-inset ring-sidebar-border"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
                 ].join(" ")}
               >
                 <Icon className={`h-5 w-5 ${active ? "text-gold" : ""}`} />
                 <span>{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="ml-auto min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                  <span className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground">
                     {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
                   </span>
                 )}
@@ -210,7 +210,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             Consultar expediente (CEJ)
           </a>
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-white text-xs font-bold shrink-0">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
@@ -221,7 +221,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               type="button"
               onClick={handleSignOut}
               title="Cerrar sesión"
-              className="h-8 w-8 grid place-items-center rounded-lg hover:bg-red-500/20 text-sidebar-foreground/60 hover:text-red-400 transition"
+              className="h-8 w-8 grid place-items-center rounded-lg text-sidebar-foreground/60 transition hover:bg-destructive/20 hover:text-destructive-foreground"
               aria-label="Cerrar sesión"
             >
               <LogOut className="h-4 w-4" />
@@ -273,7 +273,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                   {totalCount > 0 && (
                     <span
                       className={`absolute top-1 right-1 h-4 w-4 rounded-full text-[9px] font-bold grid place-items-center ring-2 ring-card
-                      ${urgentCount > 0 ? "bg-red-500 text-white" : "bg-gold text-gold-foreground"}`}
+                      ${urgentCount > 0 ? "bg-destructive text-destructive-foreground" : "bg-gold text-gold-foreground"}`}
                     >
                       {totalCount > 9 ? "9+" : totalCount}
                     </span>
@@ -284,7 +284,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
 
               {/* User menu — desktop only */}
               <div className="hidden lg:flex items-center gap-2 h-10 pl-1 pr-2 rounded-lg">
-                <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-white text-xs font-bold">
+                <div className="grid h-8 w-8 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
                   {initials}
                 </div>
                 <div className="text-left leading-tight">
@@ -298,7 +298,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 type="button"
                 onClick={handleSignOut}
                 title="Cerrar sesión"
-                className="hidden lg:grid place-items-center h-10 w-10 rounded-lg bg-muted/60 hover:bg-red-50 hover:text-red-600 transition"
+                className="hidden lg:grid h-10 w-10 place-items-center rounded-lg bg-muted/60 transition hover:bg-destructive/10 hover:text-destructive"
                 aria-label="Cerrar sesión"
               >
                 <LogOut className="h-[18px] w-[18px]" />
@@ -308,7 +308,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
         </header>
 
         {/* Page header */}
-        <div className="px-4 lg:px-8 pt-5 pb-2">
+        <div className="border-b border-border/70 bg-card/45 px-4 py-4 lg:px-8 lg:py-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
               <h1 className="truncate text-xl lg:text-2xl font-bold tracking-tight text-foreground">
@@ -320,7 +320,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
           </div>
         </div>
 
-        <main className="flex-1 px-4 lg:px-8 py-4 lg:py-6 pb-24 lg:pb-6">{children}</main>
+        <main className="flex-1 px-4 py-4 pb-24 lg:px-8 lg:py-6 lg:pb-6">{children}</main>
 
         <footer className="hidden lg:block px-8 py-4 text-xs text-muted-foreground border-t border-border">
           © 2026 Estudio Jurídico Arenas · Derecho Penal & Familia
@@ -344,7 +344,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
                 <span className="truncate">{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  <span className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
                     {taskAttentionCount > 9 ? "9+" : taskAttentionCount}
                   </span>
                 )}
@@ -378,10 +378,10 @@ export function StatusBadge({
 }) {
   const tones: Record<string, string> = {
     default: "bg-muted text-foreground/80 border-border",
-    success: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    warning: "bg-amber-50 text-amber-800 border-amber-200",
-    danger: "bg-red-50 text-red-700 border-red-200",
-    info: "bg-sky-50 text-sky-700 border-sky-200",
+    success: "bg-success/10 text-success-foreground border-success/25",
+    warning: "bg-warning/14 text-warning-foreground border-warning/30",
+    danger: "bg-destructive/10 text-destructive border-destructive/25",
+    info: "bg-info/10 text-info-foreground border-info/25",
     gold: "bg-[oklch(0.96_0.04_85)] text-[oklch(0.45_0.1_75)] border-[oklch(0.85_0.08_80)]",
     navy: "bg-primary/10 text-primary border-primary/20",
   };

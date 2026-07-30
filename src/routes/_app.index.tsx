@@ -474,10 +474,10 @@ function KpiCard({
   const tones: Record<string, string> = {
     navy: "bg-primary/10 text-primary",
     gold: "bg-[oklch(0.96_0.05_85)] text-[oklch(0.5_0.13_75)]",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-700",
-    info: "bg-sky-50 text-sky-700",
-    danger: "bg-red-50 text-red-700",
+    success: "bg-success/10 text-success-foreground",
+    warning: "bg-warning/14 text-warning-foreground",
+    info: "bg-info/10 text-info-foreground",
+    danger: "bg-destructive/10 text-destructive",
   };
   return (
     <Link to={to as never} className="block">
