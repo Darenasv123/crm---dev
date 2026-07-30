@@ -2,8 +2,9 @@
  * permissions.test.ts
  *
  * Pruebas automatizadas del sistema centralizado de permisos.
- * Verifica que Personal tenga todos los permisos de pagos en false
- * y que Administrador los tenga en true.
+ * Verifica que Personal y Administrador tengan los permisos correctos
+ * para todos los módulos del CRM: Pagos, Tareas, Agenda, Documentos, Reportes,
+ * Clientes y Expedientes.
  *
  * Estas pruebas son 100% locales, no requieren Supabase ni credenciales.
  */
@@ -14,6 +15,12 @@ import {
   isAdminRole,
   isPersonalRole,
   resolvePaymentPermissions,
+  resolveTaskPermissions,
+  resolveAgendaPermissions,
+  resolveDocumentPermissions,
+  resolveReportPermissions,
+  resolveClientPermissions,
+  resolveCasePermissions,
   usePermissions,
 } from "../src/lib/permissions";
 
@@ -376,5 +383,496 @@ describe("búsqueda global — pagos excluidos para Personal (punto 14)", () => 
     const role = "Administrador";
     const canSearchPayments = isAdminRole(role);
     expect(canSearchPayments).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TAREAS — Personal puede ver y tomar, pero no crear
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveTaskPermissions — Personal", () => {
+  const perms = resolveTaskPermissions("Personal");
+
+  it("canCreateTasks es false", () => {
+    expect(perms.canCreateTasks).toBe(false);
+  });
+
+  it("canManageAllTasks es false", () => {
+    expect(perms.canManageAllTasks).toBe(false);
+  });
+
+  it("canAssignTasks es false", () => {
+    expect(perms.canAssignTasks).toBe(false);
+  });
+
+  it("canReassignTasks es false", () => {
+    expect(perms.canReassignTasks).toBe(false);
+  });
+
+  it("canDeleteTasks es false", () => {
+    expect(perms.canDeleteTasks).toBe(false);
+  });
+
+  it("canClaimTasks es true — Personal puede tomar tareas", () => {
+    expect(perms.canClaimTasks).toBe(true);
+  });
+});
+
+describe("resolveTaskPermissions — Administrador", () => {
+  const perms = resolveTaskPermissions("Administrador");
+
+  it("canCreateTasks es true", () => {
+    expect(perms.canCreateTasks).toBe(true);
+  });
+
+  it("canManageAllTasks es true", () => {
+    expect(perms.canManageAllTasks).toBe(true);
+  });
+
+  it("canAssignTasks es true", () => {
+    expect(perms.canAssignTasks).toBe(true);
+  });
+
+  it("canReassignTasks es true", () => {
+    expect(perms.canReassignTasks).toBe(true);
+  });
+
+  it("canDeleteTasks es true", () => {
+    expect(perms.canDeleteTasks).toBe(true);
+  });
+
+  it("canClaimTasks es true", () => {
+    expect(perms.canClaimTasks).toBe(true);
+  });
+});
+
+describe("tareas — botón 'Nueva tarea' visible según permisos", () => {
+  it("Personal no ve el botón 'Nueva tarea'", () => {
+    const perms = resolveTaskPermissions("Personal");
+    expect(perms.canCreateTasks).toBe(false);
+  });
+
+  it("Administrador ve el botón 'Nueva tarea'", () => {
+    const perms = resolveTaskPermissions("Administrador");
+    expect(perms.canCreateTasks).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGENDA — Personal solo lectura, Administrador gestiona
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveAgendaPermissions — Personal", () => {
+  const perms = resolveAgendaPermissions("Personal");
+
+  it("canViewAgenda es true — Personal puede ver la agenda", () => {
+    expect(perms.canViewAgenda).toBe(true);
+  });
+
+  it("canCreateEvents es false", () => {
+    expect(perms.canCreateEvents).toBe(false);
+  });
+
+  it("canEditEvents es false", () => {
+    expect(perms.canEditEvents).toBe(false);
+  });
+
+  it("canDeleteEvents es false", () => {
+    expect(perms.canDeleteEvents).toBe(false);
+  });
+
+  it("canResolveSync es false", () => {
+    expect(perms.canResolveSync).toBe(false);
+  });
+
+  it("canConfigureSync es false", () => {
+    expect(perms.canConfigureSync).toBe(false);
+  });
+});
+
+describe("resolveAgendaPermissions — Administrador", () => {
+  const perms = resolveAgendaPermissions("Administrador");
+
+  it("canViewAgenda es true", () => {
+    expect(perms.canViewAgenda).toBe(true);
+  });
+
+  it("canCreateEvents es true", () => {
+    expect(perms.canCreateEvents).toBe(true);
+  });
+
+  it("canEditEvents es true", () => {
+    expect(perms.canEditEvents).toBe(true);
+  });
+
+  it("canDeleteEvents es true", () => {
+    expect(perms.canDeleteEvents).toBe(true);
+  });
+
+  it("canResolveSync es true", () => {
+    expect(perms.canResolveSync).toBe(true);
+  });
+
+  it("canConfigureSync es true", () => {
+    expect(perms.canConfigureSync).toBe(true);
+  });
+});
+
+describe("agenda — botones visibles según permisos", () => {
+  it("Personal no ve botones de creación/edición/eliminación", () => {
+    const perms = resolveAgendaPermissions("Personal");
+    expect(perms.canCreateEvents).toBe(false);
+    expect(perms.canEditEvents).toBe(false);
+    expect(perms.canDeleteEvents).toBe(false);
+  });
+
+  it("Administrador ve todos los botones de gestión", () => {
+    const perms = resolveAgendaPermissions("Administrador");
+    expect(perms.canCreateEvents).toBe(true);
+    expect(perms.canEditEvents).toBe(true);
+    expect(perms.canDeleteEvents).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCUMENTOS — Todos ven, solo Administrador elimina
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveDocumentPermissions — Personal", () => {
+  const perms = resolveDocumentPermissions("Personal");
+
+  it("canViewDocuments es true", () => {
+    expect(perms.canViewDocuments).toBe(true);
+  });
+
+  it("canDownloadDocuments es true", () => {
+    expect(perms.canDownloadDocuments).toBe(true);
+  });
+
+  it("canDeleteDocuments es false", () => {
+    expect(perms.canDeleteDocuments).toBe(false);
+  });
+});
+
+describe("resolveDocumentPermissions — Administrador", () => {
+  const perms = resolveDocumentPermissions("Administrador");
+
+  it("canViewDocuments es true", () => {
+    expect(perms.canViewDocuments).toBe(true);
+  });
+
+  it("canDownloadDocuments es true", () => {
+    expect(perms.canDownloadDocuments).toBe(true);
+  });
+
+  it("canDeleteDocuments es true", () => {
+    expect(perms.canDeleteDocuments).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REPORTES — Todos ven según RLS, solo Administrador crea
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveReportPermissions — Personal", () => {
+  const perms = resolveReportPermissions("Personal");
+
+  it("canViewReports es true", () => {
+    expect(perms.canViewReports).toBe(true);
+  });
+
+  it("canCreateReports es false", () => {
+    expect(perms.canCreateReports).toBe(false);
+  });
+});
+
+describe("resolveReportPermissions — Administrador", () => {
+  const perms = resolveReportPermissions("Administrador");
+
+  it("canViewReports es true", () => {
+    expect(perms.canViewReports).toBe(true);
+  });
+
+  it("canCreateReports es true", () => {
+    expect(perms.canCreateReports).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLIENTES — Todos ven, solo Administrador gestiona
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveClientPermissions — Personal", () => {
+  const perms = resolveClientPermissions("Personal");
+
+  it("canViewClients es true", () => {
+    expect(perms.canViewClients).toBe(true);
+  });
+
+  it("canCreateClients es false", () => {
+    expect(perms.canCreateClients).toBe(false);
+  });
+
+  it("canEditClients es false", () => {
+    expect(perms.canEditClients).toBe(false);
+  });
+
+  it("canDeleteClients es false", () => {
+    expect(perms.canDeleteClients).toBe(false);
+  });
+});
+
+describe("resolveClientPermissions — Administrador", () => {
+  const perms = resolveClientPermissions("Administrador");
+
+  it("canViewClients es true", () => {
+    expect(perms.canViewClients).toBe(true);
+  });
+
+  it("canCreateClients es true", () => {
+    expect(perms.canCreateClients).toBe(true);
+  });
+
+  it("canEditClients es true", () => {
+    expect(perms.canEditClients).toBe(true);
+  });
+
+  it("canDeleteClients es true", () => {
+    expect(perms.canDeleteClients).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPEDIENTES — Todos ven, solo Administrador gestiona
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("resolveCasePermissions — Personal", () => {
+  const perms = resolveCasePermissions("Personal");
+
+  it("canViewCases es true", () => {
+    expect(perms.canViewCases).toBe(true);
+  });
+
+  it("canCreateCases es false", () => {
+    expect(perms.canCreateCases).toBe(false);
+  });
+
+  it("canEditCases es false", () => {
+    expect(perms.canEditCases).toBe(false);
+  });
+
+  it("canDeleteCases es false", () => {
+    expect(perms.canDeleteCases).toBe(false);
+  });
+});
+
+describe("resolveCasePermissions — Administrador", () => {
+  const perms = resolveCasePermissions("Administrador");
+
+  it("canViewCases es true", () => {
+    expect(perms.canViewCases).toBe(true);
+  });
+
+  it("canCreateCases es true", () => {
+    expect(perms.canCreateCases).toBe(true);
+  });
+
+  it("canEditCases es true", () => {
+    expect(perms.canEditCases).toBe(true);
+  });
+
+  it("canDeleteCases es true", () => {
+    expect(perms.canDeleteCases).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NAVEGACIÓN COMPLETA — Matriz final de módulos visibles
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("navegación completa — módulos visibles por rol", () => {
+  type NavItem = { to: string; label: string; adminOnly?: boolean };
+
+  const allNav: NavItem[] = [
+    { to: "/", label: "Inicio" },
+    { to: "/clientes", label: "Clientes" },
+    { to: "/casos", label: "Expedientes" },
+    { to: "/tareas", label: "Tareas" },
+    { to: "/agenda", label: "Agenda" },
+    { to: "/documentos", label: "Documentos" },
+    { to: "/reportes", label: "Reportes" },
+    { to: "/pagos", label: "Pagos", adminOnly: true },
+    { to: "/configuracion", label: "Configuración", adminOnly: true },
+  ];
+
+  function visibleItems(role: string) {
+    const isAdmin = isAdminRole(role);
+    return allNav.filter((item) => !item.adminOnly || isAdmin);
+  }
+
+  it("Personal ve 7 módulos: Inicio, Clientes, Expedientes, Tareas, Agenda, Documentos, Reportes", () => {
+    const items = visibleItems("Personal");
+    expect(items.length).toBe(7);
+    expect(items.map((i) => i.label)).toEqual([
+      "Inicio",
+      "Clientes",
+      "Expedientes",
+      "Tareas",
+      "Agenda",
+      "Documentos",
+      "Reportes",
+    ]);
+  });
+
+  it("Personal NO ve Pagos", () => {
+    const items = visibleItems("Personal");
+    expect(items.find((i) => i.to === "/pagos")).toBeUndefined();
+  });
+
+  it("Personal NO ve Configuración", () => {
+    const items = visibleItems("Personal");
+    expect(items.find((i) => i.to === "/configuracion")).toBeUndefined();
+  });
+
+  it("Administrador ve todos los 9 módulos", () => {
+    const items = visibleItems("Administrador");
+    expect(items.length).toBe(9);
+    expect(items.map((i) => i.label)).toEqual([
+      "Inicio",
+      "Clientes",
+      "Expedientes",
+      "Tareas",
+      "Agenda",
+      "Documentos",
+      "Reportes",
+      "Pagos",
+      "Configuración",
+    ]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// usePermissions — hook React unificado
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("usePermissions — Personal con profile completo", () => {
+  const personalProfile = {
+    id: "user-personal-1",
+    email: "personal@estudio.pe",
+    full_name: "María Auxiliadora",
+    initials: "MA",
+    role: "Personal",
+    status: "Activo",
+    phone: null,
+    created_at: "2026-01-01T00:00:00Z",
+  } as const;
+
+  const perms = usePermissions(personalProfile);
+
+  // Pagos
+  it("canViewPayments = false", () => {
+    expect(perms.canViewPayments).toBe(false);
+  });
+
+  // Tareas
+  it("canCreateTasks = false", () => {
+    expect(perms.canCreateTasks).toBe(false);
+  });
+
+  it("canClaimTasks = true", () => {
+    expect(perms.canClaimTasks).toBe(true);
+  });
+
+  // Agenda
+  it("canViewAgenda = true", () => {
+    expect(perms.canViewAgenda).toBe(true);
+  });
+
+  it("canCreateEvents = false", () => {
+    expect(perms.canCreateEvents).toBe(false);
+  });
+
+  // Clientes y Expedientes
+  it("canViewClients = true", () => {
+    expect(perms.canViewClients).toBe(true);
+  });
+
+  it("canCreateClients = false", () => {
+    expect(perms.canCreateClients).toBe(false);
+  });
+
+  it("canViewCases = true", () => {
+    expect(perms.canViewCases).toBe(true);
+  });
+
+  it("canCreateCases = false", () => {
+    expect(perms.canCreateCases).toBe(false);
+  });
+});
+
+describe("usePermissions — Administrador con profile completo", () => {
+  const adminProfile = {
+    id: "user-admin-1",
+    email: "admin@estudio.pe",
+    full_name: "Carlos Arenas",
+    initials: "CA",
+    role: "Administrador",
+    status: "Activo",
+    phone: null,
+    created_at: "2026-01-01T00:00:00Z",
+  } as const;
+
+  const perms = usePermissions(adminProfile);
+
+  // Pagos
+  it("canViewPayments = true", () => {
+    expect(perms.canViewPayments).toBe(true);
+  });
+
+  it("canCreatePayments = true", () => {
+    expect(perms.canCreatePayments).toBe(true);
+  });
+
+  // Tareas
+  it("canCreateTasks = true", () => {
+    expect(perms.canCreateTasks).toBe(true);
+  });
+
+  it("canManageAllTasks = true", () => {
+    expect(perms.canManageAllTasks).toBe(true);
+  });
+
+  // Agenda
+  it("canViewAgenda = true", () => {
+    expect(perms.canViewAgenda).toBe(true);
+  });
+
+  it("canCreateEvents = true", () => {
+    expect(perms.canCreateEvents).toBe(true);
+  });
+
+  it("canEditEvents = true", () => {
+    expect(perms.canEditEvents).toBe(true);
+  });
+
+  it("canDeleteEvents = true", () => {
+    expect(perms.canDeleteEvents).toBe(true);
+  });
+
+  // Clientes y Expedientes
+  it("canViewClients = true", () => {
+    expect(perms.canViewClients).toBe(true);
+  });
+
+  it("canCreateClients = true", () => {
+    expect(perms.canCreateClients).toBe(true);
+  });
+
+  it("canViewCases = true", () => {
+    expect(perms.canViewCases).toBe(true);
+  });
+
+  it("canCreateCases = true", () => {
+    expect(perms.canCreateCases).toBe(true);
   });
 });
