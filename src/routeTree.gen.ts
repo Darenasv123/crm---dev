@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ResonanciaRouteImport } from './routes/resonancia'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as GoogleCalendarCallbackRouteImport } from './routes/google-calendar-callback'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppTareasIndexRouteImport } from './routes/_app.tareas.index'
@@ -24,8 +23,16 @@ import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configu
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
+import { Route as ApiGoogleCalendarWebhookRouteImport } from './routes/api.google-calendar.webhook'
+import { Route as ApiGoogleCalendarSyncEventRouteImport } from './routes/api.google-calendar.sync-event'
+import { Route as ApiGoogleCalendarStatusRouteImport } from './routes/api.google-calendar.status'
+import { Route as ApiGoogleCalendarConnectRouteImport } from './routes/api.google-calendar.connect'
+import { Route as ApiGoogleCalendarCallbackRouteImport } from './routes/api.google-calendar.callback'
+import { Route as ApiGoogleCalendarActionsRouteImport } from './routes/api.google-calendar.actions'
+import { Route as AppTareasTodasRouteImport } from './routes/_app.tareas.todas'
 import { Route as AppTareasTableroRouteImport } from './routes/_app.tareas.tablero'
 import { Route as AppTareasProximasRouteImport } from './routes/_app.tareas.proximas'
+import { Route as AppTareasMiasRouteImport } from './routes/_app.tareas.mias'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
 
@@ -37,11 +44,6 @@ const ResonanciaRoute = ResonanciaRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GoogleCalendarCallbackRoute = GoogleCalendarCallbackRouteImport.update({
-  id: '/google-calendar-callback',
-  path: '/google-calendar-callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppRoute = AppRouteImport.update({
@@ -103,6 +105,46 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
   path: '/agenda/',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiGoogleCalendarWebhookRoute =
+  ApiGoogleCalendarWebhookRouteImport.update({
+    id: '/api/google-calendar/webhook',
+    path: '/api/google-calendar/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleCalendarSyncEventRoute =
+  ApiGoogleCalendarSyncEventRouteImport.update({
+    id: '/api/google-calendar/sync-event',
+    path: '/api/google-calendar/sync-event',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleCalendarStatusRoute = ApiGoogleCalendarStatusRouteImport.update({
+  id: '/api/google-calendar/status',
+  path: '/api/google-calendar/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGoogleCalendarConnectRoute =
+  ApiGoogleCalendarConnectRouteImport.update({
+    id: '/api/google-calendar/connect',
+    path: '/api/google-calendar/connect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleCalendarCallbackRoute =
+  ApiGoogleCalendarCallbackRouteImport.update({
+    id: '/api/google-calendar/callback',
+    path: '/api/google-calendar/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleCalendarActionsRoute =
+  ApiGoogleCalendarActionsRouteImport.update({
+    id: '/api/google-calendar/actions',
+    path: '/api/google-calendar/actions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AppTareasTodasRoute = AppTareasTodasRouteImport.update({
+  id: '/tareas/todas',
+  path: '/tareas/todas',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTareasTableroRoute = AppTareasTableroRouteImport.update({
   id: '/tareas/tablero',
   path: '/tareas/tablero',
@@ -111,6 +153,11 @@ const AppTareasTableroRoute = AppTareasTableroRouteImport.update({
 const AppTareasProximasRoute = AppTareasProximasRouteImport.update({
   id: '/tareas/proximas',
   path: '/tareas/proximas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTareasMiasRoute = AppTareasMiasRouteImport.update({
+  id: '/tareas/mias',
+  path: '/tareas/mias',
   getParentRoute: () => AppRoute,
 } as any)
 const AppClientesIdRoute = AppClientesIdRouteImport.update({
@@ -126,13 +173,20 @@ const AppCasosIdRoute = AppCasosIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
-  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
+  '/tareas/mias': typeof AppTareasMiasRoute
   '/tareas/proximas': typeof AppTareasProximasRoute
   '/tareas/tablero': typeof AppTareasTableroRoute
+  '/tareas/todas': typeof AppTareasTodasRoute
+  '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
+  '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
+  '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
+  '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
+  '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -145,14 +199,21 @@ export interface FileRoutesByFullPath {
   '/tareas/': typeof AppTareasIndexRoute
 }
 export interface FileRoutesByTo {
-  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
+  '/tareas/mias': typeof AppTareasMiasRoute
   '/tareas/proximas': typeof AppTareasProximasRoute
   '/tareas/tablero': typeof AppTareasTableroRoute
+  '/tareas/todas': typeof AppTareasTodasRoute
+  '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
+  '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
+  '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
+  '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
+  '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -167,14 +228,21 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
-  '/google-calendar-callback': typeof GoogleCalendarCallbackRoute
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
   '/_app/clientes/$id': typeof AppClientesIdRoute
+  '/_app/tareas/mias': typeof AppTareasMiasRoute
   '/_app/tareas/proximas': typeof AppTareasProximasRoute
   '/_app/tareas/tablero': typeof AppTareasTableroRoute
+  '/_app/tareas/todas': typeof AppTareasTodasRoute
+  '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
+  '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
+  '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
+  '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
+  '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -190,13 +258,20 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/google-calendar-callback'
     | '/login'
     | '/resonancia'
     | '/casos/$id'
     | '/clientes/$id'
+    | '/tareas/mias'
     | '/tareas/proximas'
     | '/tareas/tablero'
+    | '/tareas/todas'
+    | '/api/google-calendar/actions'
+    | '/api/google-calendar/callback'
+    | '/api/google-calendar/connect'
+    | '/api/google-calendar/status'
+    | '/api/google-calendar/sync-event'
+    | '/api/google-calendar/webhook'
     | '/agenda/'
     | '/casos/'
     | '/clientes/'
@@ -209,14 +284,21 @@ export interface FileRouteTypes {
     | '/tareas/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/google-calendar-callback'
     | '/login'
     | '/resonancia'
     | '/'
     | '/casos/$id'
     | '/clientes/$id'
+    | '/tareas/mias'
     | '/tareas/proximas'
     | '/tareas/tablero'
+    | '/tareas/todas'
+    | '/api/google-calendar/actions'
+    | '/api/google-calendar/callback'
+    | '/api/google-calendar/connect'
+    | '/api/google-calendar/status'
+    | '/api/google-calendar/sync-event'
+    | '/api/google-calendar/webhook'
     | '/agenda'
     | '/casos'
     | '/clientes'
@@ -230,14 +312,21 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
-    | '/google-calendar-callback'
     | '/login'
     | '/resonancia'
     | '/_app/'
     | '/_app/casos/$id'
     | '/_app/clientes/$id'
+    | '/_app/tareas/mias'
     | '/_app/tareas/proximas'
     | '/_app/tareas/tablero'
+    | '/_app/tareas/todas'
+    | '/api/google-calendar/actions'
+    | '/api/google-calendar/callback'
+    | '/api/google-calendar/connect'
+    | '/api/google-calendar/status'
+    | '/api/google-calendar/sync-event'
+    | '/api/google-calendar/webhook'
     | '/_app/agenda/'
     | '/_app/casos/'
     | '/_app/clientes/'
@@ -252,9 +341,14 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
-  GoogleCalendarCallbackRoute: typeof GoogleCalendarCallbackRoute
   LoginRoute: typeof LoginRoute
   ResonanciaRoute: typeof ResonanciaRoute
+  ApiGoogleCalendarActionsRoute: typeof ApiGoogleCalendarActionsRoute
+  ApiGoogleCalendarCallbackRoute: typeof ApiGoogleCalendarCallbackRoute
+  ApiGoogleCalendarConnectRoute: typeof ApiGoogleCalendarConnectRoute
+  ApiGoogleCalendarStatusRoute: typeof ApiGoogleCalendarStatusRoute
+  ApiGoogleCalendarSyncEventRoute: typeof ApiGoogleCalendarSyncEventRoute
+  ApiGoogleCalendarWebhookRoute: typeof ApiGoogleCalendarWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -271,13 +365,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/google-calendar-callback': {
-      id: '/google-calendar-callback'
-      path: '/google-calendar-callback'
-      fullPath: '/google-calendar-callback'
-      preLoaderRoute: typeof GoogleCalendarCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app': {
@@ -364,6 +451,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgendaIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/google-calendar/webhook': {
+      id: '/api/google-calendar/webhook'
+      path: '/api/google-calendar/webhook'
+      fullPath: '/api/google-calendar/webhook'
+      preLoaderRoute: typeof ApiGoogleCalendarWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/sync-event': {
+      id: '/api/google-calendar/sync-event'
+      path: '/api/google-calendar/sync-event'
+      fullPath: '/api/google-calendar/sync-event'
+      preLoaderRoute: typeof ApiGoogleCalendarSyncEventRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/status': {
+      id: '/api/google-calendar/status'
+      path: '/api/google-calendar/status'
+      fullPath: '/api/google-calendar/status'
+      preLoaderRoute: typeof ApiGoogleCalendarStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/connect': {
+      id: '/api/google-calendar/connect'
+      path: '/api/google-calendar/connect'
+      fullPath: '/api/google-calendar/connect'
+      preLoaderRoute: typeof ApiGoogleCalendarConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/callback': {
+      id: '/api/google-calendar/callback'
+      path: '/api/google-calendar/callback'
+      fullPath: '/api/google-calendar/callback'
+      preLoaderRoute: typeof ApiGoogleCalendarCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/actions': {
+      id: '/api/google-calendar/actions'
+      path: '/api/google-calendar/actions'
+      fullPath: '/api/google-calendar/actions'
+      preLoaderRoute: typeof ApiGoogleCalendarActionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/tareas/todas': {
+      id: '/_app/tareas/todas'
+      path: '/tareas/todas'
+      fullPath: '/tareas/todas'
+      preLoaderRoute: typeof AppTareasTodasRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/tareas/tablero': {
       id: '/_app/tareas/tablero'
       path: '/tareas/tablero'
@@ -376,6 +512,13 @@ declare module '@tanstack/react-router' {
       path: '/tareas/proximas'
       fullPath: '/tareas/proximas'
       preLoaderRoute: typeof AppTareasProximasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/tareas/mias': {
+      id: '/_app/tareas/mias'
+      path: '/tareas/mias'
+      fullPath: '/tareas/mias'
+      preLoaderRoute: typeof AppTareasMiasRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/clientes/$id': {
@@ -399,8 +542,10 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppCasosIdRoute: typeof AppCasosIdRoute
   AppClientesIdRoute: typeof AppClientesIdRoute
+  AppTareasMiasRoute: typeof AppTareasMiasRoute
   AppTareasProximasRoute: typeof AppTareasProximasRoute
   AppTareasTableroRoute: typeof AppTareasTableroRoute
+  AppTareasTodasRoute: typeof AppTareasTodasRoute
   AppAgendaIndexRoute: typeof AppAgendaIndexRoute
   AppCasosIndexRoute: typeof AppCasosIndexRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
@@ -417,8 +562,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppCasosIdRoute: AppCasosIdRoute,
   AppClientesIdRoute: AppClientesIdRoute,
+  AppTareasMiasRoute: AppTareasMiasRoute,
   AppTareasProximasRoute: AppTareasProximasRoute,
   AppTareasTableroRoute: AppTareasTableroRoute,
+  AppTareasTodasRoute: AppTareasTodasRoute,
   AppAgendaIndexRoute: AppAgendaIndexRoute,
   AppCasosIndexRoute: AppCasosIndexRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
@@ -435,9 +582,14 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
-  GoogleCalendarCallbackRoute: GoogleCalendarCallbackRoute,
   LoginRoute: LoginRoute,
   ResonanciaRoute: ResonanciaRoute,
+  ApiGoogleCalendarActionsRoute: ApiGoogleCalendarActionsRoute,
+  ApiGoogleCalendarCallbackRoute: ApiGoogleCalendarCallbackRoute,
+  ApiGoogleCalendarConnectRoute: ApiGoogleCalendarConnectRoute,
+  ApiGoogleCalendarStatusRoute: ApiGoogleCalendarStatusRoute,
+  ApiGoogleCalendarSyncEventRoute: ApiGoogleCalendarSyncEventRoute,
+  ApiGoogleCalendarWebhookRoute: ApiGoogleCalendarWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

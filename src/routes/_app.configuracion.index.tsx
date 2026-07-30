@@ -4,10 +4,8 @@ import { useProfiles, useRegisterStaff, useUpdateProfile } from "@/hooks/use-pro
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
-import { saveAgendaGoogleIds, useAgendaEvents } from "@/hooks/use-agenda";
+import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useImportJobsFilter } from "@/hooks/use-ai-findings";
-import { MassImportDryRun } from "@/components/mass-import-dry-run";
-import { MigrationTool } from "@/components/migration-tool";
 import {
   exportFullBackup,
   exportClientsExcel,
@@ -16,11 +14,11 @@ import {
   exportAgendaExcel,
 } from "@/lib/export-excel";
 import {
-  initiateGoogleOAuth,
-  isGoogleCalendarConnected,
-  disconnectGoogleCalendar,
-  syncAllEventsToGoogle,
-} from "@/lib/google-calendar";
+  beginGoogleCalendarConnection,
+  getGoogleCalendarStatus,
+  runGoogleCalendarAction,
+  type GoogleCalendarStatus,
+} from "@/lib/google-calendar-client";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -89,9 +87,10 @@ function SettingsPage() {
   });
   const [exporting, setExporting] = useState(false);
   const [exportingType, setExportingType] = useState<string | null>(null);
-  const [gcalConnected, setGcalConnected] = useState(isGoogleCalendarConnected);
+  const [gcalStatus, setGcalStatus] = useState<GoogleCalendarStatus>({ connected: false });
+  const [calendarId, setCalendarId] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ success: number; errors: number } | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // Edit staff modal state
   const [editProfile, setEditProfile] = useState<{
@@ -114,6 +113,20 @@ function SettingsPage() {
       navigate({ to: "/", replace: true });
     }
   }, [currentProfile, authLoading, navigate]);
+
+  useEffect(() => {
+    if (!canLoadAdminData) return;
+    getGoogleCalendarStatus()
+      .then((status) => {
+        setGcalStatus(status);
+        if (status.calendarId) setCalendarId(status.calendarId);
+      })
+      .catch((cause) => {
+        setSyncMessage(
+          cause instanceof Error ? cause.message : "No se pudo consultar la conexión.",
+        );
+      });
+  }, [canLoadAdminData]);
 
   const { data: profiles = [], isLoading } = useProfiles({ enabled: canLoadAdminData });
   const { data: clients = [] } = useClients({ enabled: canLoadAdminData });
@@ -162,10 +175,8 @@ function SettingsPage() {
       await exportFullBackup({
         clients: clients.map((c) => ({
           name: c.name,
-          dni: c.dni,
           phone: c.phone,
           email: c.email,
-          process_type: c.process_type,
           status: c.status,
           registered_at: c.registered_at,
         })),
@@ -173,9 +184,10 @@ function SettingsPage() {
           expediente: c.expediente,
           client: (c as { clients?: { name: string } | null }).clients?.name ?? "—",
           process_type: c.process_type,
+          materia: c.materia,
           status: c.status,
           priority: c.priority,
-          juzgado: c.juzgado,
+          next_action: c.next_action,
           next_hearing: c.next_hearing,
           created_at: c.created_at,
         })),
@@ -213,10 +225,8 @@ function SettingsPage() {
         await exportClientsExcel(
           clients.map((c) => ({
             name: c.name,
-            dni: c.dni,
             phone: c.phone,
             email: c.email,
-            process_type: c.process_type,
             status: c.status,
             registered_at: c.registered_at,
           })),
@@ -227,9 +237,10 @@ function SettingsPage() {
             expediente: c.expediente,
             client: (c as { clients?: { name: string } | null }).clients?.name ?? "—",
             process_type: c.process_type,
+            materia: c.materia,
             status: c.status,
             priority: c.priority,
-            juzgado: c.juzgado,
+            next_action: c.next_action,
             next_hearing: c.next_hearing,
             created_at: c.created_at,
           })),
@@ -268,37 +279,53 @@ function SettingsPage() {
 
   async function handleGCalSync() {
     setSyncing(true);
-    setSyncResult(null);
+    setSyncMessage(null);
     try {
-      const events = agendaEvents.map((e) => ({
-        id: e.id,
-        title: e.title,
-        type: e.type,
-        event_date: e.event_date,
-        event_time: String(e.event_time),
-        location: e.location,
-        client: (e as { clients?: { name: string } | null }).clients?.name ?? null,
-        case: (e as { cases?: { expediente: string } | null }).cases?.expediente ?? null,
-      }));
-      const result = await syncAllEventsToGoogle(events);
-      await saveAgendaGoogleIds(result.gcalIds);
-      setSyncResult(result);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Error al sincronizar");
+      await runGoogleCalendarAction("sync");
+      setSyncMessage("Sincronización incremental completada.");
+      setGcalStatus(await getGoogleCalendarStatus());
+    } catch (cause) {
+      setSyncMessage(cause instanceof Error ? cause.message : "Error al sincronizar.");
     } finally {
       setSyncing(false);
     }
   }
 
-  function handleGCalConnect() {
-    initiateGoogleOAuth();
+  async function handleGCalConnect() {
+    setSyncMessage(null);
+    try {
+      await beginGoogleCalendarConnection(calendarId.trim());
+    } catch (cause) {
+      setSyncMessage(cause instanceof Error ? cause.message : "No se pudo iniciar la conexión.");
+    }
   }
 
-  function handleGCalDisconnect() {
-    if (window.confirm("¿Desconectar Google Calendar?")) {
-      disconnectGoogleCalendar();
-      setGcalConnected(false);
-      setSyncResult(null);
+  async function handleGCalDisconnect() {
+    if (window.confirm("¿Desconectar Google Calendar y revocar su acceso?")) {
+      setSyncing(true);
+      try {
+        await runGoogleCalendarAction("disconnect");
+        setGcalStatus({ connected: false });
+        setSyncMessage("Google Calendar fue desconectado.");
+      } catch (cause) {
+        setSyncMessage(cause instanceof Error ? cause.message : "No se pudo desconectar.");
+      } finally {
+        setSyncing(false);
+      }
+    }
+  }
+
+  async function handleGCalRenew() {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      await runGoogleCalendarAction("renew");
+      setGcalStatus(await getGoogleCalendarStatus());
+      setSyncMessage("Canal de notificaciones renovado.");
+    } catch (cause) {
+      setSyncMessage(cause instanceof Error ? cause.message : "No se pudo renovar el canal.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -537,57 +564,42 @@ function SettingsPage() {
                 <div className="flex-1">
                   <h3 className="text-base font-semibold">Google Calendar</h3>
                   <p className="text-xs text-muted-foreground">
-                    Sincroniza los eventos de la agenda con el Google Calendar del Dr.
+                    Sincroniza Agenda con el calendario compartido de la organización.
                   </p>
                 </div>
-                <StatusBadge tone={gcalConnected ? "success" : "default"}>
-                  {gcalConnected ? "Conectado" : "No conectado"}
+                <StatusBadge tone={gcalStatus.connected ? "success" : "default"}>
+                  {gcalStatus.connected ? "Conectado" : "No conectado"}
                 </StatusBadge>
               </div>
 
-              {!gcalConnected ? (
+              {!gcalStatus.connected ? (
                 <div className="space-y-4">
-                  <div className="rounded-lg bg-muted/40 border border-border p-4 text-sm text-muted-foreground space-y-2">
-                    <p className="font-semibold text-foreground">Pasos para conectar:</p>
-                    <ol className="list-decimal list-inside space-y-1.5 text-xs">
-                      <li>
-                        Ve a{" "}
-                        <span className="font-mono bg-muted px-1 rounded">
-                          console.cloud.google.com
-                        </span>
-                      </li>
-                      <li>
-                        Crea un proyecto → <em>APIs & Services</em> → <em>Credentials</em>
-                      </li>
-                      <li>
-                        Crea un <strong>OAuth 2.0 Client ID</strong> (tipo: Web application)
-                      </li>
-                      <li>
-                        Agrega como URI autorizado:{" "}
-                        <span className="font-mono bg-muted px-1 rounded text-[10px] break-all">
-                          {typeof window !== "undefined"
-                            ? window.location.origin + "/google-calendar-callback"
-                            : "/google-calendar-callback"}
-                        </span>
-                      </li>
-                      <li>
-                        Copia el Client ID en tu{" "}
-                        <span className="font-mono bg-muted px-1 rounded">.env</span> como{" "}
-                        <span className="font-mono bg-muted px-1 rounded">
-                          VITE_GOOGLE_CLIENT_ID=...
-                        </span>
-                      </li>
-                      <li>
-                        Reinicia el servidor y haz clic en <strong>Conectar</strong>
-                      </li>
-                    </ol>
+                  <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+                    <p className="font-semibold">Calendario compartido de la organización</p>
+                    <p className="text-xs text-muted-foreground">
+                      La autorización, los tokens y los secretos se procesan exclusivamente en el
+                      servidor. Introduce el ID del calendario compartido autorizado.
+                    </p>
+                    <label className="grid gap-1.5 text-xs font-medium">
+                      ID del calendario
+                      <input
+                        value={calendarId}
+                        onChange={(event) => setCalendarId(event.target.value)}
+                        placeholder="calendario@group.calendar.google.com"
+                        className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                      />
+                    </label>
                   </div>
                   <button
                     onClick={handleGCalConnect}
+                    disabled={!calendarId.trim()}
                     className="h-10 px-5 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 flex items-center gap-2"
                   >
                     <Calendar className="h-4 w-4" /> Conectar Google Calendar
                   </button>
+                  {syncMessage && (
+                    <p className="rounded-lg border border-border p-3 text-sm">{syncMessage}</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -595,48 +607,86 @@ function SettingsPage() {
                     <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
                     <div className="text-sm">
                       <span className="font-semibold text-emerald-800">
-                        Calendario conectado correctamente.
+                        {gcalStatus.calendarName || "Calendario compartido conectado"}.
                       </span>
                       <span className="text-emerald-700">
                         {" "}
-                        Puedes sincronizar todos los eventos del CRM.
+                        {gcalStatus.accountEmail || gcalStatus.calendarId}
                       </span>
                     </div>
                   </div>
 
+                  <label className="grid gap-1.5 text-xs font-medium">
+                    ID del calendario compartido
+                    <input
+                      value={calendarId}
+                      onChange={(event) => setCalendarId(event.target.value)}
+                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                    />
+                  </label>
+
                   <div>
                     <h4 className="text-sm font-semibold mb-1">Sincronizar eventos</h4>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Envía todos los eventos de la agenda ({agendaEvents.length} eventos) a tu
-                      Google Calendar. Los eventos ya sincronizados se omiten automáticamente.
+                      Ejecuta cambios incrementales en ambas direcciones. Última sincronización:{" "}
+                      {gcalStatus.lastSyncedAt
+                        ? new Date(gcalStatus.lastSyncedAt).toLocaleString("es-PE")
+                        : "pendiente"}
+                      .
                     </p>
-                    <button
-                      onClick={handleGCalSync}
-                      disabled={syncing}
-                      className="h-10 px-5 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-60 flex items-center gap-2"
-                    >
-                      {syncing ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" /> Sincronizando...
-                        </>
-                      ) : (
-                        <>
-                          <Calendar className="h-4 w-4" /> Sincronizar {agendaEvents.length} eventos
-                        </>
-                      )}
-                    </button>
-
-                    {syncResult && (
-                      <div className="mt-3 rounded-lg border border-border p-3 text-sm">
-                        <span className="text-emerald-700 font-semibold">
-                          ✓ {syncResult.success} eventos sincronizados
-                        </span>
-                        {syncResult.errors > 0 && (
-                          <span className="text-red-600 font-semibold ml-3">
-                            ✗ {syncResult.errors} errores
-                          </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={handleGCalSync}
+                        disabled={syncing}
+                        className="h-10 px-5 rounded-lg bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 disabled:opacity-60 flex items-center gap-2"
+                      >
+                        {syncing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Calendar className="h-4 w-4" />
                         )}
+                        Sincronizar ahora
+                      </button>
+                      <button
+                        onClick={handleGCalRenew}
+                        disabled={syncing}
+                        className="h-10 rounded-lg border border-border px-4 text-sm font-semibold"
+                      >
+                        Renovar webhook
+                      </button>
+                      <button
+                        onClick={handleGCalConnect}
+                        disabled={syncing || !calendarId.trim()}
+                        className="h-10 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-60"
+                      >
+                        Cambiar calendario
+                      </button>
+                      <button
+                        onClick={handleGCalConnect}
+                        disabled={syncing || !calendarId.trim()}
+                        className="h-10 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-60"
+                      >
+                        Reconectar
+                      </button>
+                    </div>
+                    <dl className="mt-3 grid gap-2 rounded-lg border p-3 text-xs sm:grid-cols-2">
+                      <div>
+                        <dt className="text-muted-foreground">Webhook</dt>
+                        <dd>{gcalStatus.webhookActive ? "Activo" : "Sin canal activo"}</dd>
                       </div>
+                      <div>
+                        <dt className="text-muted-foreground">Próxima renovación</dt>
+                        <dd>
+                          {gcalStatus.channelExpiresAt
+                            ? new Date(gcalStatus.channelExpiresAt).toLocaleString("es-PE")
+                            : "No programada"}
+                        </dd>
+                      </div>
+                    </dl>
+                    {(syncMessage || gcalStatus.lastError) && (
+                      <p className="mt-3 rounded-lg border border-border p-3 text-sm">
+                        {syncMessage || gcalStatus.lastError}
+                      </p>
                     )}
                   </div>
 
@@ -1083,21 +1133,6 @@ function AdministrativeImportToolsPanel() {
           </table>
         </div>
       </Card>
-
-      <div>
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Wrench className="h-4 w-4 text-primary" /> Diagnóstico
-        </div>
-        <MassImportDryRun />
-      </div>
-
-      {/* ── Sección administrativa: Migración de organización documental ── */}
-      <div>
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-          <FolderArchive className="h-4 w-4 text-primary" /> Migración de organización documental
-        </div>
-        <MigrationTool />
-      </div>
 
       <Card className="p-6">
         <div className="flex items-start gap-4">

@@ -2,9 +2,14 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { setServerRuntimeEnv } from "./lib/server-runtime-env";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
+};
+
+type WorkerExecutionContext = {
+  waitUntil: (promise: Promise<unknown>) => void;
 };
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
@@ -39,6 +44,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    setServerRuntimeEnv(env);
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
@@ -50,5 +56,13 @@ export default {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
+  },
+  scheduled(_controller: unknown, env: unknown, ctx: WorkerExecutionContext) {
+    setServerRuntimeEnv(env);
+    ctx.waitUntil(
+      import("./lib/google-calendar.server").then(({ runGoogleCalendarScheduledMaintenance }) =>
+        runGoogleCalendarScheduledMaintenance(),
+      ),
+    );
   },
 };

@@ -4,3 +4,6 @@
 name = "crm---dev"
 compatibility_date = "2026-06-26"
 compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 */6 * * *"]

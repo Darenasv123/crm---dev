@@ -1,23 +1,18 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card } from "@/components/app-layout";
-import { TaskDetailSheet } from "@/components/tasks/task-views";
 import {
   useAgendaEvents,
   useCreateAgendaEvent,
   useDeleteAgendaEvent,
-  useImportFromGoogleCalendar,
+  useResolveAgendaConflict,
+  useRetryAgendaSync,
+  useUpdateAgendaEvent,
+  type AgendaEventWithClient,
 } from "@/hooks/use-agenda";
+import { useAuth } from "@/hooks/use-auth";
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
-import {
-  useDailyTasks,
-  useDeleteDailyTask,
-  useUpdateDailyTask,
-  type DailyTask,
-} from "@/hooks/use-daily-tasks";
-import { useAuth } from "@/hooks/use-auth";
 import { exportAgendaICS, openEventInGoogleCalendar } from "@/lib/export-ics";
-import { isGoogleCalendarConnected } from "@/lib/google-calendar";
 import {
   formatPeruDate,
   formatPeruDateTime,
@@ -36,10 +31,10 @@ import {
   Trash2,
   Download,
   ExternalLink,
-  CheckSquare,
+  Pencil,
+  RefreshCcw,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
-import type { TaskStatus } from "@/lib/tasks";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_app/agenda/")({
   head: () => ({ meta: [{ title: "Agenda — CRM Jurídico" }] }),
@@ -47,6 +42,16 @@ export const Route = createFileRoute("/_app/agenda/")({
 });
 
 type EventType = "Audiencia" | "Cita" | "Recordatorio";
+
+const EMPTY_EVENT_FORM = {
+  title: "",
+  type: "Audiencia" as EventType,
+  event_date: "",
+  event_time: "",
+  location: "",
+  client_id: "",
+  case_id: "",
+};
 
 const typeColor: Record<EventType, { bg: string; dot: string; text: string }> = {
   Audiencia: { bg: "bg-primary/10 border-primary/30", dot: "bg-primary", text: "text-primary" },
@@ -75,115 +80,42 @@ function buildMonth(year: number, month: number) {
   return cells.slice(0, 42);
 }
 
-function taskDateISO(value: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(value));
-  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${map.year}-${map.month}-${map.day}`;
-}
-
 function CalendarPage() {
-  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "Administrador";
   const todayISO = getPeruTodayISO();
   const [todayYear, todayMonth, todayDay] = todayISO.split("-").map(Number);
   const today = new Date(todayYear, todayMonth - 1, todayDay);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const cells = buildMonth(viewYear, viewMonth);
-  const calendarStart = localDateToISO(cells[0].date);
-  const calendarEnd = localDateToISO(cells[cells.length - 1].date);
-
   const { data: events = [], isLoading } = useAgendaEvents();
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
-  const { data: tasks = [], isLoading: tasksLoading } = useDailyTasks({
-    view: "calendar",
-    selectedDate: calendarStart,
-    endDate: calendarEnd,
-    showCompleted: true,
-    limit: 200,
-  });
-  const updateTask = useUpdateDailyTask();
-  const deleteTask = useDeleteDailyTask();
-  const { user, profile } = useAuth();
   const createEvent = useCreateAgendaEvent();
+  const updateEvent = useUpdateAgendaEvent();
   const deleteEvent = useDeleteAgendaEvent();
-  const importGCal = useImportFromGoogleCalendar();
+  const retrySync = useRetryAgendaSync();
+  const resolveConflict = useResolveAgendaConflict();
 
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    title: "",
-    type: "Audiencia" as EventType,
-    event_date: "",
-    event_time: "",
-    location: "",
-    client_id: "",
-    case_id: "",
-  });
+  const [form, setForm] = useState(EMPTY_EVENT_FORM);
   // Día seleccionado para ver sus eventos
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
-  const [calendarFilter, setCalendarFilter] = useState<"Todos" | EventType | "Tareas">("Todos");
+  const [calendarFilter, setCalendarFilter] = useState<"Todos" | EventType>("Todos");
 
   // ── Auto-sync al abrir la agenda ──────────────────────────────────────────
-  const syncedRef = useRef(false);
-  const [syncStatus, setSyncStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (syncedRef.current) return;
-    if (!isGoogleCalendarConnected()) {
-      setSyncStatus(null);
-      return;
-    }
-    syncedRef.current = true;
-    setSyncStatus("Sincronizando con Google Calendar...");
-
-    importGCal
-      .mutateAsync()
-      .then((r) => {
-        const parts: string[] = [];
-        if (r.imported > 0)
-          parts.push(
-            `${r.imported} evento${r.imported !== 1 ? "s" : ""} importado${r.imported !== 1 ? "s" : ""}`,
-          );
-        if (r.updated > 0) parts.push(`${r.updated} actualizado${r.updated !== 1 ? "s" : ""}`);
-        if (r.restored > 0) parts.push(`${r.restored} recuperado${r.restored !== 1 ? "s" : ""}`);
-        if (r.deleted > 0) parts.push(`${r.deleted} eliminado${r.deleted !== 1 ? "s" : ""}`);
-        const msg = parts.length > 0 ? `✓ Google Calendar: ${parts.join(" · ")}` : null;
-        setSyncStatus(msg);
-        if (msg) setTimeout(() => setSyncStatus(null), 4000);
-      })
-      .catch((err) => {
-        setSyncStatus(`⚠ ${err instanceof Error ? err.message : "Error al sincronizar"}`);
-        setTimeout(() => setSyncStatus(null), 6000);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Helpers ───────────────────────────────────────────────────────────────
   const eventsByDay = new Map<string, typeof events>();
   events
-    .filter(
-      (event) =>
-        calendarFilter === "Todos" ||
-        (calendarFilter !== "Tareas" && event.type === calendarFilter),
-    )
+    .filter((event) => calendarFilter === "Todos" || event.type === calendarFilter)
     .forEach((e) => {
       if (!eventsByDay.has(e.event_date)) eventsByDay.set(e.event_date, []);
       eventsByDay.get(e.event_date)!.push(e);
     });
-  const tasksByDay = new Map<string, DailyTask[]>();
-  (calendarFilter === "Todos" || calendarFilter === "Tareas" ? tasks : []).forEach((task) => {
-    if (!task.due_date) return;
-    const day = taskDateISO(task.due_date);
-    if (!tasksByDay.has(day)) tasksByDay.set(day, []);
-    tasksByDay.get(day)!.push(task);
-  });
 
   const monthNames = [
     "Enero",
@@ -213,12 +145,34 @@ function CalendarPage() {
     } else setViewMonth((m) => m + 1);
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  function openNewEvent(eventDate = "") {
+    setEditingId(null);
+    setForm({ ...EMPTY_EVENT_FORM, event_date: eventDate });
+    setFormError(null);
+    setShowModal(true);
+  }
+
+  function openEditEvent(event: AgendaEventWithClient) {
+    setEditingId(event.id);
+    setForm({
+      title: event.title,
+      type: event.type as EventType,
+      event_date: event.event_date,
+      event_time: String(event.event_time).slice(0, 5),
+      location: event.location ?? "",
+      client_id: event.client_id ?? "",
+      case_id: event.case_id ?? "",
+    });
+    setFormError(null);
+    setShowModal(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
     try {
-      await createEvent.mutateAsync({
+      const values = {
         title: form.title,
         type: form.type,
         event_date: form.event_date,
@@ -226,17 +180,15 @@ function CalendarPage() {
         location: form.location || null,
         client_id: form.client_id || null,
         case_id: form.case_id || null,
-      });
+      };
+      if (editingId) {
+        await updateEvent.mutateAsync({ id: editingId, updates: values });
+      } else {
+        await createEvent.mutateAsync(values);
+      }
       setShowModal(false);
-      setForm({
-        title: "",
-        type: "Audiencia",
-        event_date: "",
-        event_time: "",
-        location: "",
-        client_id: "",
-        case_id: "",
-      });
+      setEditingId(null);
+      setForm(EMPTY_EVENT_FORM);
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Error al guardar.");
     } finally {
@@ -248,26 +200,11 @@ function CalendarPage() {
   const modalCases = form.client_id
     ? cases.filter((item) => item.client_id === form.client_id)
     : cases;
-  async function changeTaskStatus(task: DailyTask, status: TaskStatus) {
-    const saved = await updateTask.mutateAsync({
-      id: task.id,
-      updates: { status },
-      current: task,
-    });
-    setSelectedTask(saved);
-  }
-
-  async function removeTask(task: DailyTask) {
-    if (!window.confirm(`¿Eliminar la tarea “${task.title}”?`)) return;
-    await deleteTask.mutateAsync(task);
-    setSelectedTask(null);
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <AppLayout
       title="Agenda"
-      subtitle="Calendario de audiencias, citas, eventos y vencimientos"
+      subtitle="Calendario de audiencias, citas y recordatorios"
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -291,10 +228,7 @@ function CalendarPage() {
             <Download className="h-4 w-4" /> Exportar .ics
           </button>
           <button
-            onClick={() => {
-              setShowModal(true);
-              setFormError(null);
-            }}
+            onClick={() => openNewEvent()}
             className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 shadow-soft"
           >
             <Plus className="h-4 w-4" /> Nuevo evento
@@ -303,16 +237,6 @@ function CalendarPage() {
       }
     >
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
-        {/* Sync status banner */}
-        {syncStatus && (
-          <div className="xl:col-span-2 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-50 border border-sky-200 text-sm text-sky-800">
-            {syncStatus.startsWith("Sincronizando") && (
-              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-            )}
-            <span>{syncStatus}</span>
-          </div>
-        )}
-
         {/* ── Calendario ── */}
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 lg:px-6">
@@ -343,7 +267,7 @@ function CalendarPage() {
               </button>
             </div>
             <div aria-label="Filtrar calendario por tipo" className="flex flex-wrap gap-1">
-              {(["Todos", "Audiencia", "Cita", "Recordatorio", "Tareas"] as const).map((filter) => (
+              {(["Todos", "Audiencia", "Cita", "Recordatorio"] as const).map((filter) => (
                 <button
                   key={filter}
                   type="button"
@@ -369,7 +293,7 @@ function CalendarPage() {
             ))}
           </div>
 
-          {isLoading || tasksLoading ? (
+          {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
@@ -378,7 +302,6 @@ function CalendarPage() {
               {cells.map((c, i) => {
                 const iso = localDateToISO(c.date);
                 const evts = eventsByDay.get(iso) || [];
-                const dayTasks = tasksByDay.get(iso) || [];
                 const isToday = iso === todayISO;
                 const isSelected = iso === selectedDay;
                 return (
@@ -397,8 +320,7 @@ function CalendarPage() {
                     </div>
                     <div className="space-y-0.5">
                       {evts.slice(0, 2).map((e) => {
-                        // Eventos importados de Google (gcal_event_id pero sin tipo manual) usan color neutro
-                        const fromGoogle = !!e.gcal_event_id;
+                        const fromGoogle = !!e.google_event_id;
                         const tc = fromGoogle
                           ? {
                               bg: "bg-muted/60 border-border",
@@ -418,23 +340,9 @@ function CalendarPage() {
                           </div>
                         );
                       })}
-                      {dayTasks.slice(0, 2).map((task) => (
-                        <button
-                          key={task.id}
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedTask(task);
-                          }}
-                          className="flex w-full items-center gap-1 truncate rounded border border-violet-200 bg-violet-50 px-1 py-0.5 text-left text-[9px] font-medium text-violet-700"
-                        >
-                          <CheckSquare className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">{task.title}</span>
-                        </button>
-                      ))}
-                      {evts.length + dayTasks.length > 4 && (
+                      {evts.length > 2 && (
                         <div className="text-[9px] text-primary font-semibold pl-1">
-                          +{evts.length + dayTasks.length - 4} más
+                          +{evts.length - 2} más
                         </div>
                       )}
                     </div>
@@ -460,10 +368,6 @@ function CalendarPage() {
                 <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/60" />
                 <span className="text-foreground/80">Importado de Google</span>
               </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-                <span className="text-foreground/80">Tareas</span>
-              </div>
             </div>
           </Card>
 
@@ -486,40 +390,11 @@ function CalendarPage() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-              {(tasksByDay.get(selectedDay) ?? []).length > 0 && (
-                <div className="mb-3 space-y-2">
-                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Tareas
-                  </h4>
-                  {(tasksByDay.get(selectedDay) ?? []).map((task) => (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => setSelectedTask(task)}
-                      className="flex w-full items-start gap-2 rounded-lg border border-violet-200 bg-violet-50/70 p-3 text-left transition hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-900 dark:bg-violet-950/30"
-                    >
-                      <CheckSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-600" />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold leading-tight text-foreground">
-                          {task.title}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {task.assignee?.full_name ?? "Sin responsable"}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
               {(eventsByDay.get(selectedDay) ?? []).length === 0 ? (
                 <div className="py-4 text-center">
                   <p className="text-xs text-muted-foreground mb-3">Sin eventos este día.</p>
                   <button
-                    onClick={() => {
-                      setForm((f) => ({ ...f, event_date: selectedDay }));
-                      setShowModal(true);
-                      setFormError(null);
-                    }}
+                    onClick={() => openNewEvent(selectedDay)}
                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20"
                   >
                     <Plus className="h-3.5 w-3.5" /> Agregar evento
@@ -530,7 +405,7 @@ function CalendarPage() {
                   {(eventsByDay.get(selectedDay) ?? [])
                     .sort((a, b) => String(a.event_time).localeCompare(String(b.event_time)))
                     .map((e) => {
-                      const fromGoogle = !!e.gcal_event_id;
+                      const fromGoogle = !!e.google_event_id;
                       const tc = fromGoogle
                         ? { dot: "bg-muted-foreground/60" }
                         : (typeColor[e.type as EventType] ?? typeColor["Cita"]);
@@ -566,9 +441,17 @@ function CalendarPage() {
                                 <ExternalLink className="h-3 w-3" />
                               </button>
                               <button
+                                type="button"
+                                onClick={() => openEditEvent(e)}
+                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                title="Editar evento"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
                                 onClick={() => {
                                   if (window.confirm(`¿Eliminar "${e.title}"?`)) {
-                                    deleteEvent.mutate({ id: e.id, gcalId: e.gcal_event_id });
+                                    deleteEvent.mutate({ id: e.id });
                                   }
                                 }}
                                 className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50"
@@ -605,16 +488,21 @@ function CalendarPage() {
                                 <span className="break-words">{e.location}</span>
                               </div>
                             )}
+                            <AgendaSyncStatus
+                              event={e}
+                              isAdmin={isAdmin}
+                              busy={retrySync.isPending || resolveConflict.isPending}
+                              onRetry={() => retrySync.mutate(e.id)}
+                              onResolve={(resolution) =>
+                                resolveConflict.mutate({ id: e.id, resolution })
+                              }
+                            />
                           </div>
                         </div>
                       );
                     })}
                   <button
-                    onClick={() => {
-                      setForm((f) => ({ ...f, event_date: selectedDay }));
-                      setShowModal(true);
-                      setFormError(null);
-                    }}
+                    onClick={() => openNewEvent(selectedDay)}
                     className="w-full h-8 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition flex items-center justify-center gap-1.5"
                   >
                     <Plus className="h-3.5 w-3.5" /> Agregar evento este día
@@ -636,7 +524,7 @@ function CalendarPage() {
               ) : (
                 <div className="space-y-2">
                   {upcomingEvents.map((e) => {
-                    const fromGoogle = !!e.gcal_event_id;
+                    const fromGoogle = !!e.google_event_id;
                     const tc = fromGoogle
                       ? { dot: "bg-muted-foreground/60" }
                       : (typeColor[e.type as EventType] ?? typeColor["Cita"]);
@@ -668,6 +556,7 @@ function CalendarPage() {
                                 <MapPin className="h-3 w-3" /> {e.location}
                               </span>
                             )}
+                            <SyncBadge status={e.sync_status} />
                           </div>
                         </div>
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
@@ -691,9 +580,17 @@ function CalendarPage() {
                             <ExternalLink className="h-3.5 w-3.5" />
                           </button>
                           <button
+                            type="button"
+                            onClick={() => openEditEvent(e)}
+                            title="Editar evento"
+                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
                             onClick={() => {
                               if (window.confirm(`¿Eliminar el evento "${e.title}"?`)) {
-                                deleteEvent.mutate({ id: e.id, gcalId: e.gcal_event_id });
+                                deleteEvent.mutate({ id: e.id });
                               }
                             }}
                             className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition"
@@ -711,12 +608,14 @@ function CalendarPage() {
         </div>
       </div>
 
-      {/* ── Modal nuevo evento ── */}
+      {/* ── Modal de evento ── */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Nuevo evento</h3>
+              <h3 className="text-base font-semibold">
+                {editingId ? "Editar evento" : "Nuevo evento"}
+              </h3>
               <button
                 onClick={() => setShowModal(false)}
                 className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
@@ -724,7 +623,7 @@ function CalendarPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form onSubmit={handleSave} className="space-y-4">
               <AF
                 label="Título *"
                 value={form.title}
@@ -828,26 +727,90 @@ function CalendarPage() {
                   className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {saving ? "Guardando..." : "Guardar evento"}
+                  {saving ? "Guardando..." : editingId ? "Guardar cambios" : "Guardar evento"}
                 </button>
               </div>
             </form>
           </Card>
         </div>
       )}
-      <TaskDetailSheet
-        task={selectedTask}
-        role={profile?.role}
-        userId={user?.id}
-        onClose={() => setSelectedTask(null)}
-        onEdit={() => {
-          setSelectedTask(null);
-          navigate({ to: "/tareas" as never });
-        }}
-        onStatus={changeTaskStatus}
-        onDelete={removeTask}
-      />
     </AppLayout>
+  );
+}
+
+function SyncBadge({ status }: { status: string | null }) {
+  const value = status || "pending";
+  const labels: Record<string, string> = {
+    synced: "Sincronizado",
+    pending: "Sincronizando",
+    error: "Error de sincronización",
+    conflict: "Conflicto",
+  };
+  const tones: Record<string, string> = {
+    synced: "bg-emerald-50 text-emerald-700",
+    pending: "bg-sky-50 text-sky-700",
+    error: "bg-red-50 text-red-700",
+    conflict: "bg-amber-50 text-amber-700",
+  };
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+        tones[value] ?? "bg-muted text-muted-foreground"
+      }`}
+    >
+      {labels[value] ?? value}
+    </span>
+  );
+}
+
+function AgendaSyncStatus({
+  event,
+  isAdmin,
+  busy,
+  onRetry,
+  onResolve,
+}: {
+  event: AgendaEventWithClient;
+  isAdmin: boolean;
+  busy: boolean;
+  onRetry: () => void;
+  onResolve: (resolution: "crm" | "google") => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <SyncBadge status={event.sync_status} />
+      {event.sync_status === "error" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRetry}
+          className="inline-flex items-center gap-1 text-[10px] font-semibold text-primary disabled:opacity-50"
+          title={event.sync_error ?? undefined}
+        >
+          <RefreshCcw className="h-3 w-3" /> Reintentar
+        </button>
+      )}
+      {event.sync_status === "conflict" && isAdmin && (
+        <>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onResolve("crm")}
+            className="text-[10px] font-semibold text-primary disabled:opacity-50"
+          >
+            Usar versión CRM
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onResolve("google")}
+            className="text-[10px] font-semibold text-primary disabled:opacity-50"
+          >
+            Usar versión Google
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
