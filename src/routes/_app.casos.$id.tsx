@@ -76,21 +76,30 @@ function CaseDetail() {
       }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
-        <Card className="p-6">
+        <Card className="p-6 border-l-4 border-l-info">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Resumen operativo
+                Expediente Legal
               </p>
-              <h2 className="mt-1 text-xl font-bold">{caseItem.process_type}</h2>
+              <h2 className="mt-1 text-xl font-bold">{caseItem.case_number || caseItem.expediente}</h2>
             </div>
-            <StatusBadge tone={caseItem.status === "Archivado" ? "default" : "info"}>
+            <StatusBadge
+              tone={
+                caseItem.status === "Archivado"
+                  ? "default"
+                  : caseItem.priority === "Alta"
+                    ? "danger"
+                    : "info"
+              }
+            >
               {caseItem.status}
             </StatusBadge>
           </div>
-          <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+          <dl className="mt-6 grid gap-5 sm:grid-cols-2 border-t pt-5">
             <Info label="Cliente" value={caseItem.clients?.name || "Sin cliente"} />
             <Info label="Materia" value={caseItem.materia || "Sin clasificar"} />
+            <Info label="Tipo" value={caseItem.process_type} />
             <Info label="Prioridad" value={caseItem.priority || "Normal"} />
             <Info label="Próxima acción" value={caseItem.next_action || "Sin acción registrada"} />
             <Info
@@ -99,7 +108,7 @@ function CaseDetail() {
             />
           </dl>
           {caseItem.current_summary && (
-            <div className="mt-6 border-t pt-5">
+            <div className="mt-6 border-t pt-5 bg-primary/5 p-4 rounded-lg">
               <h3 className="text-sm font-semibold">Resumen actual</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
                 {caseItem.current_summary}
@@ -109,15 +118,26 @@ function CaseDetail() {
         </Card>
 
         <div className="grid gap-4">
-          <Metric icon={CheckSquare} label="Tareas activas" value={activeTasks.length} />
-          <Metric icon={FileText} label="Documentos" value={caseDocuments.length} />
-          <Metric icon={CalendarClock} label="Movimientos" value={events.length} />
+          <Metric
+            icon={CheckSquare}
+            label="Tareas activas"
+            value={activeTasks.length}
+            color="primary"
+          />
+          <Metric
+            icon={FileText}
+            label="Documentos"
+            value={caseDocuments.length}
+            color="info"
+          />
+          <Metric icon={CalendarClock} label="Movimientos" value={events.length} color="success" />
         </div>
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <Card className="overflow-hidden">
-          <div className="border-b p-5">
+        <Card className="overflow-hidden border-t-4 border-t-primary">
+          <div className="border-b bg-primary/5 p-5 flex items-center gap-2">
+            <CheckSquare className="h-5 w-5 text-primary" />
             <h2 className="font-bold">Trabajo relacionado</h2>
           </div>
           {tasks.length === 0 ? (
@@ -134,16 +154,17 @@ function CaseDetail() {
                     {task.profiles?.full_name || "Disponible"}
                   </p>
                 </div>
-                <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
-                  {task.status}
-                </StatusBadge>
+              <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
+                {task.status}
+              </StatusBadge>
               </div>
             ))
           )}
         </Card>
 
-        <Card className="overflow-hidden">
-          <div className="border-b p-5">
+        <Card className="overflow-hidden border-t-4 border-t-success">
+          <div className="border-b bg-success/5 p-5 flex items-center gap-2">
+            <CalendarClock className="h-5 w-5 text-success" />
             <h2 className="font-bold">Cronología</h2>
           </div>
           {events.length === 0 ? (
@@ -182,14 +203,23 @@ function Metric({
   icon: Icon,
   label,
   value,
+  color = "primary",
 }: {
   icon: typeof CheckSquare;
   label: string;
   value: number;
+  color?: "primary" | "info" | "success" | "destructive";
 }) {
+  const colorMap = {
+    primary: "bg-primary/10 text-primary",
+    info: "bg-info/10 text-info",
+    success: "bg-success/10 text-success",
+    destructive: "bg-destructive/10 text-destructive",
+  };
+
   return (
-    <Card className="flex items-center gap-4 p-5">
-      <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
+    <Card className="flex items-center gap-4 p-5 hover:shadow-md transition-shadow">
+      <span className={`grid h-10 w-10 place-items-center rounded-lg ${colorMap[color]}`}>
         <Icon className="h-5 w-5" />
       </span>
       <div>

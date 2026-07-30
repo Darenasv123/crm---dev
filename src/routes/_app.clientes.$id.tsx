@@ -159,22 +159,24 @@ function ClientDetail() {
       }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,2fr)]">
-        <Card className="p-6">
+        <Card className="p-6 border-l-4" style={{ borderLeftColor: client.color }}>
           <div className="flex items-center gap-4">
             <span
-              className="grid h-14 w-14 place-items-center rounded-full text-lg font-bold text-white"
+              className="grid h-14 w-14 place-items-center rounded-lg text-lg font-bold text-white shadow-md"
               style={{ background: client.color }}
             >
               {client.initials}
             </span>
-            <div className="min-w-0">
-              <h2 className="truncate font-bold">{client.name}</h2>
-              <StatusBadge tone={client.status === "Activo" ? "success" : "default"}>
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate font-bold text-lg">{client.name}</h2>
+              <StatusBadge
+                tone={client.status === "Activo" ? "success" : "default"}
+              >
                 {client.status}
               </StatusBadge>
             </div>
           </div>
-          <dl className="mt-6 space-y-4">
+          <dl className="mt-6 space-y-4 border-t pt-4">
             <Contact icon={Phone} label="Teléfono" value={client.phone || "Sin teléfono"} />
             {client.email && <Contact icon={Mail} label="Correo" value={client.email} />}
           </dl>
@@ -203,9 +205,12 @@ function ClientDetail() {
         </div>
       </div>
 
-      <Card className="mt-5 overflow-hidden">
-        <div className="border-b p-5">
-          <h2 className="font-bold">Expedientes del cliente</h2>
+      <Card className="mt-5 overflow-hidden border-t-4 border-t-primary">
+        <div className="border-b bg-primary/5 p-5">
+          <h2 className="font-bold flex items-center gap-2">
+            <Briefcase className="h-5 w-5 text-primary" />
+            Expedientes del cliente
+          </h2>
         </div>
         {clientCases.length === 0 ? (
           <p className="p-6 text-sm text-muted-foreground">Aún no hay expedientes registrados.</p>
@@ -215,7 +220,7 @@ function ClientDetail() {
               key={item.id}
               to={"/casos/$id" as never}
               params={{ id: item.id } as never}
-              className="grid gap-1 border-b px-5 py-4 last:border-b-0 hover:bg-muted/40 sm:grid-cols-[1.2fr_1fr_140px]"
+              className="grid gap-1 border-b px-5 py-4 last:border-b-0 hover:bg-primary/2 transition-colors sm:grid-cols-[1.2fr_1fr_140px]"
             >
               <span className="font-semibold">{item.case_number || item.expediente}</span>
               <span className="text-sm text-muted-foreground">
