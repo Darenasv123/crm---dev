@@ -4,18 +4,14 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useAuth } from "@/hooks/use-auth";
-import { useTodayTaskSummary } from "@/hooks/use-daily-tasks";
-import { TaskStatusChip } from "@/components/tasks/task-views";
+import { usePendingTaskSummary } from "@/hooks/use-daily-tasks";
 import { usePayments } from "@/hooks/use-payments";
 import { useClientReports } from "@/hooks/use-reports";
 import { useDocuments } from "@/hooks/use-documents";
-import { useImportJobsFilter } from "@/hooks/use-ai-findings";
-import { ZipImport } from "@/components/zip-import";
 import { usePermissions } from "@/lib/permissions";
 import { displayCaseNumber, normalizeCaseStatus } from "@/lib/case-validation";
 import { formatPeruDate, getPeruHour, getPeruTodayISO } from "@/lib/peru-time";
-import { classifyTask, compareTasks } from "@/lib/tasks";
-import { useState } from "react";
+import { compareTasks, normalizeTaskStatus, TASK_STATUS_LABELS } from "@/lib/tasks";
 import {
   Users,
   Briefcase,
@@ -27,9 +23,7 @@ import {
   ScrollText,
   Gavel,
   ChevronRight,
-  AlertTriangle,
   ClipboardList,
-  Upload,
   CalendarPlus,
   FolderPlus,
   Landmark,
@@ -61,33 +55,26 @@ function Dashboard() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const { canViewPayments, canViewFinancialMetrics } = usePermissions(profile);
-  const [showZipImport, setShowZipImport] = useState(false);
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
   const { data: events = [] } = useAgendaEvents();
   const { data: payments = [] } = usePayments({ enabled: canViewPayments });
   const { data: reports = [] } = useClientReports();
   const { data: documents = [] } = useDocuments();
-  const { data: importJobs = [] } = useImportJobsFilter({ enabled: isAdmin });
-
   const today = getPeruTodayISO();
   const {
     tasks: dailyTasks,
     isLoading: tasksLoading,
-    overdue: overdueTaskCount,
-  } = useTodayTaskSummary();
+    available: availableTaskCount,
+    mine: myTaskCount,
+    running: runningTaskCount,
+  } = usePendingTaskSummary();
   const dashboardTasks = [...dailyTasks]
     .sort((left, right) => compareTasks(left, right))
     .slice(0, 6);
   const activeClients = clients.filter((c) => c.status === "Activo");
   const activeCases = cases.filter(
     (c) => !["Archivado", "Concluido"].includes(normalizeCaseStatus(c.status)),
-  );
-  const pendingClassificationCases = activeCases.filter(
-    (c) =>
-      normalizeCaseStatus(c.status) === "Pendiente de clasificación" ||
-      c.case_stage === "pendiente_revision" ||
-      !c.expediente.trim(),
   );
   const todayEvents = events.filter((e) => e.event_date === today);
   const upcomingEvents = events
@@ -106,9 +93,6 @@ function Dashboard() {
       !doc.case_id || doc.processing_status === "pending" || doc.verification_status === "pending",
   );
   const clientsWithoutContact = clients.filter((c) => !c.phone && !c.email).slice(0, 5);
-  const importIssues = isAdmin
-    ? importJobs.filter((job) => job.status === "failed" || job.failed_documents > 0).slice(0, 5)
-    : [];
   const recentReports = reports.slice(0, 3);
   const recentActivity = [
     ...clients.slice(0, 8).map((client) => ({
@@ -172,13 +156,6 @@ function Dashboard() {
           to="/casos"
         />
         <KpiCard
-          icon={AlertTriangle}
-          label="Pendientes de clasificación"
-          value={pendingClassificationCases.length}
-          tone="warning"
-          to="/casos"
-        />
-        <KpiCard
           icon={CalendarClock}
           label="Actividades próximas"
           value={upcomingEvents.length}
@@ -206,11 +183,6 @@ function Dashboard() {
       <Card className="mt-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <QuickAction icon={UserPlus} label="Nuevo cliente" to="/clientes" />
-          <QuickAction
-            icon={Upload}
-            label="Importar cliente desde ZIP"
-            onClick={() => setShowZipImport(true)}
-          />
           <QuickAction icon={FolderPlus} label="Nuevo expediente" to="/casos" />
           <QuickAction icon={FileText} label="Subir documento" to="/documentos" />
           {canViewPayments && <QuickAction icon={Landmark} label="Registrar pago" to="/pagos" />}
@@ -222,42 +194,40 @@ function Dashboard() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="flex items-center gap-2 text-base font-semibold">
-              <ClipboardList className="h-4 w-4 text-primary" /> Tareas de hoy
+              <ClipboardList className="h-4 w-4 text-primary" /> Trabajo pendiente
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {overdueTaskCount > 0
-                ? `${overdueTaskCount} atrasada${overdueTaskCount === 1 ? "" : "s"}`
-                : "Sin tareas atrasadas"}
+              {isAdmin
+                ? `${availableTaskCount} disponibles · ${runningTaskCount} en ejecución`
+                : `${myTaskCount} propias · ${availableTaskCount} disponibles`}
             </p>
           </div>
           <Link
             to={"/tareas" as never}
             className="text-xs font-semibold text-primary hover:underline"
           >
-            Abrir Mi día
+            Abrir tareas
           </Link>
         </div>
         {tasksLoading ? (
           <div className="mt-4 h-16 animate-pulse rounded-lg bg-muted/50" />
         ) : dashboardTasks.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            No hay tareas pendientes ni terminadas hoy.
-          </p>
+          <p className="mt-4 text-sm text-muted-foreground">No hay trabajo pendiente.</p>
         ) : (
           <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {dashboardTasks.map((task) => (
               <Link
                 key={task.id}
                 to={"/tareas" as never}
-                className={`rounded-lg border p-3 transition hover:bg-muted/30 ${
-                  classifyTask(task, today) === "overdue"
-                    ? "border-red-200 bg-red-50/40"
-                    : "border-border"
-                }`}
+                className="rounded-lg border border-border p-3 transition hover:bg-muted/30"
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="line-clamp-2 text-sm font-semibold">{task.title}</span>
-                  <TaskStatusChip status={task.status} />
+                  <StatusBadge
+                    tone={normalizeTaskStatus(task.status) === "blocked" ? "danger" : "info"}
+                  >
+                    {TASK_STATUS_LABELS[normalizeTaskStatus(task.status)]}
+                  </StatusBadge>
                 </div>
                 <div className="mt-2 truncate text-xs text-muted-foreground">
                   {task.assignee?.full_name ?? "Sin responsable"} ·{" "}
@@ -281,15 +251,6 @@ function Dashboard() {
             </StatusBadge>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <WorkBucket
-              icon={AlertTriangle}
-              label="Expedientes por clasificar"
-              empty="Sin expedientes pendientes."
-              items={pendingClassificationCases.slice(0, 5).map((c) => ({
-                title: c.clients?.name ?? c.process_type,
-                meta: displayCaseNumber(c.expediente, c.case_number),
-              }))}
-            />
             <WorkBucket
               icon={CreditCard}
               label="Pagos vencidos"
@@ -329,16 +290,7 @@ function Dashboard() {
               empty="Todos tienen teléfono o correo."
               items={clientsWithoutContact.map((client) => ({
                 title: client.name,
-                meta: client.process_type ?? "—",
-              }))}
-            />
-            <WorkBucket
-              icon={ClipboardList}
-              label="Importaciones con errores"
-              empty={isAdmin ? "Sin errores recientes." : "Visible para administradores."}
-              items={importIssues.map((job) => ({
-                title: job.name,
-                meta: `${job.failed_documents} fallidos de ${job.total_documents}`,
+                meta: "Revisar teléfono o correo",
               }))}
             />
           </div>
@@ -348,9 +300,7 @@ function Dashboard() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold">Próximas actividades</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Audiencias, plazos, reuniones y tareas
-              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Audiencias, plazos y reuniones</p>
             </div>
             <Link
               to={"/agenda" as never}
@@ -504,13 +454,6 @@ function Dashboard() {
           )}
         </Card>
       </div>
-
-      {showZipImport && (
-        <ZipImport
-          onClose={() => setShowZipImport(false)}
-          onSuccess={() => setShowZipImport(false)}
-        />
-      )}
     </AppLayout>
   );
 }

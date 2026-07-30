@@ -28,14 +28,12 @@ describe("shared CRM query invalidation", () => {
         ["clients"],
         ["cases"],
         ["documents"],
-        ["agenda_events"],
         ["payments"],
         ["client_reports"],
         ["import-jobs-filter"],
         ["ai-findings"],
         ["clients", "client-1"],
         ["cases", "case-1"],
-        ["case_parties", "case-1"],
         ["case_events"],
         ["case_tasks", "case-1"],
         ["payment_records", "payment-1"],
@@ -51,11 +49,6 @@ describe("shared CRM query invalidation", () => {
       includeCore: false,
     });
 
-    expect(calls).toEqual([
-      ["cases", "case-2"],
-      ["case_parties", "case-2"],
-      ["case_events"],
-      ["case_tasks", "case-2"],
-    ]);
+    expect(calls).toEqual([["cases", "case-2"], ["case_events"], ["case_tasks", "case-2"]]);
   });
 });

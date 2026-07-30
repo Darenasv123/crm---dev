@@ -17,13 +17,13 @@ import {
   ListTodo,
   MoreHorizontal,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { Chatbot } from "@/components/chatbot";
 import { GlobalSearch } from "@/components/global-search";
-import { useTodayTaskSummary } from "@/hooks/use-daily-tasks";
+import { usePendingTaskSummary } from "@/hooks/use-daily-tasks";
 
 type NavItem = {
   to: string;
@@ -59,7 +59,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
   const { data: notifications = [] } = useNotifications();
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { attentionCount: taskAttentionCount } = useTodayTaskSummary();
+  const { attentionCount: taskAttentionCount } = usePendingTaskSummary();
 
   async function handleSignOut() {
     await signOut();
@@ -394,9 +394,9 @@ export function StatusBadge({
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({ children, className = "", ...props }: ComponentPropsWithoutRef<"div">) {
   return (
-    <div className={`rounded-xl bg-card border border-border shadow-soft ${className}`}>
+    <div className={`rounded-xl bg-card border border-border shadow-soft ${className}`} {...props}>
       {children}
     </div>
   );

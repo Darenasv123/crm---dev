@@ -4,7 +4,6 @@ const CORE_CRM_QUERY_KEYS: QueryKey[] = [
   ["clients"],
   ["cases"],
   ["documents"],
-  ["agenda_events"],
   ["payments"],
   ["client_reports"],
   ["import-jobs-filter"],
@@ -31,7 +30,6 @@ export function invalidateCrmQueries(
   }
   if (options.caseId) {
     void queryClient.invalidateQueries({ queryKey: ["cases", options.caseId] });
-    void queryClient.invalidateQueries({ queryKey: ["case_parties", options.caseId] });
     void queryClient.invalidateQueries({ queryKey: ["case_events"] });
     void queryClient.invalidateQueries({ queryKey: ["case_tasks", options.caseId] });
   }

@@ -3,5 +3,5 @@ import { TasksPage } from "@/components/tasks/tasks-page";
 
 export const Route = createFileRoute("/_app/tareas/")({
   head: () => ({ meta: [{ title: "Tareas — CRM Jurídico" }] }),
-  component: () => <TasksPage mode="today" />,
+  component: () => <TasksPage mode="available" />,
 });

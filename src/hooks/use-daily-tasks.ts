@@ -1,19 +1,12 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-  type QueryKey,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
-import { addDaysToISO, getPeruTodayISO, PERU_UTC_OFFSET } from "@/lib/peru-time";
 import {
-  classifyTask,
+  isAvailableTask,
   normalizeTaskStatus,
-  type TaskFormValues,
   validateTaskForm,
+  type TaskFormValues,
 } from "@/lib/tasks";
 
 type CaseTask = Database["public"]["Tables"]["case_tasks"]["Row"];
@@ -41,12 +34,11 @@ export interface DailyTask extends CaseTask {
   clients: { id: string; name: string; initials: string } | null;
 }
 
-export type DailyTaskView = "today" | "upcoming" | "calendar";
+export type DailyTaskView = "available" | "mine" | "running" | "all" | "board";
 
 export type DailyTaskFilters = {
   view: DailyTaskView;
-  selectedDate: string;
-  endDate?: string;
+  userId?: string;
   assignedTo?: string;
   status?: string;
   priority?: string;
@@ -54,7 +46,6 @@ export type DailyTaskFilters = {
   caseId?: string;
   search?: string;
   showCompleted?: boolean;
-  overdueOnly?: boolean;
   withoutClient?: boolean;
   withoutCase?: boolean;
   limit?: number;
@@ -77,76 +68,37 @@ const taskSelect = `
   clients(id, name, initials)
 `;
 
-function dayBounds(date: string) {
-  return {
-    start: new Date(`${date}T00:00:00${PERU_UTC_OFFSET}`).toISOString(),
-    end: new Date(`${date}T23:59:59${PERU_UTC_OFFSET}`).toISOString(),
-  };
-}
-
 export function useDailyTasks(filters: DailyTaskFilters) {
   return useQuery({
     queryKey: dailyTaskKeys.list(filters),
     queryFn: async () => {
       const db = await getAuthClient();
-      const bounds = dayBounds(filters.selectedDate);
-      let clientCaseIds: string[] = [];
-      if (filters.clientId && !filters.caseId) {
-        const { data: relatedCases, error: caseError } = await db
-          .from("cases")
-          .select("id")
-          .eq("client_id", filters.clientId)
-          .limit(200);
-        if (caseError) throw new Error(caseError.message);
-        clientCaseIds = (relatedCases ?? []).map((item) => item.id);
-      }
       let query = db
         .from("case_tasks")
         .select(taskSelect)
-        .order("due_date", { ascending: true, nullsFirst: false })
-        .limit(filters.limit ?? (filters.view === "upcoming" ? 100 : 200));
+        .order("created_at", { ascending: false })
+        .limit(filters.limit ?? 250);
 
-      if (filters.overdueOnly) {
-        query = query.lt("due_date", new Date().toISOString()).neq("status", "completed");
-      } else if (filters.view === "today") {
-        query = query.or(
-          `and(due_date.lte.${bounds.end},status.neq.completed),and(completed_at.gte.${bounds.start},completed_at.lte.${bounds.end})`,
-        );
-      } else if (filters.view === "upcoming") {
-        const endDate = filters.endDate ?? addDaysToISO(filters.selectedDate, 90);
+      if (filters.view === "available") {
+        query = query.is("assigned_to", null).eq("status", "pending");
+      } else if (filters.view === "mine") {
+        if (!filters.userId) return [];
+        query = query.eq("assigned_to", filters.userId);
+      } else if (filters.view === "running") {
         query = query
-          .gt("due_date", bounds.end)
-          .lte("due_date", dayBounds(endDate).end)
-          .neq("status", "completed");
-      } else {
-        const endDate = filters.endDate ?? addDaysToISO(filters.selectedDate, 42);
-        query = query.gte("due_date", bounds.start).lte("due_date", dayBounds(endDate).end);
+          .not("assigned_to", "is", null)
+          .in("status", ["in_progress", "ready_to_file", "blocked"]);
       }
-
       if (filters.assignedTo) query = query.eq("assigned_to", filters.assignedTo);
       if (filters.status) query = query.eq("status", filters.status);
-      if (filters.priority) {
-        query =
-          filters.priority === "Normal"
-            ? query.in("priority", ["Normal", "Media"])
-            : query.eq("priority", filters.priority);
-      }
-      if (filters.clientId) {
-        query =
-          clientCaseIds.length > 0
-            ? query.or(`client_id.eq.${filters.clientId},case_id.in.(${clientCaseIds.join(",")})`)
-            : query.eq("client_id", filters.clientId);
-      }
+      if (filters.priority) query = query.eq("priority", filters.priority);
+      if (filters.clientId) query = query.eq("client_id", filters.clientId);
       if (filters.caseId) query = query.eq("case_id", filters.caseId);
-      if (filters.withoutClient) {
-        query = query.is("client_id", null).is("case_id", null);
-      }
+      if (filters.withoutClient) query = query.is("client_id", null).is("case_id", null);
       if (filters.withoutCase) query = query.is("case_id", null);
-      if (filters.search?.trim()) {
-        query = query.ilike("title", `%${filters.search.trim()}%`);
-      }
-      if (!filters.showCompleted && filters.view !== "today") {
-        query = query.neq("status", "completed");
+      if (filters.search?.trim()) query = query.ilike("title", `%${filters.search.trim()}%`);
+      if (!filters.showCompleted && !filters.status && filters.view !== "available") {
+        query = query.neq("status", "completed").neq("status", "cancelled");
       }
 
       const { data, error } = await query;
@@ -157,30 +109,29 @@ export function useDailyTasks(filters: DailyTaskFilters) {
   });
 }
 
-export function useTodayTaskSummary() {
+export function usePendingTaskSummary() {
   const { user, profile } = useAuth();
-  const selectedDate = getPeruTodayISO();
   const query = useDailyTasks({
-    view: "today",
-    selectedDate,
-    assignedTo: profile?.role === "Personal" ? user?.id : undefined,
-    showCompleted: true,
-    limit: 200,
-    enabled: !!profile && (profile.role !== "Personal" || !!user?.id),
+    view: "all",
+    showCompleted: false,
+    limit: 250,
+    enabled: !!profile,
   });
-  const rows = query.data ?? [];
-  const overdue = rows.filter((task) => classifyTask(task, selectedDate) === "overdue").length;
-  const pendingToday = rows.filter(
-    (task) =>
-      normalizeTaskStatus(task.status) !== "completed" &&
-      classifyTask(task, selectedDate) === "today",
+  const tasks = query.data ?? [];
+  const available = tasks.filter(isAvailableTask).length;
+  const mine = tasks.filter(
+    (task) => task.assigned_to === user?.id && normalizeTaskStatus(task.status) !== "completed",
+  ).length;
+  const running = tasks.filter(
+    (task) => task.assigned_to && normalizeTaskStatus(task.status) === "in_progress",
   ).length;
   return {
     ...query,
-    tasks: rows,
-    overdue,
-    pendingToday,
-    attentionCount: overdue + pendingToday,
+    tasks,
+    available,
+    mine,
+    running,
+    attentionCount: profile?.role === "Administrador" ? available : mine,
   };
 }
 
@@ -194,7 +145,7 @@ export function useTaskClients() {
         .select("id, name, initials")
         .eq("status", "Activo")
         .order("name")
-        .limit(100);
+        .limit(200);
       if (error) throw new Error(error.message);
       return data;
     },
@@ -210,7 +161,7 @@ export function useTaskCases(clientId?: string) {
         .from("cases")
         .select("id, client_id, expediente, case_number, process_type")
         .order("updated_at", { ascending: false })
-        .limit(100);
+        .limit(200);
       if (clientId) query = query.eq("client_id", clientId);
       const { data, error } = await query;
       if (error) throw new Error(error.message);
@@ -219,30 +170,18 @@ export function useTaskCases(clientId?: string) {
   });
 }
 
-function invalidateTaskConsumers(
-  queryClient: QueryClient,
-  task?:
-    | (Pick<CaseTask, "case_id" | "client_id"> & {
-        cases?: { client_id: string } | null;
-      })
-    | null,
-) {
+function invalidateTaskConsumers(queryClient: QueryClient, task?: DailyTask | null) {
   void queryClient.invalidateQueries({ queryKey: dailyTaskKeys.all });
   void queryClient.invalidateQueries({ queryKey: ["case_tasks"] });
   void queryClient.invalidateQueries({ queryKey: ["case_events"] });
-  if (task?.case_id) {
-    void queryClient.invalidateQueries({ queryKey: ["cases", task.case_id] });
-  }
+  if (task?.case_id) void queryClient.invalidateQueries({ queryKey: ["cases", task.case_id] });
   const clientId = task?.client_id ?? task?.cases?.client_id;
-  if (clientId) {
-    void queryClient.invalidateQueries({ queryKey: ["clients", clientId] });
-  }
+  if (clientId) void queryClient.invalidateQueries({ queryKey: ["clients", clientId] });
 }
 
 export function useCreateDailyTask() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-
   return useMutation({
     mutationFn: async ({
       values,
@@ -270,76 +209,58 @@ export function useCreateDailyTask() {
   });
 }
 
-type TaskUpdateInput = {
-  id: string;
-  updates: CaseTaskUpdate;
-  current: DailyTask;
-};
+export function useClaimDailyTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const db = await getAuthClient();
+      const { data, error } = await db.rpc("claim_case_task", { p_task_id: taskId });
+      if (error) {
+        const conflict = /tomada por otro|assigned|pending/i.test(error.message);
+        throw new Error(
+          conflict ? "Esta tarea acaba de ser tomada por otro integrante." : error.message,
+        );
+      }
+      return (Array.isArray(data) ? data[0] : data) as unknown as DailyTask;
+    },
+    onSuccess: (task) => invalidateTaskConsumers(queryClient, task),
+    onError: () => void queryClient.invalidateQueries({ queryKey: dailyTaskKeys.all }),
+  });
+}
 
-type OptimisticContext = {
-  snapshots: Array<[QueryKey, unknown]>;
-};
+export function useReturnDailyTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const db = await getAuthClient();
+      const { data, error } = await db.rpc("return_case_task", { p_task_id: taskId });
+      if (error) throw new Error(error.message);
+      return (Array.isArray(data) ? data[0] : data) as unknown as DailyTask;
+    },
+    onSuccess: (task) => invalidateTaskConsumers(queryClient, task),
+  });
+}
 
 export function useUpdateDailyTask() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-
-  return useMutation<DailyTask, Error, TaskUpdateInput, OptimisticContext>({
-    mutationFn: async ({ id, updates }) => {
-      const normalized: CaseTaskUpdate = { ...updates };
-      if (updates.status) {
-        const status = normalizeTaskStatus(updates.status);
-        normalized.status = status;
-        normalized.completed_at = status === "completed" ? new Date().toISOString() : null;
-        normalized.completed_by = status === "completed" ? (user?.id ?? null) : null;
-      }
-
+  return useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: CaseTaskUpdate;
+      current?: DailyTask;
+    }) => {
       const db = await getAuthClient();
       const { data, error } = await db
         .from("case_tasks")
-        .update(normalized)
+        .update(updates)
         .eq("id", id)
         .select(taskSelect)
         .single();
       if (error) throw new Error(error.message);
       return data as unknown as DailyTask;
-    },
-    onMutate: async ({ id, updates }) => {
-      await Promise.all([
-        queryClient.cancelQueries({ queryKey: dailyTaskKeys.all }),
-        queryClient.cancelQueries({ queryKey: ["case_tasks"] }),
-      ]);
-      const snapshots = queryClient.getQueriesData({ queryKey: dailyTaskKeys.all });
-      queryClient.setQueriesData<DailyTask[]>(
-        { queryKey: dailyTaskKeys.all },
-        (rows) =>
-          rows?.map((task) =>
-            task.id === id
-              ? {
-                  ...task,
-                  ...updates,
-                  completed_at:
-                    updates.status === "completed"
-                      ? new Date().toISOString()
-                      : updates.status
-                        ? null
-                        : task.completed_at,
-                  completed_by:
-                    updates.status === "completed"
-                      ? (user?.id ?? null)
-                      : updates.status
-                        ? null
-                        : task.completed_by,
-                }
-              : task,
-          ) ?? rows,
-      );
-      return { snapshots };
-    },
-    onError: (_error, _variables, context) => {
-      for (const [key, data] of context?.snapshots ?? []) {
-        queryClient.setQueryData(key, data);
-      }
     },
     onSuccess: (task) => invalidateTaskConsumers(queryClient, task),
   });
