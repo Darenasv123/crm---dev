@@ -61,8 +61,8 @@ export function ClientReportForm({
     return clients.filter(
       (c) =>
         c.name.toLowerCase().includes(term) ||
-        (c.dni ?? "").includes(term) ||
-        (c.phone ?? "").includes(term),
+        (c.phone ?? "").includes(term) ||
+        (c.email ?? "").toLowerCase().includes(term),
     );
   }, [clients, clientSearch]);
 
@@ -175,7 +175,7 @@ export function ClientReportForm({
               <input
                 value={clientSearch}
                 onChange={(e) => setClientSearch(e.target.value)}
-                placeholder="Buscar por nombre, DNI o teléfono..."
+                placeholder="Buscar por nombre, teléfono o correo..."
                 className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
               />
               <select
@@ -195,7 +195,7 @@ export function ClientReportForm({
                 <option value="">Selecciona un cliente</option>
                 {filteredClients.map((client) => (
                   <option key={client.id} value={client.id}>
-                    {client.name} {client.dni ? `(DNI: ${client.dni})` : ""}
+                    {client.name}
                   </option>
                 ))}
               </select>
@@ -217,7 +217,7 @@ export function ClientReportForm({
               <option value="">Selecciona un cliente</option>
               {clients.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.name} {client.dni ? `(DNI: ${client.dni})` : ""}
+                  {client.name}
                 </option>
               ))}
             </select>

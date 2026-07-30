@@ -20,13 +20,12 @@ import {
   Download,
   Eye,
   FileText,
-  IdCard,
   Loader2,
   Mail,
   MessageSquareText,
   Phone,
   Search,
-  Send,
+  type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Database } from "@/lib/database.types";
@@ -40,14 +39,11 @@ export const Route = createFileRoute("/_app/reportes/")({
 
 type CaseRow = Database["public"]["Tables"]["cases"]["Row"];
 type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
-type ReportFormState = { category: ReportCategory; case_id: string; title: string; body: string };
 
 type ReportExportData = {
   clientName: string;
-  dni: string | null;
   phone: string | null;
   email: string | null;
-  processType: string | null;
   category: string;
   title: string;
   body: string;
@@ -110,32 +106,6 @@ function escapeXml(value: string) {
     .replace(/'/g, "&apos;");
 }
 
-function buildReportData(
-  client: ClientRow,
-  cases: CaseRow[],
-  form: ReportFormState,
-): ReportExportData {
-  const relatedCase = cases.find((item) => item.id === form.case_id) ?? null;
-  return {
-    clientName: client.name,
-    dni: client.dni,
-    phone: client.phone,
-    email: client.email ?? "—",
-    processType: client.process_type,
-    category: reportCategoryLabel(form.category),
-    title: form.title.trim(),
-    body: form.body.trim(),
-    createdAt: new Date().toLocaleDateString("es-PE", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    }),
-    caseExpediente: relatedCase?.expediente ?? "General del cliente",
-    caseProcess: relatedCase?.process_type ?? client.process_type,
-    caseStatus: relatedCase?.status ?? "—",
-  };
-}
-
 function buildPublishedReportData(
   client: ClientRow,
   cases: CaseRow[],
@@ -144,10 +114,8 @@ function buildPublishedReportData(
   const relatedCase = cases.find((item) => item.id === report.case_id) ?? null;
   return {
     clientName: client.name,
-    dni: client.dni,
     phone: client.phone,
     email: client.email ?? "—",
-    processType: client.process_type,
     category: reportCategoryLabel(report.category as ReportCategory),
     title: report.title.trim(),
     body: report.body.trim(),
@@ -159,7 +127,7 @@ function buildPublishedReportData(
       minute: "2-digit",
     }),
     caseExpediente: relatedCase?.expediente ?? report.cases?.expediente ?? "General del cliente",
-    caseProcess: relatedCase?.process_type ?? report.cases?.process_type ?? client.process_type,
+    caseProcess: relatedCase?.process_type ?? report.cases?.process_type ?? null,
     caseStatus: relatedCase?.status ?? report.cases?.status ?? "—",
   };
 }
@@ -168,14 +136,6 @@ function reportFileName(data: ReportExportData, extension: "jpg" | "docx") {
   const client = sanitizeFileName(data.clientName) || "cliente";
   const title = sanitizeFileName(data.title) || "reporte";
   return `${client}-${title}.${extension}`;
-}
-
-function requireReportContent(data: ReportExportData) {
-  if (!data.title || !data.body) {
-    alert("Completa el título y el detalle del reporte antes de generar el archivo.");
-    return false;
-  }
-  return true;
 }
 
 function drawWrappedText(
@@ -244,10 +204,8 @@ async function createReportJpg(data: ReportExportData) {
 
   const fields: [string, string][] = [
     ["Cliente", data.clientName],
-    ["DNI", data.dni ?? "—"],
     ["Teléfono", data.phone ?? "—"],
     ["Correo", data.email ?? "—"],
-    ["Proceso", data.processType ?? "—"],
     ["Expediente", data.caseExpediente],
     ["Estado del expediente", data.caseStatus ?? "—"],
     ["Tipo de reporte", data.category],
@@ -426,10 +384,8 @@ ${docxParagraph("Estudio Jurídico Arenas")}
 ${docxParagraph(data.createdAt)}
 ${docxParagraph("Datos del cliente", "heading")}
 ${docxParagraph(`Cliente: ${data.clientName}`)}
-${docxParagraph(`DNI: ${data.dni ?? "—"}`)}
 ${docxParagraph(`Teléfono: ${data.phone ?? "—"}`)}
 ${docxParagraph(`Correo: ${data.email ?? "—"}`)}
-${docxParagraph(`Proceso: ${data.processType ?? "—"}`)}
 ${docxParagraph("Expediente relacionado", "heading")}
 ${docxParagraph(`Expediente: ${data.caseExpediente}`)}
 ${docxParagraph(`Materia: ${data.caseProcess ?? "—"}`)}
@@ -467,14 +423,7 @@ function ReportsPage() {
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
-  const [form, setForm] = useState({
-    category: "Reporte" as ReportCategory,
-    case_id: "",
-    title: "",
-    body: "",
-  });
   const [reportFilter, setReportFilter] = useState<ReportCategory | "Todos">("Todos");
-  const [formError, setFormError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ src: string; data: ReportExportData } | null>(null);
 
   const filteredClients = useMemo(() => {
@@ -483,8 +432,8 @@ function ReportsPage() {
     return clients.filter(
       (c) =>
         c.name.toLowerCase().includes(term) ||
-        (c.dni ?? "").includes(term) ||
-        (c.process_type ?? "").toLowerCase().includes(term),
+        (c.phone ?? "").includes(term) ||
+        (c.email ?? "").toLowerCase().includes(term),
     );
   }, [clients, search]);
 
@@ -505,19 +454,7 @@ function ReportsPage() {
   const activeCases = clientCases.filter((c) => c.status !== "Archivado");
   const selectedCase = clientCases.find((c) => c.id === selectedCaseId) ?? clientCases[0] ?? null;
   const loading = loadingClients || loadingCases || loadingReports;
-  const reportDraft = selectedClient ? buildReportData(selectedClient, clientCases, form) : null;
   const [newReportError, setNewReportError] = useState<string | null>(null);
-
-  async function handlePreviewReport() {
-    if (!reportDraft || !requireReportContent(reportDraft)) return;
-    const src = await createReportJpg(reportDraft);
-    setPreview({ src, data: reportDraft });
-  }
-
-  function handleDownloadReport() {
-    if (!reportDraft || !requireReportContent(reportDraft)) return;
-    downloadBlob(createReportDocx(reportDraft), reportFileName(reportDraft, "docx"));
-  }
 
   async function handlePreviewPublishedReport(report: ClientReportWithRelations) {
     if (!selectedClient) return;
@@ -530,28 +467,6 @@ function ReportsPage() {
     if (!selectedClient) return;
     const data = buildPublishedReportData(selectedClient, clientCases, report);
     downloadBlob(createReportDocx(data), reportFileName(data, "docx"));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedClient) return;
-    setFormError(null);
-    const relatedCaseId = clientCases.some((item) => item.id === form.case_id)
-      ? form.case_id
-      : null;
-
-    try {
-      await createReport.mutateAsync({
-        client_id: selectedClient.id,
-        case_id: relatedCaseId,
-        category: form.category,
-        title: form.title.trim(),
-        body: form.body.trim(),
-      });
-      setForm({ category: "Reporte", case_id: "", title: "", body: "" });
-    } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : "No se pudo publicar el reporte.");
-    }
   }
 
   async function handleNewReportSubmit(data: ClientReportFormData, finalText: string) {
@@ -588,7 +503,7 @@ function ReportsPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar cliente, DNI o proceso..."
+              placeholder="Buscar por nombre, teléfono o correo..."
               className="w-full h-10 pl-9 pr-3 rounded-lg bg-muted/40 border border-border focus:bg-card focus:border-primary focus:outline-none text-sm"
             />
           </div>
@@ -609,7 +524,6 @@ function ReportsPage() {
                   onClick={() => {
                     setSelectedClientId(client.id);
                     setSelectedCaseId("");
-                    setForm((current) => ({ ...current, case_id: "" }));
                   }}
                   className={[
                     "w-full flex items-center gap-3 rounded-lg border px-3 py-3 text-left transition",
@@ -622,7 +536,7 @@ function ReportsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold truncate">{client.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {client.process_type}
+                      {client.phone || client.email || "Sin contacto registrado"}
                     </div>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -667,7 +581,7 @@ function ReportsPage() {
                       </StatusBadge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {selectedClient.process_type}
+                      {selectedClient.phone || selectedClient.email || "Sin contacto registrado"}
                     </p>
                   </div>
                 </div>
@@ -687,16 +601,6 @@ function ReportsPage() {
                   onSubmit={handleNewReportSubmit}
                   saving={createReport.isPending}
                   error={newReportError}
-                />
-                <ReportComposer
-                  form={form}
-                  setForm={setForm}
-                  cases={clientCases}
-                  saving={createReport.isPending}
-                  error={formError}
-                  onSubmit={handleSubmit}
-                  onPreview={handlePreviewReport}
-                  onDownload={handleDownloadReport}
                 />
                 <ReportsFeed
                   reports={clientReports}
@@ -817,16 +721,14 @@ function ReportPreviewModal({
 
 function ClientInfo({ client }: { client: ClientRow }) {
   const rows = [
-    { icon: IdCard, label: "DNI", value: client.dni },
     { icon: Phone, label: "Teléfono", value: client.phone },
-    { icon: Mail, label: "Correo", value: client.email ?? "—" },
-    { icon: Briefcase, label: "Proceso", value: client.process_type },
+    { icon: Mail, label: "Correo", value: client.email },
     { icon: FileText, label: "Registro", value: formatDate(client.registered_at) },
-  ];
+  ].filter((row) => Boolean(row.value));
 
   return (
     <Card className="p-5">
-      <SectionHeader icon={IdCard} title="Información del cliente" />
+      <SectionHeader icon={Phone} title="Información del cliente" />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
         {rows.map((row) => {
           const Icon = row.icon;
@@ -909,16 +811,12 @@ function CasesBlock({
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-sm">
-              <InfoLine label="Juzgado" value={selectedCase.juzgado || "—"} />
+              <InfoLine label="Materia" value={selectedCase.process_type || "—"} />
               <InfoLine label="Próxima audiencia" value={formatDate(selectedCase.next_hearing)} />
             </div>
-            {(selectedCase.current_summary ||
-              ((selectedCase as unknown as Record<string, unknown>).notes as
-                string | undefined)) && (
+            {selectedCase.current_summary && (
               <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm whitespace-pre-wrap">
-                {selectedCase.current_summary ||
-                  ((selectedCase as unknown as Record<string, unknown>).notes as
-                    string | undefined)}
+                {selectedCase.current_summary}
               </div>
             )}
             <Link
@@ -931,117 +829,6 @@ function CasesBlock({
           </div>
         )}
       </div>
-    </Card>
-  );
-}
-
-function ReportComposer({
-  form,
-  setForm,
-  cases,
-  saving,
-  error,
-  onSubmit,
-  onPreview,
-  onDownload,
-}: {
-  form: ReportFormState;
-  setForm: React.Dispatch<React.SetStateAction<ReportFormState>>;
-  cases: CaseRow[];
-  saving: boolean;
-  error: string | null;
-  onSubmit: (e: React.FormEvent) => void;
-  onPreview: () => void;
-  onDownload: () => void;
-}) {
-  return (
-    <Card className="p-5">
-      <SectionHeader icon={Send} title="Crear reporte para el cliente" />
-      <form onSubmit={onSubmit} className="space-y-3 mt-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Tipo
-            </label>
-            <select
-              value={form.category}
-              onChange={(e) =>
-                setForm((current) => ({ ...current, category: e.target.value as ReportCategory }))
-              }
-              className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none"
-            >
-              {REPORT_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {reportCategoryLabel(category)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Expediente relacionado
-            </label>
-            <select
-              value={form.case_id}
-              onChange={(e) => setForm((current) => ({ ...current, case_id: e.target.value }))}
-              className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none"
-            >
-              <option value="">General del cliente</option>
-              {cases.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.expediente}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <input
-          value={form.title}
-          onChange={(e) => setForm((current) => ({ ...current, title: e.target.value }))}
-          required
-          placeholder="Título del reporte"
-          className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary"
-        />
-        <textarea
-          value={form.body}
-          onChange={(e) => setForm((current) => ({ ...current, body: e.target.value }))}
-          required
-          rows={5}
-          placeholder="Resumen claro para el cliente: estado del expediente, avances, próximos pasos o recomendaciones..."
-          className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary resize-y"
-        />
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Publicar reporte
-        </button>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onPreview}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-border bg-card text-sm font-semibold hover:bg-muted/50"
-          >
-            <Eye className="h-4 w-4" />
-            Visualizar Reporte
-          </button>
-          <button
-            type="button"
-            onClick={onDownload}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-border bg-card text-sm font-semibold hover:bg-muted/50"
-          >
-            <Download className="h-4 w-4" />
-            Descargar Reporte
-          </button>
-        </div>
-      </form>
     </Card>
   );
 }
@@ -1217,7 +1004,7 @@ function AgendaBlock({
   );
 }
 
-function SectionHeader({ icon: Icon, title }: { icon: typeof IdCard; title: string }) {
+function SectionHeader({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
   return (
     <div className="flex items-center gap-2">
       <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">

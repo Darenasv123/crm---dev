@@ -26,7 +26,7 @@ describe("buildClientReportMessage", () => {
     statusDate: "2026-07-14",
     currentStatus: "Expediente en trámite de notificación",
     informativeMessage:
-      "Su expediente ha sido admitido por el juzgado.\n\nSe ha fijado audiencia preliminar para el 20 de agosto de 2026.\n\nDebe presentar los documentos solicitados antes del 10 de agosto.",
+      "Su expediente ha sido admitido.\n\nSe ha fijado audiencia preliminar para el 20 de agosto de 2026.\n\nDebe presentar los documentos solicitados antes del 10 de agosto.",
     reminderDays: 25,
   };
 
@@ -58,7 +58,7 @@ describe("buildClientReportMessage", () => {
 
   it("debe insertar el mensaje informativo completo", () => {
     const result = buildClientReportMessage(baseData);
-    expect(result).toContain("Su expediente ha sido admitido por el juzgado.");
+    expect(result).toContain("Su expediente ha sido admitido.");
     expect(result).toContain("Se ha fijado audiencia preliminar");
     expect(result).toContain("Debe presentar los documentos solicitados");
   });
