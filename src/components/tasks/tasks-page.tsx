@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -86,6 +87,19 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const [withoutCase, setWithoutCase] = useState(false);
   const [showCompleted, setShowCompleted] = useState(mode === "all");
   const [showForm, setShowForm] = useState(false);
+
+  // Filter panel state
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [draftSearch, setDraftSearch] = useState("");
+  const [draftStatus, setDraftStatus] = useState("");
+  const [draftPriority, setDraftPriority] = useState("");
+  const [draftClientId, setDraftClientId] = useState("");
+  const [draftCaseId, setDraftCaseId] = useState("");
+  const [draftAssignedTo, setDraftAssignedTo] = useState("");
+  const [draftWithoutClient, setDraftWithoutClient] = useState(false);
+  const [draftWithoutCase, setDraftWithoutCase] = useState(false);
+  const [draftShowCompleted, setDraftShowCompleted] = useState(mode === "all");
+
   const [form, setForm] = useState<TaskFormValues>(EMPTY_FORM);
   const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
   const [observationDraft, setObservationDraft] = useState("");
@@ -134,6 +148,56 @@ export function TasksPage({ mode }: { mode: PageMode }) {
     completed: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "completed")
       .length,
   };
+
+  // Count active filters (excluding defaults)
+  const activeFilterCount = [
+    search,
+    status,
+    priority,
+    clientId,
+    caseId,
+    isAdmin ? assignedTo : null,
+    withoutClient,
+    withoutCase,
+  ].filter(Boolean).length;
+
+  function openFilterPanel() {
+    setDraftSearch(search);
+    setDraftStatus(status);
+    setDraftPriority(priority);
+    setDraftClientId(clientId);
+    setDraftCaseId(caseId);
+    setDraftAssignedTo(assignedTo);
+    setDraftWithoutClient(withoutClient);
+    setDraftWithoutCase(withoutCase);
+    setDraftShowCompleted(showCompleted);
+    setFilterPanelOpen(true);
+  }
+
+  function applyFilters() {
+    setSearch(draftSearch);
+    setStatus(draftStatus);
+    setPriority(draftPriority);
+    setClientId(draftClientId);
+    setCaseId(draftCaseId);
+    setAssignedTo(draftAssignedTo);
+    setWithoutClient(draftWithoutClient);
+    setWithoutCase(draftWithoutCase);
+    setShowCompleted(draftShowCompleted);
+    setFilterPanelOpen(false);
+  }
+
+  function clearFilters() {
+    setDraftSearch("");
+    setDraftStatus("");
+    setDraftPriority("");
+    setDraftClientId("");
+    setDraftCaseId("");
+    setDraftAssignedTo("");
+    setDraftWithoutClient(false);
+    setDraftWithoutCase(false);
+    setDraftShowCompleted(mode === "all");
+  }
 
   const tabs = isAdmin
     ? [
@@ -197,17 +261,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   }
 
   return (
-    <AppLayout
-      title="Tareas"
-      subtitle="Cola compartida de trabajo y seguimiento"
-      actions={
-        isAdmin ? (
-          <Button type="button" onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4" /> Nueva tarea
-          </Button>
-        ) : undefined
-      }
-    >
+    <AppLayout title="Tareas" subtitle="Cola compartida de trabajo y seguimiento">
       <nav aria-label="Vistas de tareas" className="mb-5 flex gap-1 overflow-x-auto border-b">
         {tabs.map((tab) => {
           const active = pathname === tab.to;
@@ -237,126 +291,191 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         <Metric label="Terminadas" value={metrics.completed} />
       </div>
 
-      <Card className="mb-5 p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar tarea"
-              className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm"
-            />
-          </label>
-          <label className="relative">
-            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <NativeSelect
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-              className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm"
-            >
-              <option value="">Todos los estados</option>
-              {TASK_STATUSES.map((item) => (
-                <option key={item} value={item}>
-                  {TASK_STATUS_LABELS[item]}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <NativeSelect
-            value={priority}
-            onChange={(event) => setPriority(event.target.value)}
-            className="h-9 rounded-lg border bg-background px-3 text-sm"
-          >
-            <option value="">Toda prioridad</option>
-            {TASK_PRIORITIES.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </NativeSelect>
-          <label className="flex h-9 items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={showCompleted}
-              onChange={(event) => setShowCompleted(event.target.checked)}
-            />
-            Mostrar terminadas
-          </label>
-          <NativeSelect
-            value={clientId}
-            disabled={withoutClient}
-            onChange={(event) => {
-              setClientId(event.target.value);
-              setCaseId("");
-            }}
-            className="h-9 rounded-lg border bg-background px-3 text-sm disabled:opacity-50"
-          >
-            <option value="">Todos los clientes</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </NativeSelect>
-          <NativeSelect
-            value={caseId}
-            disabled={withoutCase || withoutClient}
-            onChange={(event) => setCaseId(event.target.value)}
-            className="h-9 rounded-lg border bg-background px-3 text-sm disabled:opacity-50"
-          >
-            <option value="">Todos los expedientes</option>
-            {cases
-              .filter((item) => !clientId || item.client_id === clientId)
-              .map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.expediente}
-                </option>
-              ))}
-          </NativeSelect>
-          {isAdmin && (
-            <NativeSelect
-              value={assignedTo}
-              onChange={(event) => setAssignedTo(event.target.value)}
-              className="h-9 rounded-lg border bg-background px-3 text-sm"
-            >
-              <option value="">Todos los responsables</option>
-              {profiles.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.full_name}
-                </option>
-              ))}
-            </NativeSelect>
-          )}
-          <div className="flex flex-wrap items-center gap-4 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={withoutClient}
-                onChange={(event) => {
-                  setWithoutClient(event.target.checked);
-                  if (event.target.checked) {
-                    setClientId("");
-                    setCaseId("");
-                    setWithoutCase(false);
-                  }
-                }}
-              />
-              Sin cliente
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={withoutCase}
-                disabled={withoutClient}
-                onChange={(event) => {
-                  setWithoutCase(event.target.checked);
-                  if (event.target.checked) setCaseId("");
-                }}
-              />
-              Sin expediente
-            </label>
-          </div>
-        </div>
-      </Card>
+      <div className="mb-5 flex items-center justify-between">
+        <Sheet open={filterPanelOpen} onOpenChange={setFilterPanelOpen}>
+          <Button variant="outline" onClick={openFilterPanel} className="gap-2">
+            <Filter className="h-4 w-4" />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="ml-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+
+          <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Filtros de tareas</SheetTitle>
+              <SheetDescription>Configura los criterios de búsqueda y filtrado</SheetDescription>
+            </SheetHeader>
+
+            <div className="mt-6 space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="filter-search">Buscar por tarea, cliente o expediente</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="filter-search"
+                    value={draftSearch}
+                    onChange={(event) => setDraftSearch(event.target.value)}
+                    placeholder="Buscar..."
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="filter-status">Estado</Label>
+                <NativeSelect
+                  id="filter-status"
+                  value={draftStatus}
+                  onChange={(event) => setDraftStatus(event.target.value)}
+                >
+                  <option value="">Todos los estados</option>
+                  {TASK_STATUSES.map((item) => (
+                    <option key={item} value={item}>
+                      {TASK_STATUS_LABELS[item]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="filter-priority">Prioridad</Label>
+                <NativeSelect
+                  id="filter-priority"
+                  value={draftPriority}
+                  onChange={(event) => setDraftPriority(event.target.value)}
+                >
+                  <option value="">Toda prioridad</option>
+                  {TASK_PRIORITIES.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+
+              {isAdmin && (
+                <div className="space-y-2">
+                  <Label htmlFor="filter-assigned">Responsable</Label>
+                  <NativeSelect
+                    id="filter-assigned"
+                    value={draftAssignedTo}
+                    onChange={(event) => setDraftAssignedTo(event.target.value)}
+                  >
+                    <option value="">Todos los responsables</option>
+                    {profiles.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.full_name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="filter-client">Cliente</Label>
+                <NativeSelect
+                  id="filter-client"
+                  value={draftClientId}
+                  disabled={draftWithoutClient}
+                  onChange={(event) => {
+                    setDraftClientId(event.target.value);
+                    setDraftCaseId("");
+                  }}
+                >
+                  <option value="">Todos los clientes</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="filter-case">Expediente</Label>
+                <NativeSelect
+                  id="filter-case"
+                  value={draftCaseId}
+                  disabled={draftWithoutCase || draftWithoutClient}
+                  onChange={(event) => setDraftCaseId(event.target.value)}
+                >
+                  <option value="">Todos los expedientes</option>
+                  {cases
+                    .filter((item) => !draftClientId || item.client_id === draftClientId)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.expediente}
+                      </option>
+                    ))}
+                </NativeSelect>
+              </div>
+
+              <div className="space-y-3 border-t pt-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draftWithoutClient}
+                    onChange={(event) => {
+                      setDraftWithoutClient(event.target.checked);
+                      if (event.target.checked) {
+                        setDraftClientId("");
+                        setDraftCaseId("");
+                        setDraftWithoutCase(false);
+                      }
+                    }}
+                  />
+                  Sin cliente
+                </label>
+
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draftWithoutCase}
+                    disabled={draftWithoutClient}
+                    onChange={(event) => {
+                      setDraftWithoutCase(event.target.checked);
+                      if (event.target.checked) setDraftCaseId("");
+                    }}
+                  />
+                  Sin expediente
+                </label>
+
+                {mode === "all" && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={draftShowCompleted}
+                      onChange={(event) => setDraftShowCompleted(event.target.checked)}
+                    />
+                    Mostrar terminadas
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 flex flex-col-reverse gap-2 border-t bg-card px-5 py-4 sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-between sm:px-6">
+              <Button type="button" variant="outline" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setFilterPanelOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={applyFilters}>
+                  Aplicar filtros
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        {isAdmin && (
+          <Button type="button" onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4" /> Nueva tarea
+          </Button>
+        )}
+      </div>
 
       {error && (
         <div

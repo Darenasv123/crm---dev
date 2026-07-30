@@ -42,7 +42,7 @@ export const Route = createFileRoute("/_app/clientes/$id")({
 
 function ClientDetail() {
   const { id } = Route.useParams();
-  const { data: client, isLoading } = useClient(id);
+  const { data: client, isLoading, error: clientError } = useClient(id);
   const { data: allClients = [] } = useClients();
   const { data: cases = [] } = useCases();
   const { data: documents = [] } = useDocuments();
@@ -66,6 +66,24 @@ function ClientDetail() {
       </AppLayout>
     );
   }
+
+  if (clientError) {
+    return (
+      <AppLayout title="Error al cargar cliente">
+        <Card className="p-8">
+          <p className="text-center text-sm text-destructive">
+            {clientError instanceof Error ? clientError.message : "Error desconocido"}
+          </p>
+          <div className="mt-4 text-center">
+            <Button asChild variant="outline">
+              <Link to={"/clientes" as never}>Volver al directorio</Link>
+            </Button>
+          </div>
+        </Card>
+      </AppLayout>
+    );
+  }
+
   if (!client) {
     return (
       <AppLayout title="Cliente no encontrado">

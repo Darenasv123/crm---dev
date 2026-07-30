@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_app/casos/$id")({
 
 function CaseDetail() {
   const { id } = Route.useParams();
-  const { data: caseItem, isLoading } = useCase(id);
+  const { data: caseItem, isLoading, error: caseError } = useCase(id);
   const { data: documents = [] } = useDocuments();
   const { data: tasks = [] } = useCaseTasks({ caseId: id });
   const { data: events = [] } = useCaseEvents([id]);
@@ -25,6 +25,24 @@ function CaseDetail() {
       </AppLayout>
     );
   }
+
+  if (caseError) {
+    return (
+      <AppLayout title="Error al cargar expediente">
+        <Card className="p-8">
+          <p className="text-center text-sm text-destructive">
+            {caseError instanceof Error ? caseError.message : "Error desconocido"}
+          </p>
+          <div className="mt-4 text-center">
+            <Button asChild variant="outline">
+              <Link to={"/casos" as never}>Volver a expedientes</Link>
+            </Button>
+          </div>
+        </Card>
+      </AppLayout>
+    );
+  }
+
   if (!caseItem) {
     return (
       <AppLayout title="Expediente no encontrado">
