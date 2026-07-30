@@ -30,7 +30,7 @@ const chatContextSchema = z.object({
   recentClients: z.array(
     z.object({
       name: z.string(),
-      process_type: z.string(),
+      phone: z.string().optional(),
       status: z.string(),
     }),
   ),
@@ -40,7 +40,6 @@ const chatContextSchema = z.object({
         expediente: z.string(),
         process_type: z.string(),
         status: z.string(),
-        juzgado: z.string(),
         client: z.string(),
       }),
     )

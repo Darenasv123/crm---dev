@@ -30,7 +30,7 @@ describe("adaptador simulado de análisis documental", () => {
     expect(classification.documentType).toBe("sentencia");
     expect(classification.confidenceScore).toBeLessThanOrEqual(1);
     expect(entities.caseNumber).toBe(demoCase.caseNumber);
-    expect(entities.people[0]?.fullName).toBe(demoClient.name);
+    expect(entities.people).toEqual([]);
   });
 
   it("consolida una carpeta y conserva conflictos para revisión", async () => {

@@ -15,12 +15,11 @@ export interface ChatContext {
     client?: string;
     case?: string;
   }>;
-  recentClients: Array<{ name: string; process_type: string; status: string }>;
+  recentClients: Array<{ name: string; phone?: string; status: string }>;
   recentCases?: Array<{
     expediente: string;
     process_type: string;
     status: string;
-    juzgado: string;
     client: string;
   }>;
   pendingPayments?: Array<{ client: string; service: string; pending: number; status: string }>;
@@ -87,14 +86,16 @@ ${
 👤 CLIENTES RECIENTES:
 ${
   ctx.recentClients.length > 0
-    ? ctx.recentClients.map((c) => `  • ${c.name} — ${c.process_type} (${c.status})`).join("\n")
+    ? ctx.recentClients
+        .map((c) => `  • ${c.name}${c.phone ? ` — ${c.phone}` : ""} (${c.status})`)
+        .join("\n")
     : "  Sin clientes recientes"
 }
 ${
   ctx.recentCases && ctx.recentCases.length > 0
     ? `
 📋 CASOS RECIENTES:
-${ctx.recentCases.map((c) => `  • Exp. ${c.expediente} — ${c.process_type} | ${c.status} | ${c.juzgado} | Cliente: ${c.client}`).join("\n")}`
+${ctx.recentCases.map((c) => `  • Exp. ${c.expediente} — ${c.process_type} | ${c.status} | Cliente: ${c.client}`).join("\n")}`
     : ""
 }
 ${

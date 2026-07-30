@@ -4,7 +4,6 @@ export const DEMO_NOTICE =
 export const demoClient = {
   id: "demo-client-maria",
   name: "María López García",
-  documentNumber: "45879632",
   phone: "987654321",
   email: "maria.lopez@example.test",
 };
@@ -15,8 +14,6 @@ export const demoCase = {
   legalArea: "Derecho de Familia",
   caseType: "Pensión de alimentos",
   caseNumber: "01234-2025-0-1801-JP-FC-01",
-  claimant: "María López García",
-  defendant: "Juan Pérez Torres",
   status: "Ejecución de sentencia",
   nextAction: "Presentar liquidación actualizada de pensiones devengadas",
 };
@@ -131,18 +128,7 @@ export const demoFindings = [
     confidence: 0.98,
     document: "Demanda de alimentos.pdf",
     page: 1,
-    excerpt: "La demandante María López García, identificada con DNI...",
-    status: "pending" as const,
-  },
-  {
-    id: "finding-dni",
-    group: "Cliente probable",
-    fieldName: "DNI",
-    value: demoClient.documentNumber,
-    confidence: 0.97,
-    document: "Anexos de demanda.pdf",
-    page: 2,
-    excerpt: "Documento Nacional de Identidad N.° 45879632.",
+    excerpt: "La solicitud requiere actualizar el cálculo de la pensión.",
     status: "pending" as const,
   },
   {

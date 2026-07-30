@@ -1,980 +1,174 @@
-import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { ArrowLeft, CalendarClock, CheckSquare, FileText, UserRound } from "lucide-react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useCase, useCases, useUpdateCase } from "@/hooks/use-cases";
-import {
-  useDocuments,
-  useUploadDocument,
-  useDeleteDocument,
-  useUpdateDocument,
-} from "@/hooks/use-documents";
-import { usePayments } from "@/hooks/use-payments";
-import { useClientReports } from "@/hooks/use-reports";
-import { useAuth } from "@/hooks/use-auth";
-import { usePermissions } from "@/lib/permissions";
-import { CasePartiesPanel } from "@/components/legal/case-parties-panel";
-import { CaseTimelinePanel } from "@/components/legal/case-timeline-panel";
-import { CaseTasksPanel } from "@/components/legal/case-tasks-panel";
-import {
-  CaseDocumentsPanel,
-  CaseHistoryPanel,
-  CasePaymentsPanel,
-} from "@/components/legal/case-secondary-panels";
-import { supabase } from "@/lib/supabase";
-import {
-  CASE_STATUS_OPTIONS,
-  displayCaseNumber,
-  normalizeCaseStatus,
-  validateCaseForm,
-  type CaseStatus,
-} from "@/lib/case-validation";
-import {
-  formatPeruDate,
-  formatPeruTime,
-  peruDateTimeToISO,
-  toPeruDateTimeInput,
-} from "@/lib/peru-time";
-import {
-  ArrowLeft,
-  FileText,
-  Download,
-  Gavel,
-  CalendarClock,
-  StickyNote,
-  CheckCircle2,
-  Clock,
-  X,
-  Loader2,
-  Save,
-  Edit3,
-  FileUp,
-  Trash2,
-  ChevronDown,
-  Eye,
-  CalendarPlus,
-  Landmark,
-  Archive,
-} from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useCase } from "@/hooks/use-cases";
+import { useDocuments } from "@/hooks/use-documents";
+import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
 
 export const Route = createFileRoute("/_app/casos/$id")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    edit: search.edit === "true" ? "true" : undefined,
-  }),
   component: CaseDetail,
 });
 
-const DOC_TYPES = ["DNI", "Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
-const CASE_TABS = [
-  "Resumen",
-  "Partes",
-  "Documentos",
-  "Agenda y plazos",
-  "Pagos",
-  "Notas",
-  "Historial",
-] as const;
-type CaseTab = (typeof CASE_TABS)[number];
-
 function CaseDetail() {
   const { id } = Route.useParams();
-  const { edit: editParam } = useSearch({ from: "/_app/casos/$id" });
-  const { data: item, isLoading } = useCase(id);
-  const { data: allCases = [] } = useCases();
-  const { data: allDocs = [] } = useDocuments();
-  const { data: allReports = [] } = useClientReports();
-  const { profile } = useAuth();
-  const { canViewPayments } = usePermissions(profile);
-  // Pagos solo se consultan si el rol tiene permiso (Personal no ejecuta esta query)
-  const { data: allPayments = [] } = usePayments({ enabled: canViewPayments });
-  const updateCase = useUpdateCase();
-  const uploadDoc = useUploadDocument();
-  const deleteDoc = useDeleteDocument();
-  const updateDoc = useUpdateDocument();
-
-  const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<CaseTab>("Resumen");
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, string>>({});
-
-  const [showUpload, setShowUpload] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadType, setUploadType] = useState("Otros");
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  // Notes state
-  const [notes, setNotes] = useState("");
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [notesSaved, setNotesSaved] = useState(false);
-  const itemId = item?.id;
-  const itemNotes = ((item as unknown as Record<string, unknown>)?.current_summary ??
-    (item as unknown as Record<string, unknown>)?.notes) as string | undefined;
-
-  // Sync notes from DB when item loads
-  useEffect(() => {
-    if (itemId) setNotes(itemNotes ?? "");
-  }, [itemId, itemNotes]);
-
-  // Auto-open edit form when navigated with ?edit=true
-  const editParamTriggered = useRef(false);
-  useEffect(() => {
-    if (editParam === "true" && item && !editing && !editParamTriggered.current) {
-      editParamTriggered.current = true;
-      startEdit();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editParam, item]);
+  const { data: caseItem, isLoading } = useCase(id);
+  const { data: documents = [] } = useDocuments();
+  const { data: tasks = [] } = useCaseTasks({ caseId: id });
+  const { data: events = [] } = useCaseEvents([id]);
 
   if (isLoading) {
     return (
-      <AppLayout title="Cargando..." subtitle="">
-        <div className="flex items-center justify-center py-32">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+      <AppLayout title="Expediente" subtitle="Cargando ficha">
+        <Card className="p-8 text-center text-sm text-muted-foreground">Cargando…</Card>
       </AppLayout>
     );
   }
-
-  if (!item) {
+  if (!caseItem) {
     return (
-      <AppLayout title="Expediente no encontrado" subtitle="">
-        <div className="text-center py-32">
-          <p className="text-muted-foreground mb-4">El expediente no existe o fue eliminado.</p>
-          <Link
-            to={"/casos" as never}
-            className="text-primary hover:underline text-sm font-semibold"
-          >
-            Volver a expedientes
-          </Link>
-        </div>
+      <AppLayout title="Expediente no encontrado">
+        <Link to={"/casos" as never} className="text-primary hover:underline">
+          Volver a expedientes
+        </Link>
       </AppLayout>
     );
   }
 
-  const caseDocs = allDocs.filter((d) => d.case_id === id || d.client_id === item.client_id);
-  const siblingCases = allCases.filter((caseItem) => caseItem.client_id === item.client_id);
-  const isAdmin = profile?.role === "Administrador";
-  const caseNumber = displayCaseNumber(item.expediente, item.case_number);
-  const currentStatus = normalizeCaseStatus(item.status);
-  // Separate the main expediente file (type "Expediente") from the rest
-  const expedienteDoc = caseDocs.find((d) => d.type === "Expediente");
-  const otherDocs = caseDocs.filter((d) => d.type !== "Expediente");
-  // casePayments solo tiene datos si el rol tiene permiso (query desactivada para Personal)
-  const casePayments = allPayments.filter((payment) => payment.case_id === id);
-  const caseReports = allReports.filter((report) => report.case_id === id);
-
-  // Build status timeline
-  const statusOrder: CaseStatus[] = [...CASE_STATUS_OPTIONS];
-  const currentIdx = statusOrder.indexOf(currentStatus);
-
-  function startEdit() {
-    if (!item) return;
-    setEditForm({
-      expediente: item.expediente,
-      materia: item.materia ?? "",
-      process_type: item.process_type,
-      case_stage: item.case_stage ?? "",
-      status: currentStatus,
-      juzgado: item.juzgado,
-      judicial_district: item.judicial_district ?? "",
-      judge_or_prosecutor: item.judge_or_prosecutor ?? "",
-      current_summary:
-        ((item as unknown as Record<string, unknown>).current_summary as string | undefined) ??
-        ((item as unknown as Record<string, unknown>).notes as string | undefined) ??
-        "",
-      current_status_description: item.current_status_description ?? "",
-      next_action: item.next_action ?? "",
-      next_hearing: toPeruDateTimeInput(item.next_hearing),
-    });
-    setEditing(true);
-    setEditError(null);
-  }
-
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!item) return;
-    setSaving(true);
-    setEditError(null);
-    try {
-      const values = validateCaseForm({
-        client_id: item.client_id,
-        expediente: editForm.expediente,
-        materia: editForm.materia,
-        process_type: editForm.process_type,
-        status: editForm.status,
-        juzgado: editForm.juzgado,
-        next_hearing: editForm.next_hearing,
-        case_stage: editForm.case_stage,
-        next_action: editForm.next_action,
-        judicial_district: editForm.judicial_district,
-        judge_or_prosecutor: editForm.judge_or_prosecutor,
-        current_summary: editForm.current_summary,
-        current_status_description: editForm.current_status_description,
-      });
-      await updateCase.mutateAsync({
-        id,
-        updates: {
-          expediente: values.expediente,
-          case_number: values.expediente || undefined,
-          case_name: values.process_type,
-          case_type: values.process_type,
-          process_type: values.process_type,
-          materia: values.materia,
-          case_stage: values.case_stage || undefined,
-          status: values.status,
-          juzgado: values.juzgado || "Por determinar",
-          court: values.juzgado || undefined,
-          judicial_district: values.judicial_district || undefined,
-          judge_or_prosecutor: values.judge_or_prosecutor || undefined,
-          current_summary: values.current_summary || undefined,
-          current_status_description: values.current_status_description || undefined,
-          next_action: values.next_action || undefined,
-          next_hearing: peruDateTimeToISO(values.next_hearing || ""),
-        },
-      });
-      setEditing(false);
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Error al guardar.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!uploadFile || !item) return;
-    setUploading(true);
-    try {
-      await uploadDoc.mutateAsync({
-        file: uploadFile,
-        type: uploadType,
-        caseId: id,
-        clientId: item.client_id,
-      });
-      setShowUpload(false);
-      setUploadFile(null);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleDownload(doc: (typeof caseDocs)[0]) {
-    const { data } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 60);
-    if (data?.signedUrl) {
-      const a = document.createElement("a");
-      a.href = data.signedUrl;
-      a.download = doc.name;
-      a.click();
-    }
-  }
-
-  async function handleOpen(doc: (typeof caseDocs)[0]) {
-    const { data } = await supabase.storage
-      .from("documents")
-      .createSignedUrl(doc.storage_path, 300);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
-  }
-
-  async function saveNotes() {
-    if (!item) return;
-    setSavingNotes(true);
-    try {
-      await updateCase.mutateAsync({ id, updates: { current_summary: notes } });
-      setNotesSaved(true);
-      setTimeout(() => setNotesSaved(false), 2000);
-    } finally {
-      setSavingNotes(false);
-    }
-  }
-
-  function confirmDeleteDoc(docId: string, storagePath: string) {
-    if (window.confirm("¿Eliminar este documento? Esta acción no se puede deshacer.")) {
-      deleteDoc.mutate({ id: docId, storagePath });
-    }
-  }
-
-  function assignDocumentToCase(documentId: string, caseId: string | null) {
-    if (!item) return;
-    updateDoc.mutate({
-      id: documentId,
-      updates: {
-        case_id: caseId,
-        client_id: item.client_id,
-      },
-    });
-  }
-
-  function archiveCase() {
-    if (!window.confirm("¿Archivar este expediente? Podrás cambiar el estado más adelante.")) {
-      return;
-    }
-    updateCase.mutate({ id, updates: { status: "Archivado" } });
-  }
+  const caseDocuments = documents.filter((item) => item.case_id === id);
+  const activeTasks = tasks.filter((item) => !["completed", "cancelled"].includes(item.status));
 
   return (
     <AppLayout
-      title={item.process_type}
-      subtitle={caseNumber}
+      title={caseItem.case_number || caseItem.expediente}
+      subtitle={`${caseItem.materia || caseItem.process_type} · ${caseItem.clients?.name || "Sin cliente"}`}
       actions={
-        <>
-          <Link
-            to={"/casos" as never}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-          >
-            <ArrowLeft className="h-4 w-4" /> Volver
-          </Link>
-          <button
-            onClick={startEdit}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-          >
-            <Edit3 className="h-4 w-4" /> Editar expediente
-          </button>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 shadow-soft"
-          >
-            <FileUp className="h-4 w-4" /> Subir documento
-          </button>
-          <Link
-            to={"/agenda" as never}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-          >
-            <CalendarPlus className="h-4 w-4" /> Agendar
-          </Link>
-          {canViewPayments && (
-            <Link
-              to={"/pagos" as never}
-              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-            >
-              <Landmark className="h-4 w-4" /> Registrar pago
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={archiveCase}
-            disabled={currentStatus === "Archivado"}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60 disabled:opacity-50"
-          >
-            <Archive className="h-4 w-4" /> Archivar
-          </button>
-        </>
+        <Link
+          to={"/casos" as never}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
+        >
+          <ArrowLeft className="h-4 w-4" /> Volver
+        </Link>
       }
     >
-      <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-border">
-        {CASE_TABS.filter((tab) => tab !== "Pagos" || canViewPayments).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`relative whitespace-nowrap px-4 py-3 text-sm font-semibold transition ${
-              activeTab === tab ? "text-primary" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tab}
-            {activeTab === tab && (
-              <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gold" />
-            )}
-          </button>
-        ))}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
+        <Card className="p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Resumen operativo
+              </p>
+              <h2 className="mt-1 text-xl font-bold">{caseItem.process_type}</h2>
+            </div>
+            <StatusBadge tone={caseItem.status === "Archivado" ? "default" : "info"}>
+              {caseItem.status}
+            </StatusBadge>
+          </div>
+          <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+            <Info label="Cliente" value={caseItem.clients?.name || "Sin cliente"} />
+            <Info label="Materia" value={caseItem.materia || "Sin clasificar"} />
+            <Info label="Próxima acción" value={caseItem.next_action || "Sin acción registrada"} />
+            <Info
+              label="Última actualización"
+              value={new Date(caseItem.updated_at).toLocaleDateString("es-PE")}
+            />
+          </dl>
+          {caseItem.current_summary && (
+            <div className="mt-6 border-t pt-5">
+              <h3 className="text-sm font-semibold">Resumen actual</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                {caseItem.current_summary}
+              </p>
+            </div>
+          )}
+        </Card>
+
+        <div className="grid gap-4">
+          <Metric icon={CheckSquare} label="Tareas activas" value={activeTasks.length} />
+          <Metric icon={FileText} label="Documentos" value={caseDocuments.length} />
+          <Metric icon={CalendarClock} label="Movimientos" value={events.length} />
+        </div>
       </div>
 
-      {activeTab === "Resumen" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Expediente file — shown at the very top for quick access */}
-            {expedienteDoc && (
-              <Card className="p-4 border-primary/30 bg-primary/5">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary shrink-0">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-primary mb-0.5">
-                      Expediente adjunto
-                    </div>
-                    <div className="text-sm font-semibold truncate">{expedienteDoc.name}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {expedienteDoc.size} · Subido{" "}
-                      {new Date(expedienteDoc.uploaded_at).toLocaleDateString("es-PE")}
-                    </div>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button
-                      onClick={() => handleOpen(expedienteDoc)}
-                      title="Ver expediente"
-                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 transition"
-                    >
-                      <Eye className="h-3.5 w-3.5" /> Abrir
-                    </button>
-                    <button
-                      onClick={() => handleDownload(expedienteDoc)}
-                      title="Descargar"
-                      className="h-8 w-8 grid place-items-center rounded-lg border border-border hover:bg-muted/60 transition"
-                    >
-                      <Download className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            )}
-            {/* General info */}
-            <Card className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <h3 className="text-base font-semibold">Información general</h3>
-                <StatusBadge tone="navy">{currentStatus}</StatusBadge>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                <Field k="Expediente" v={caseNumber} mono />
-                <Field k="Materia" v={item.materia ?? "Sin materia asignada"} />
-                <Field k="Juzgado" v={item.juzgado} />
-                <Field k="Proceso" v={item.process_type} />
-                <Field k="Etapa procesal" v={item.case_stage || "—"} />
-                <Field k="Distrito judicial" v={item.judicial_district || "—"} />
-                <Field k="Juez o fiscal" v={item.judge_or_prosecutor || "—"} />
-                <Field k="Cliente" v={item.clients?.name ?? "—"} />
-                <Field k="Registrado" v={new Date(item.created_at).toLocaleDateString("es-PE")} />
-              </div>
-            </Card>
-
-            {/* Status timeline */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-base font-semibold flex items-center gap-2">
-                  <Gavel className="h-4 w-4 text-primary" /> Progreso del proceso
-                </h3>
-                <span className="text-xs text-muted-foreground">
-                  {currentIdx + 1} de {statusOrder.length} etapas
-                </span>
-              </div>
-              <ol className="relative space-y-4">
-                {statusOrder.map((s, i) => {
-                  const done = i <= currentIdx;
-                  const current = i === currentIdx;
-                  return (
-                    <li key={s} className="relative pl-10">
-                      {i !== statusOrder.length - 1 && (
-                        <span
-                          className={`absolute left-3 top-7 bottom-[-1rem] w-px ${done ? "bg-primary/40" : "bg-border"}`}
-                        />
-                      )}
-                      <div
-                        className={`absolute left-0 top-0.5 grid h-6 w-6 place-items-center rounded-full border-2 transition-colors
-                      ${done ? "bg-primary text-white border-primary" : "bg-card border-border text-muted-foreground"}
-                      ${current ? "ring-2 ring-primary/30" : ""}`}
-                      >
-                        {done ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : (
-                          <Clock className="h-3 w-3" />
-                        )}
-                      </div>
-                      <div
-                        className={`text-sm font-semibold ${current ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}
-                      >
-                        {s}
-                      </div>
-                      {current && (
-                        <p className="text-xs text-muted-foreground">
-                          Estado actual del expediente
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </Card>
-
-            {/* Documents */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-semibold flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" /> Documentos del expediente
-                </h3>
-                <button
-                  onClick={() => setShowUpload(true)}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Subir documento
-                </button>
-              </div>
-              {otherDocs.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No hay documentos adicionales asociados a este expediente.
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {otherDocs.map((d) => (
-                    <div
-                      key={d.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/30 hover:bg-muted/30 transition group"
-                    >
-                      <div className="grid h-10 w-10 place-items-center rounded-lg bg-red-50 text-red-600 shrink-0">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate">{d.name}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {d.type} · {d.size}
-                        </div>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button
-                          onClick={() => handleOpen(d)}
-                          className="h-8 w-8 grid place-items-center rounded-md hover:bg-muted/60"
-                          title="Abrir"
-                        >
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                        <button
-                          onClick={() => handleDownload(d)}
-                          className="h-8 w-8 grid place-items-center rounded-md hover:bg-muted/60"
-                        >
-                          <Download className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => confirmDeleteDoc(d.id, d.storage_path)}
-                            className="h-8 w-8 grid place-items-center rounded-md hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4 text-muted-foreground" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <Card className="overflow-hidden">
+          <div className="border-b p-5">
+            <h2 className="font-bold">Trabajo relacionado</h2>
           </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Next hearing card */}
-            <Card className="p-6 bg-gradient-to-br from-primary to-[oklch(0.28_0.07_255)] text-white">
-              <div className="flex items-center gap-2 text-xs text-white/70 uppercase tracking-wider">
-                <CalendarClock className="h-4 w-4 text-gold" /> Próxima audiencia
-              </div>
-              {item.next_hearing ? (
-                <>
-                  <div className="mt-3 text-2xl font-bold">
-                    {formatPeruDate(item.next_hearing, {
-                      day: "2-digit",
-                      month: "long",
-                    })}
-                  </div>
-                  <div className="text-sm text-white/80">
-                    {formatPeruTime(item.next_hearing, {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    hrs
-                  </div>
-                </>
-              ) : (
-                <div className="mt-3 text-xl font-bold text-white/70">Sin programar</div>
-              )}
-              <div className="mt-4 pt-4 border-t border-white/10 text-xs text-white/70 truncate">
-                {item.juzgado}
-              </div>
-              <Link
-                to={"/agenda" as never}
-                className="mt-4 w-full h-9 rounded-lg bg-gold text-gold-foreground text-xs font-semibold hover:brightness-105 transition flex items-center justify-center"
+          {tasks.length === 0 ? (
+            <p className="p-5 text-sm text-muted-foreground">No hay tareas relacionadas.</p>
+          ) : (
+            tasks.slice(0, 8).map((task) => (
+              <div
+                key={task.id}
+                className="flex items-center justify-between gap-3 border-b p-4 last:border-b-0"
               >
-                Ver en agenda
-              </Link>
-            </Card>
-
-            {/* Client card */}
-            {item.clients && (
-              <Card className="p-5">
-                <h3 className="text-sm font-semibold mb-3">Cliente</h3>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="grid h-10 w-10 place-items-center rounded-full text-xs font-bold text-white shrink-0"
-                    style={{ background: item.clients.color }}
-                  >
-                    {item.clients.initials}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">{item.clients.name}</div>
-                  </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{task.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {task.profiles?.full_name || "Disponible"}
+                  </p>
                 </div>
-                <Link
-                  to={"/clientes/$id" as never}
-                  params={{ id: item.client_id } as never}
-                  className="mt-3 w-full h-8 rounded-lg border border-border text-xs font-semibold hover:bg-muted/60 flex items-center justify-center"
-                >
-                  Ver ficha completa
-                </Link>
-              </Card>
-            )}
-
-            {/* Notes */}
-            <Card className="p-5">
-              <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
-                <StickyNote className="h-4 w-4 text-gold" /> Notas internas
-              </h3>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Agregar nota interna..."
-                className="w-full text-xs rounded-lg border border-border bg-card p-3 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-                rows={4}
-              />
-              <button
-                onClick={saveNotes}
-                disabled={savingNotes}
-                className="mt-2 w-full h-8 rounded-lg bg-primary/10 text-primary text-xs font-semibold hover:bg-primary hover:text-primary-foreground transition disabled:opacity-60 flex items-center justify-center gap-1.5"
-              >
-                {savingNotes ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" /> Guardando...
-                  </>
-                ) : notesSaved ? (
-                  <>
-                    <CheckCircle2 className="h-3 w-3" /> Guardado
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-3 w-3" /> Guardar nota
-                  </>
-                )}
-              </button>
-            </Card>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "Partes" && <CasePartiesPanel caseId={id} clientId={item.client_id} />}
-      {activeTab === "Documentos" && (
-        <CaseDocumentsPanel
-          documents={caseDocs}
-          canDelete={isAdmin}
-          caseOptions={siblingCases}
-          onUpload={() => setShowUpload(true)}
-          onOpen={handleOpen}
-          onDownload={handleDownload}
-          onDelete={confirmDeleteDoc}
-          onAssignCase={assignDocumentToCase}
-        />
-      )}
-      {activeTab === "Agenda y plazos" && (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <CaseTimelinePanel caseId={id} documents={caseDocs} />
-          <CaseTasksPanel caseId={id} clientId={item.client_id} />
-        </div>
-      )}
-      {activeTab === "Pagos" && canViewPayments && <CasePaymentsPanel payments={casePayments} />}
-      {activeTab === "Notas" && (
-        <Card className="p-5">
-          <h3 className="text-base font-semibold flex items-center gap-2 mb-3">
-            <StickyNote className="h-4 w-4 text-gold" /> Notas internas
-          </h3>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Agregar nota interna..."
-            className="w-full rounded-lg border border-border bg-card p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
-            rows={10}
-          />
-          <button
-            onClick={saveNotes}
-            disabled={savingNotes}
-            className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60"
-          >
-            {savingNotes ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            {notesSaved ? "Guardado" : savingNotes ? "Guardando..." : "Guardar nota"}
-          </button>
+                <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
+                  {task.status}
+                </StatusBadge>
+              </div>
+            ))
+          )}
         </Card>
-      )}
-      {activeTab === "Historial" && <CaseHistoryPanel item={item} reports={caseReports} />}
 
-      {/* Edit Modal */}
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Editar expediente</h3>
-              <button
-                onClick={() => setEditing(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={saveEdit} className="space-y-4">
-              <CF
-                label="N° Expediente"
-                v={editForm.expediente}
-                set={(v) => setEditForm((f) => ({ ...f, expediente: v }))}
-                placeholder="Puede quedar vacío si aún no existe número judicial"
-              />
-              {/* Materia — antes de Proceso */}
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Materia *
-                </label>
-                <div className="relative mt-1.5">
-                  <select
-                    value={editForm.materia ?? ""}
-                    onChange={(e) => setEditForm((f) => ({ ...f, materia: e.target.value }))}
-                    required
-                    className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
-                  >
-                    <option value="" disabled>
-                      Seleccionar materia
-                    </option>
-                    <option value="Familia">Familia</option>
-                    <option value="Penal">Penal</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Card className="overflow-hidden">
+          <div className="border-b p-5">
+            <h2 className="font-bold">Cronología</h2>
+          </div>
+          {events.length === 0 ? (
+            <p className="p-5 text-sm text-muted-foreground">No hay movimientos registrados.</p>
+          ) : (
+            events.slice(0, 8).map((event) => (
+              <div key={event.id} className="flex gap-3 border-b p-4 last:border-b-0">
+                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                  <UserRound className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">{event.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(event.event_date).toLocaleDateString("es-PE")}
+                  </p>
                 </div>
               </div>
-              <CF
-                label="Proceso *"
-                v={editForm.process_type}
-                set={(v) => setEditForm((f) => ({ ...f, process_type: v }))}
-                required
-                placeholder="Ej: Defensa penal por robo agravado"
-              />
-              <CF
-                label="Etapa procesal"
-                v={editForm.case_stage ?? ""}
-                set={(v) => setEditForm((f) => ({ ...f, case_stage: v }))}
-              />
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Estado
-                </label>
-                <div className="relative mt-1.5">
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                    className="w-full h-10 pl-3 pr-8 rounded-lg border border-border bg-card focus:outline-none text-sm appearance-none"
-                  >
-                    {CASE_STATUS_OPTIONS.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
-              </div>
-              <CF
-                label="Juzgado"
-                v={editForm.juzgado}
-                set={(v) => setEditForm((f) => ({ ...f, juzgado: v }))}
-                placeholder="Por determinar"
-              />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <CF
-                  label="Distrito judicial"
-                  v={editForm.judicial_district ?? ""}
-                  set={(v) => setEditForm((f) => ({ ...f, judicial_district: v }))}
-                />
-                <CF
-                  label="Juez o fiscal"
-                  v={editForm.judge_or_prosecutor ?? ""}
-                  set={(v) => setEditForm((f) => ({ ...f, judge_or_prosecutor: v }))}
-                />
-              </div>
-              <CF
-                label="Resumen actual"
-                v={editForm.current_summary ?? ""}
-                set={(v) => setEditForm((f) => ({ ...f, current_summary: v }))}
-              />
-              <CF
-                label="Situación actual"
-                v={editForm.current_status_description ?? ""}
-                set={(v) => setEditForm((f) => ({ ...f, current_status_description: v }))}
-              />
-              <CF
-                label="Próxima acción"
-                v={editForm.next_action ?? ""}
-                set={(v) => setEditForm((f) => ({ ...f, next_action: v }))}
-              />
-              <div>
-                <CF
-                  label="Próxima audiencia (opcional)"
-                  v={editForm.next_hearing ?? ""}
-                  set={(v) => setEditForm((f) => ({ ...f, next_hearing: v }))}
-                  type="datetime-local"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Dejar en blanco si aún no está programada.
-                </p>
-              </div>
-              {editError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {editError}
-                </p>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      Guardar
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Upload doc modal */}
-      {showUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Subir documento al expediente</h3>
-              <button
-                onClick={() => setShowUpload(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Archivo *
-                </label>
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  className={`mt-1.5 flex flex-col items-center justify-center gap-2 h-20 rounded-lg border-2 border-dashed cursor-pointer transition ${uploadFile ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
-                >
-                  {uploadFile ? (
-                    <>
-                      <FileText className="h-5 w-5 text-primary" />
-                      <span className="text-xs font-medium text-primary truncate max-w-[260px]">
-                        {uploadFile.name}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        Haz clic para seleccionar
-                      </span>
-                    </>
-                  )}
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tipo
-                </label>
-                <select
-                  value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value)}
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-                >
-                  {DOC_TYPES.map((t) => (
-                    <option key={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowUpload(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!uploadFile || uploading}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Subiendo...
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="h-4 w-4" />
-                      Subir
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            ))
+          )}
+        </Card>
+      </div>
     </AppLayout>
   );
 }
 
-function Field({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-0.5">{k}</div>
-      <div className={`text-sm font-medium ${mono ? "font-mono text-xs" : ""}`}>{v}</div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-sm font-medium">{value}</dd>
     </div>
   );
 }
-function CF({
+
+function Metric({
+  icon: Icon,
   label,
-  v,
-  set,
-  required,
-  type = "text",
-  placeholder,
+  value,
 }: {
+  icon: typeof CheckSquare;
   label: string;
-  v: string;
-  set: (s: string) => void;
-  required?: boolean;
-  type?: string;
-  placeholder?: string;
+  value: number;
 }) {
   return (
-    <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={v}
-        onChange={(e) => set(e.target.value)}
-        required={required}
-        placeholder={placeholder}
-        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
-      />
-    </div>
+    <Card className="flex items-center gap-4 p-5">
+      <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div>
+        <p className="text-2xl font-bold">{value}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
+      </div>
+    </Card>
   );
 }

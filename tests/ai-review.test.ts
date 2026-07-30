@@ -15,11 +15,13 @@ describe("revisión humana de hallazgos", () => {
 
   it("edita un dato y conserva el nuevo valor", () => {
     const reviewed = applyReviewDecision(findings, {
-      findingId: "finding-dni",
+      findingId: "finding-client-name",
       status: "edited",
-      editedValue: "45879633",
+      editedValue: "Cliente corregido",
     });
-    expect(reviewed.find((item) => item.id === "finding-dni")?.value).toBe("45879633");
+    expect(reviewed.find((item) => item.id === "finding-client-name")?.value).toBe(
+      "Cliente corregido",
+    );
   });
 
   it("rechaza un hallazgo sin alterar los demás", () => {

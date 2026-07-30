@@ -26,10 +26,9 @@ export const Route = createFileRoute("/_app/documentos/")({
   component: DocsPage,
 });
 
-const DOC_TYPES = ["DNI", "Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
+const DOC_TYPES = ["Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
 
 const typeColor: Record<string, string> = {
-  DNI: "oklch(0.55 0.13 235)",
   Demanda: "oklch(0.34 0.09 255)",
   Resolución: "oklch(0.74 0.12 80)",
   Sentencia: "oklch(0.62 0.14 155)",
@@ -37,6 +36,10 @@ const typeColor: Record<string, string> = {
   Contrato: "oklch(0.55 0.13 290)",
   Otros: "oklch(0.55 0.02 255)",
 };
+
+function displayDocumentType(type: string) {
+  return DOC_TYPES.includes(type) ? type : "Otros";
+}
 
 function DocsPage() {
   const [activeType, setActiveType] = useState<string>("all");
@@ -250,7 +253,7 @@ function DocsPage() {
                         </div>
                       </td>
                       <td className="py-2.5 px-3">
-                        <StatusBadge tone="navy">{d.type}</StatusBadge>
+                        <StatusBadge tone="navy">{displayDocumentType(d.type)}</StatusBadge>
                       </td>
                       <td className="py-2.5 px-3 text-xs text-muted-foreground">
                         {d.clients?.name ?? "—"}
@@ -647,7 +650,7 @@ function PreviewPanel({
           <div className="mt-3 space-y-1">
             <div className="text-sm font-semibold truncate">{selected.name}</div>
             <div className="text-xs text-muted-foreground">
-              {selected.type} · {selected.size}
+              {displayDocumentType(selected.type)} · {selected.size}
             </div>
             {selected.clients && (
               <div className="text-xs text-muted-foreground">Cliente: {selected.clients.name}</div>

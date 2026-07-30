@@ -111,7 +111,7 @@ export function Chatbot() {
       })),
       recentClients: clients.slice(0, 8).map((c) => ({
         name: c.name,
-        process_type: c.process_type ?? "—",
+        phone: c.phone ?? "—",
         status: c.status,
       })),
       recentCases: cases
@@ -121,7 +121,6 @@ export function Chatbot() {
           expediente: c.expediente,
           process_type: c.process_type,
           status: c.status,
-          juzgado: c.juzgado,
           client: (c as { clients?: { name: string } | null }).clients?.name ?? "—",
         })),
       pendingPayments: payments

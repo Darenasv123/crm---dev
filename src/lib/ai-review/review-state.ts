@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { verificationStatusSchema } from "@/lib/legal/domain";
+
+const verificationStatusSchema = z.enum(["pending", "approved", "edited", "rejected", "conflict"]);
 
 export const reviewDecisionSchema = z.object({
   findingId: z.string().min(1),

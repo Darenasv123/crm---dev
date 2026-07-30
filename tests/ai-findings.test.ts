@@ -19,7 +19,7 @@ describe("Persistencia real y lógica de Revisión de IA (Fase 2A)", () => {
     normalized_value: null,
     confidence_score: 0.98,
     source_page: 1,
-    source_excerpt: "La demandante María López García...",
+    source_excerpt: "La solicitud corresponde al cliente detectado...",
     verification_status: "pending" as const,
     review_notes: null,
     created_at: "2026-07-21T10:00:00Z",
@@ -43,13 +43,13 @@ describe("Persistencia real y lógica de Revisión de IA (Fase 2A)", () => {
       findingId: "123e4567-e89b-12d3-a456-426614174000",
       status: "edited",
       editedValue: "María López de Pérez",
-      reviewNotes: "Corrección de apellido según DNI",
+      reviewNotes: "Corrección de apellido según el documento revisado",
       userId: "123e4567-e89b-12d3-a456-426614174001",
     };
     const parsed = updateFindingDecisionSchema.parse(input);
     expect(parsed.status).toBe("edited");
     expect(parsed.editedValue).toBe("María López de Pérez");
-    expect(parsed.reviewNotes).toBe("Corrección de apellido según DNI");
+    expect(parsed.reviewNotes).toBe("Corrección de apellido según el documento revisado");
   });
 
   it("valida la acción de rechazo de un hallazgo", () => {

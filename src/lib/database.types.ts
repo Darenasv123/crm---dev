@@ -16,10 +16,21 @@ export type Database = {
           event_date: string;
           event_time: string;
           gcal_event_id: string | null;
+          google_calendar_id: string | null;
+          google_etag: string | null;
+          google_event_id: string | null;
+          google_html_link: string | null;
+          google_updated_at: string | null;
           id: string;
+          last_synced_at: string | null;
           location: string | null;
+          deleted_at: string | null;
+          sync_error: string | null;
+          sync_origin: string;
+          sync_status: string;
           title: string;
           type: string;
+          updated_at: string;
         };
         Insert: {
           case_id?: string | null;
@@ -28,10 +39,21 @@ export type Database = {
           event_date: string;
           event_time: string;
           gcal_event_id?: string | null;
+          google_calendar_id?: string | null;
+          google_etag?: string | null;
+          google_event_id?: string | null;
+          google_html_link?: string | null;
+          google_updated_at?: string | null;
           id?: string;
+          last_synced_at?: string | null;
           location?: string | null;
+          deleted_at?: string | null;
+          sync_error?: string | null;
+          sync_origin?: string;
+          sync_status?: string;
           title: string;
           type?: string;
+          updated_at?: string;
         };
         Update: {
           case_id?: string | null;
@@ -40,10 +62,21 @@ export type Database = {
           event_date?: string;
           event_time?: string;
           gcal_event_id?: string | null;
+          google_calendar_id?: string | null;
+          google_etag?: string | null;
+          google_event_id?: string | null;
+          google_html_link?: string | null;
+          google_updated_at?: string | null;
           id?: string;
+          last_synced_at?: string | null;
           location?: string | null;
+          deleted_at?: string | null;
+          sync_error?: string | null;
+          sync_origin?: string;
+          sync_status?: string;
           title?: string;
           type?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -61,6 +94,216 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      google_calendar_connections: {
+        Row: {
+          access_token_expires_at: string | null;
+          calendar_id: string;
+          calendar_name: string | null;
+          connected_by: string;
+          created_at: string;
+          encrypted_refresh_token: string;
+          google_account_email: string | null;
+          id: string;
+          last_error: string | null;
+          last_synced_at: string | null;
+          status: string;
+          sync_token: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          access_token_expires_at?: string | null;
+          calendar_id: string;
+          calendar_name?: string | null;
+          connected_by: string;
+          created_at?: string;
+          encrypted_refresh_token: string;
+          google_account_email?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          status?: string;
+          sync_token?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          access_token_expires_at?: string | null;
+          calendar_id?: string;
+          calendar_name?: string | null;
+          connected_by?: string;
+          created_at?: string;
+          encrypted_refresh_token?: string;
+          google_account_email?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          status?: string;
+          sync_token?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connections_connected_by_fkey";
+            columns: ["connected_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_channels: {
+        Row: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          last_message_number: number | null;
+          resource_id: string;
+          stopped_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          channel_id?: string;
+          channel_token_hash?: string;
+          connection_id?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id?: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_channels_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_calendar_connections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_oauth_states: {
+        Row: {
+          calendar_id: string;
+          code_verifier: string;
+          created_at: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Insert: {
+          calendar_id: string;
+          code_verifier: string;
+          created_at?: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Update: {
+          calendar_id?: string;
+          code_verifier?: string;
+          created_at?: string;
+          expires_at?: string;
+          requested_by?: string;
+          state_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_oauth_states_requested_by_fkey";
+            columns: ["requested_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_sync_log: {
+        Row: {
+          agenda_event_id: string | null;
+          connection_id: string | null;
+          created_at: string;
+          direction: string;
+          error_code: string | null;
+          error_message: string | null;
+          google_event_id: string | null;
+          id: number;
+          operation: string;
+          status: string;
+        };
+        Insert: {
+          agenda_event_id?: string | null;
+          connection_id?: string | null;
+          created_at?: string;
+          direction: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          google_event_id?: string | null;
+          id?: never;
+          operation: string;
+          status: string;
+        };
+        Update: {
+          agenda_event_id?: string | null;
+          connection_id?: string | null;
+          created_at?: string;
+          direction?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          google_event_id?: string | null;
+          id?: never;
+          operation?: string;
+          status?: string;
+        };
+        Relationships: [];
+      };
+      google_calendar_sync_requests: {
+        Row: {
+          channel_id: string | null;
+          connection_id: string;
+          created_at: string;
+          error_message: string | null;
+          id: number;
+          message_number: number | null;
+          processed_at: string | null;
+          status: string;
+        };
+        Insert: {
+          channel_id?: string | null;
+          connection_id: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: never;
+          message_number?: number | null;
+          processed_at?: string | null;
+          status?: string;
+        };
+        Update: {
+          channel_id?: string | null;
+          connection_id?: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: never;
+          message_number?: number | null;
+          processed_at?: string | null;
+          status?: string;
+        };
+        Relationships: [];
       };
       ai_analysis_runs: {
         Row: {
@@ -428,6 +671,8 @@ export type Database = {
         Row: {
           assigned_to: string | null;
           case_id: string | null;
+          claimed_at: string | null;
+          claimed_by: string | null;
           client_id: string | null;
           completed_at: string | null;
           completed_by: string | null;
@@ -448,6 +693,8 @@ export type Database = {
         Insert: {
           assigned_to?: string | null;
           case_id?: string | null;
+          claimed_at?: string | null;
+          claimed_by?: string | null;
           client_id?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
@@ -468,6 +715,8 @@ export type Database = {
         Update: {
           assigned_to?: string | null;
           case_id?: string | null;
+          claimed_at?: string | null;
+          claimed_by?: string | null;
           client_id?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
@@ -501,6 +750,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "case_tasks_claimed_by_fkey";
+            columns: ["claimed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "case_tasks_client_id_fkey";
             columns: ["client_id"];
             isOneToOne: false;
@@ -527,25 +783,18 @@ export type Database = {
         Row: {
           case_name: string | null;
           case_number: string | null;
-          case_stage: string | null;
           case_type: string | null;
           case_year: number | null;
           client_id: string;
           closing_date: string | null;
-          court: string | null;
           created_at: string;
           created_by: string | null;
           current_status_description: string | null;
           current_summary: string | null;
-          demandado: string | null;
-          demandante: string | null;
           expediente: string;
           filing_date: string | null;
           id: string;
           internal_code: string | null;
-          judge_or_prosecutor: string | null;
-          judicial_district: string | null;
-          juzgado: string;
           last_action_date: string | null;
           legal_area: string | null;
           materia: string | null;
@@ -560,25 +809,18 @@ export type Database = {
         Insert: {
           case_name?: string | null;
           case_number?: string | null;
-          case_stage?: string | null;
           case_type?: string | null;
           case_year?: number | null;
           client_id: string;
           closing_date?: string | null;
-          court?: string | null;
           created_at?: string;
           created_by?: string | null;
           current_status_description?: string | null;
           current_summary?: string | null;
-          demandado?: string | null;
-          demandante?: string | null;
           expediente: string;
           filing_date?: string | null;
           id?: string;
           internal_code?: string | null;
-          judge_or_prosecutor?: string | null;
-          judicial_district?: string | null;
-          juzgado: string;
           last_action_date?: string | null;
           legal_area?: string | null;
           materia?: string | null;
@@ -593,25 +835,18 @@ export type Database = {
         Update: {
           case_name?: string | null;
           case_number?: string | null;
-          case_stage?: string | null;
           case_type?: string | null;
           case_year?: number | null;
           client_id?: string;
           closing_date?: string | null;
-          court?: string | null;
           created_at?: string;
           created_by?: string | null;
           current_status_description?: string | null;
           current_summary?: string | null;
-          demandado?: string | null;
-          demandante?: string | null;
           expediente?: string;
           filing_date?: string | null;
           id?: string;
           internal_code?: string | null;
-          judge_or_prosecutor?: string | null;
-          judicial_district?: string | null;
-          juzgado?: string;
           last_action_date?: string | null;
           legal_area?: string | null;
           materia?: string | null;
@@ -722,79 +957,45 @@ export type Database = {
       };
       clients: {
         Row: {
-          address: string | null;
-          birthdate: string | null;
-          civil_status: string | null;
           color: string;
           created_at: string;
           created_by: string | null;
-          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
-          dni: string | null;
-          document_number: string | null;
-          document_type: string;
           email: string | null;
           id: string;
           initials: string;
           name: string;
-          notes: string | null;
-          occupation: string | null;
           /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
           phone: string | null;
-          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
-          process_type: string | null;
           registered_at: string;
           status: string;
           updated_at: string;
-          whatsapp: string | null;
         };
         Insert: {
-          address?: string | null;
-          birthdate?: string | null;
-          civil_status?: string | null;
           color?: string;
           created_at?: string;
           created_by?: string | null;
-          /** Nullable after migration 20260724000000 */
-          dni?: string | null;
-          document_number?: string | null;
-          document_type?: string;
           email?: string | null;
           id?: string;
           initials: string;
           name: string;
-          notes?: string | null;
-          occupation?: string | null;
           /** Nullable after migration 20260724000000 */
           phone?: string | null;
-          /** Nullable after migration 20260724000000 */
-          process_type?: string | null;
           registered_at?: string;
           status?: string;
           updated_at?: string;
-          whatsapp?: string | null;
         };
         Update: {
-          address?: string | null;
-          birthdate?: string | null;
-          civil_status?: string | null;
           color?: string;
           created_at?: string;
           created_by?: string | null;
-          dni?: string | null;
-          document_number?: string | null;
-          document_type?: string;
           email?: string | null;
           id?: string;
           initials?: string;
           name?: string;
-          notes?: string | null;
-          occupation?: string | null;
           phone?: string | null;
-          process_type?: string | null;
           registered_at?: string;
           status?: string;
           updated_at?: string;
-          whatsapp?: string | null;
         };
         Relationships: [
           {
@@ -1375,6 +1576,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      claim_case_task: {
+        Args: { p_task_id: string };
+        Returns: Database["public"]["Tables"]["case_tasks"]["Row"][];
+      };
       is_admin: { Args: never; Returns: boolean };
       is_staff: { Args: never; Returns: boolean };
       register_payment_record_atomic: {
@@ -1387,6 +1592,10 @@ export type Database = {
           p_receipt?: string | null;
         };
         Returns: Json;
+      };
+      return_case_task: {
+        Args: { p_task_id: string };
+        Returns: Database["public"]["Tables"]["case_tasks"]["Row"][];
       };
     };
     Enums: {

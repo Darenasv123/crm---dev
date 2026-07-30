@@ -18,7 +18,6 @@ export const documentEntitySchema = z.object({
     z.object({
       fullName: z.string(),
       role: z.string(),
-      documentNumber: z.string().nullable(),
       confidenceScore: z.number().min(0).max(1),
     }),
   ),
@@ -38,7 +37,7 @@ export const documentEventSchema = z.object({
 });
 
 export const folderAnalysisSchema = z.object({
-  probableClient: z.object({ name: z.string(), documentNumber: z.string().nullable() }),
+  probableClient: z.object({ name: z.string() }),
   probableCases: z.array(z.object({ caseNumber: z.string(), caseType: z.string() })),
   summary: z.string(),
   conflicts: z.array(z.string()),

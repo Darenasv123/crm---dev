@@ -10,7 +10,6 @@ interface FindingDetailPanelProps {
     value: string;
     status: "pending" | "approved" | "edited" | "rejected" | "conflict";
     clientName?: string;
-    documentNumber?: string;
     caseType?: string;
     caseNumber?: string;
     caseStatus?: string;
@@ -90,7 +89,6 @@ export function FindingDetailPanel({ finding, onDecide, isSaving }: FindingDetai
 
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Info label="Cliente probable" value={finding.clientName ?? "—"} />
-        <Info label="DNI / RUC" value={finding.documentNumber ?? "—"} />
         <Info label="Materia" value={finding.caseType ?? "—"} />
         <Info label="Expediente" value={finding.caseNumber ?? "—"} />
         <Info label="Estado probable" value={finding.caseStatus ?? "—"} />

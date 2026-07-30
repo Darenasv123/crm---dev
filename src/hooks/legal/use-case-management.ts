@@ -3,8 +3,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 
-type CaseParty = Database["public"]["Tables"]["case_parties"]["Row"];
-type CasePartyInsert = Database["public"]["Tables"]["case_parties"]["Insert"];
 type CaseEvent = Database["public"]["Tables"]["case_events"]["Row"];
 type CaseEventInsert = Database["public"]["Tables"]["case_events"]["Insert"];
 type CaseTask = Database["public"]["Tables"]["case_tasks"]["Row"];
@@ -17,55 +15,6 @@ export interface CaseEventWithDocument extends CaseEvent {
 
 export interface CaseTaskWithAssignee extends CaseTask {
   profiles: { full_name: string; initials: string } | null;
-}
-
-export function useCaseParties(caseId: string) {
-  return useQuery({
-    queryKey: ["case_parties", caseId],
-    queryFn: async () => {
-      const db = await getAuthClient();
-      const { data, error } = await db
-        .from("case_parties")
-        .select("*")
-        .eq("case_id", caseId)
-        .order("created_at", { ascending: true });
-      if (error) throw new Error(error.message);
-      return data as CaseParty[];
-    },
-    enabled: !!caseId,
-  });
-}
-
-export function useCreateCaseParty() {
-  const qc = useQueryClient();
-  const { user } = useAuth();
-  return useMutation({
-    mutationFn: async (input: CasePartyInsert) => {
-      const db = await getAuthClient();
-      const { data, error } = await db
-        .from("case_parties")
-        .insert({ ...input, created_by: user?.id ?? null })
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
-      return data;
-    },
-    onSuccess: (_data, input) =>
-      qc.invalidateQueries({ queryKey: ["case_parties", input.case_id] }),
-  });
-}
-
-export function useDeleteCaseParty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, caseId }: { id: string; caseId: string }) => {
-      const db = await getAuthClient();
-      const { error } = await db.from("case_parties").delete().eq("id", id);
-      if (error) throw new Error(error.message);
-      return caseId;
-    },
-    onSuccess: (caseId) => qc.invalidateQueries({ queryKey: ["case_parties", caseId] }),
-  });
 }
 
 export function useCaseEvents(caseIds: string[]) {
@@ -112,7 +61,7 @@ export function useCaseTasks(filters: { caseId?: string; clientId?: string } = {
       let query = db
         .from("case_tasks")
         .select("*, profiles!case_tasks_assigned_to_fkey(full_name, initials)")
-        .order("due_date", { ascending: true, nullsFirst: false });
+        .order("created_at", { ascending: false });
       if (filters.caseId) query = query.eq("case_id", filters.caseId);
       if (filters.clientId) query = query.eq("client_id", filters.clientId);
       const { data, error } = await query;

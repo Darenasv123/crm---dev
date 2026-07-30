@@ -29,20 +29,7 @@ export class MockDocumentAnalysisProvider implements DocumentAnalysisProvider {
   async extractEntities(input: DocumentAnalysisInput) {
     documentAnalysisInputSchema.parse(input);
     return documentEntitySchema.parse({
-      people: [
-        {
-          fullName: demoClient.name,
-          role: "Demandante",
-          documentNumber: demoClient.documentNumber,
-          confidenceScore: 0.98,
-        },
-        {
-          fullName: demoCase.defendant,
-          role: "Demandado",
-          documentNumber: null,
-          confidenceScore: 0.88,
-        },
-      ],
+      people: [],
       caseNumber: demoCase.caseNumber,
     });
   }
@@ -65,11 +52,11 @@ export class MockDocumentAnalysisProvider implements DocumentAnalysisProvider {
       throw new Error("La carpeta demostrativa debe incluir documentos.");
     }
     return folderAnalysisSchema.parse({
-      probableClient: { name: demoClient.name, documentNumber: demoClient.documentNumber },
+      probableClient: { name: demoClient.name },
       probableCases: [{ caseNumber: demoCase.caseNumber, caseType: demoCase.caseType }],
       summary: "Expediente de alimentos con sentencia y liquidación pendiente de actualización.",
       conflicts: ["La fecha de notificación de la sentencia requiere revisión humana."],
-      missingInformation: ["Correo de la contraparte", "Constancia de notificación completa"],
+      missingInformation: ["Constancia de notificación completa"],
       confidenceScore: 0.91,
     });
   }
