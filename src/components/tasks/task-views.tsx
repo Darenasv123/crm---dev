@@ -102,18 +102,17 @@ export function TaskList({
 }) {
   return (
     <>
-      <div className="hidden overflow-hidden rounded-xl border border-border md:block">
+      <div className="hidden rounded-xl border border-border xl:block">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <thead className="sticky top-14 z-10 bg-muted/95 text-[11px] uppercase tracking-wide text-muted-foreground backdrop-blur">
             <tr>
               {[
-                "N.°",
-                "Responsable",
+                "Tarea",
                 "Cliente",
                 "N.° de expediente",
-                "Tarea",
-                "Vencimiento",
                 "Estado",
+                "Responsable",
+                "Vencimiento",
                 "Observaciones",
                 "Acciones",
               ].map((label) => (
@@ -121,10 +120,12 @@ export function TaskList({
                   key={label}
                   className={`border-b border-border px-2 py-2.5 font-semibold ${
                     label === "Observaciones"
-                      ? "hidden xl:table-cell"
+                      ? "hidden 2xl:table-cell"
                       : label === "Tarea"
-                        ? "w-[25%]"
-                        : ""
+                        ? "w-[32%]"
+                        : label === "Acciones"
+                          ? "w-[76px]"
+                          : ""
                   }`}
                 >
                   {label}
@@ -139,25 +140,31 @@ export function TaskList({
               return (
                 <tr
                   key={task.id}
-                  className={`border-b border-border/70 last:border-0 ${
+                  className={`border-b border-border/70 transition-colors last:border-0 hover:bg-muted/25 focus-within:bg-muted/30 ${
                     normalizeTaskPriority(task.priority) === "Urgente"
                       ? "border-l-2 border-l-red-500"
                       : "border-l-2 border-l-transparent"
                   }`}
                 >
-                  <td className="px-2 py-2.5 font-mono text-xs text-muted-foreground">
-                    {index + 1}
-                  </td>
                   <td className="px-2 py-2.5">
-                    <div className="truncate font-medium">
-                      {task.assignee?.full_name ?? "Sin responsable"}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(task)}
+                      className="line-clamp-3 max-w-full rounded-sm text-left font-semibold leading-snug hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <span className="sr-only">Tarea {index + 1}: </span>
+                      {task.title}
+                    </button>
+                    <span className="mt-1 block text-[11px] text-muted-foreground">
+                      Prioridad {normalizeTaskPriority(task.priority)}
+                    </span>
                   </td>
                   <td className="px-2 py-2.5">
                     {client ? (
                       <Link
                         to={"/clientes/$id" as never}
                         params={{ id: client.id } as never}
+                        title={client.name}
                         className="block truncate font-medium text-primary hover:underline"
                       >
                         {client.name}
@@ -171,28 +178,14 @@ export function TaskList({
                       <Link
                         to={"/casos/$id" as never}
                         params={{ id: task.case_id } as never}
-                        className="hover:text-primary hover:underline"
+                        title={taskCaseNumber(task) ?? "Abrir expediente"}
+                        className="block truncate hover:text-primary hover:underline"
                       >
                         {taskCaseNumber(task) ?? "Abrir expediente"}
                       </Link>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
-                  </td>
-                  <td className="px-2 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => onOpen(task)}
-                      className="block max-w-full text-left font-semibold leading-snug hover:text-primary"
-                    >
-                      {task.title}
-                    </button>
-                    <span className="mt-1 block text-[11px] text-muted-foreground">
-                      Prioridad {normalizeTaskPriority(task.priority)}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2.5 text-xs">
-                    <DueLabel task={task} />
                   </td>
                   <td className="px-2 py-2.5">
                     {permissions.canUpdateStatus ? (
@@ -212,7 +205,18 @@ export function TaskList({
                       <TaskStatusChip status={task.status} />
                     )}
                   </td>
-                  <td className="hidden px-2 py-2.5 xl:table-cell">
+                  <td className="px-2 py-2.5">
+                    <div
+                      title={task.assignee?.full_name ?? "Sin responsable"}
+                      className="truncate font-medium"
+                    >
+                      {task.assignee?.full_name ?? "Sin responsable"}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2.5 text-xs">
+                    <DueLabel task={task} />
+                  </td>
+                  <td className="hidden px-2 py-2.5 2xl:table-cell">
                     <span
                       title={task.description ?? ""}
                       className="block truncate text-xs text-muted-foreground"
@@ -251,7 +255,7 @@ export function TaskList({
         </table>
       </div>
 
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-3 xl:hidden">
         {tasks.map((task) => {
           const client = taskClient(task);
           return (
@@ -259,11 +263,11 @@ export function TaskList({
               key={task.id}
               type="button"
               onClick={() => onOpen(task)}
-              className="w-full rounded-xl border border-border bg-card p-4 text-left shadow-sm"
+              className="w-full rounded-xl border border-border bg-card p-4 text-left shadow-sm transition hover:border-primary/30 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate font-semibold">{task.title}</div>
+                  <div className="line-clamp-3 font-semibold leading-snug">{task.title}</div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">
                     {client?.name ?? "Tarea general"} · {taskCaseNumber(task) ?? "Sin expediente"}
                   </div>
@@ -377,7 +381,7 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={!!task} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-[500px]">
+      <SheetContent className="w-full max-w-none overflow-y-auto p-4 sm:max-w-[500px] sm:p-6">
         {task && (
           <>
             <SheetHeader>
