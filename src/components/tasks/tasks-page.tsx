@@ -783,7 +783,11 @@ function TaskList({
           <article
             key={task.id}
             className="grid gap-3 border-b border-l-2 p-4 transition-colors hover:bg-primary/2 last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center"
-            style={available ? { borderLeftColor: "hsl(var(--primary))" } : { borderLeftColor: "transparent" }}
+            style={
+              available
+                ? { borderLeftColor: "hsl(var(--primary))" }
+                : { borderLeftColor: "transparent" }
+            }
           >
             <div className="min-w-0">
               <h3 className="font-semibold">{task.title}</h3>

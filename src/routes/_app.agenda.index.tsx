@@ -762,7 +762,9 @@ function CalendarPage() {
                 )}
                 <button
                   type="submit"
-                  disabled={saving || (editingId && !canEditEvents) || (!editingId && !canCreateEvents)}
+                  disabled={
+                    saving || (editingId && !canEditEvents) || (!editingId && !canCreateEvents)
+                  }
                   className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}

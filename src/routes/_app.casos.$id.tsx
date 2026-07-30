@@ -82,7 +82,9 @@ function CaseDetail() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Expediente Legal
               </p>
-              <h2 className="mt-1 text-xl font-bold">{caseItem.case_number || caseItem.expediente}</h2>
+              <h2 className="mt-1 text-xl font-bold">
+                {caseItem.case_number || caseItem.expediente}
+              </h2>
             </div>
             <StatusBadge
               tone={
@@ -124,12 +126,7 @@ function CaseDetail() {
             value={activeTasks.length}
             color="primary"
           />
-          <Metric
-            icon={FileText}
-            label="Documentos"
-            value={caseDocuments.length}
-            color="info"
-          />
+          <Metric icon={FileText} label="Documentos" value={caseDocuments.length} color="info" />
           <Metric icon={CalendarClock} label="Movimientos" value={events.length} color="success" />
         </div>
       </div>
@@ -154,9 +151,9 @@ function CaseDetail() {
                     {task.profiles?.full_name || "Disponible"}
                   </p>
                 </div>
-              <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
-                {task.status}
-              </StatusBadge>
+                <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
+                  {task.status}
+                </StatusBadge>
               </div>
             ))
           )}

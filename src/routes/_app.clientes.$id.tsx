@@ -169,9 +169,7 @@ function ClientDetail() {
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="truncate font-bold text-lg">{client.name}</h2>
-              <StatusBadge
-                tone={client.status === "Activo" ? "success" : "default"}
-              >
+              <StatusBadge tone={client.status === "Activo" ? "success" : "default"}>
                 {client.status}
               </StatusBadge>
             </div>
