@@ -7,6 +7,7 @@ import { Loader2, FolderPlus, X } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { useCreateFolder } from "@/hooks/use-document-folders";
 import { validateFolderName } from "@/lib/folder-utils";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   clientId: string;
@@ -66,17 +67,21 @@ export function FolderCreateModal({ clientId, parentId, parentName, onClose, onC
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <label
+              htmlFor="new-folder-name"
+              className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
               Nombre de la carpeta *
             </label>
-            <input
+            <Input
+              id="new-folder-name"
               autoFocus
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ej: Resoluciones"
               maxLength={120}
-              className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+              className="mt-1.5"
             />
           </div>
 

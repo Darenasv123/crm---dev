@@ -14,6 +14,7 @@ import {
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { useAuth } from "@/hooks/use-auth";
+import { Input } from "@/components/ui/input";
 
 interface SearchResult {
   id: string;
@@ -325,7 +326,7 @@ export function GlobalSearch() {
   return (
     <div ref={containerRef} className="relative flex-1 max-w-xl">
       <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
-      <input
+      <Input
         ref={inputRef}
         type="search"
         value={query}
@@ -335,7 +336,8 @@ export function GlobalSearch() {
           if (query.trim().length >= 2) setOpen(true);
         }}
         placeholder="Buscar clientes, expedientes, documentos, reportes... (Ctrl+K)"
-        className="w-full h-10 pl-10 pr-10 rounded-lg bg-muted/60 border border-transparent focus:border-primary focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm placeholder:text-muted-foreground transition"
+        aria-label="Búsqueda global"
+        className="h-10 bg-muted/60 pl-10 pr-10 focus-visible:bg-card"
       />
       {/* Loading / clear */}
       <div className="absolute right-3 top-1/2 -translate-y-1/2">

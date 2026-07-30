@@ -19,8 +19,9 @@ import {
   runGoogleCalendarAction,
   type GoogleCalendarStatus,
 } from "@/lib/google-calendar-client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { Input } from "@/components/ui/input";
 import {
   Plus,
   Bell,
@@ -580,13 +581,16 @@ function SettingsPage() {
                       La autorización, los tokens y los secretos se procesan exclusivamente en el
                       servidor. Introduce el ID del calendario compartido autorizado.
                     </p>
-                    <label className="grid gap-1.5 text-xs font-medium">
+                    <label
+                      htmlFor="calendar-id-connect"
+                      className="grid gap-1.5 text-xs font-medium"
+                    >
                       ID del calendario
-                      <input
+                      <Input
+                        id="calendar-id-connect"
                         value={calendarId}
                         onChange={(event) => setCalendarId(event.target.value)}
                         placeholder="calendario@group.calendar.google.com"
-                        className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
                       />
                     </label>
                   </div>
@@ -616,12 +620,15 @@ function SettingsPage() {
                     </div>
                   </div>
 
-                  <label className="grid gap-1.5 text-xs font-medium">
+                  <label
+                    htmlFor="calendar-id-connected"
+                    className="grid gap-1.5 text-xs font-medium"
+                  >
                     ID del calendario compartido
-                    <input
+                    <Input
+                      id="calendar-id-connected"
                       value={calendarId}
                       onChange={(event) => setCalendarId(event.target.value)}
-                      className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
                     />
                   </label>
 
@@ -865,17 +872,21 @@ function SettingsPage() {
                 onChange={(v) => setForm((f) => ({ ...f, email: v }))}
               />
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <label
+                  htmlFor="register-password"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
                   Contraseña *
                 </label>
                 <div className="relative mt-1.5">
-                  <input
+                  <Input
+                    id="register-password"
                     type={showPassword ? "text" : "password"}
                     value={form.password}
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                     placeholder="Mínimo 8 caracteres"
                     required
-                    className="w-full h-10 px-3 pr-10 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+                    className="pr-10"
                   />
                   <button
                     type="button"
@@ -1218,15 +1229,20 @@ function FormField({
   value: string;
   onChange?: (v: string) => void;
 }) {
+  const id = useId();
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <label
+        htmlFor={id}
+        className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+      >
         {label}
       </label>
-      <input
+      <Input
+        id={id}
         defaultValue={value}
         onChange={(e) => onChange?.(e.target.value)}
-        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+        className="mt-1.5"
       />
     </div>
   );

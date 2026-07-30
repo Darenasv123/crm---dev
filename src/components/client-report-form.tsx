@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { Send, Loader2, Copy, MessageCircle, Check } from "lucide-react";
 import { Card } from "@/components/app-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import type { Database } from "@/lib/database.types";
 import {
   buildClientReportMessage,
@@ -172,13 +175,13 @@ export function ClientReportForm({
           </label>
           {clients.length > 10 ? (
             <>
-              <input
+              <Input
                 value={clientSearch}
                 onChange={(e) => setClientSearch(e.target.value)}
                 placeholder="Buscar por nombre, teléfono o correo..."
                 className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
               />
-              <select
+              <NativeSelect
                 value={formData.client_id}
                 onChange={(e) => {
                   setFormData((prev) => ({
@@ -198,10 +201,10 @@ export function ClientReportForm({
                     {client.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </>
           ) : (
-            <select
+            <NativeSelect
               value={formData.client_id}
               onChange={(e) => {
                 setFormData((prev) => ({
@@ -220,7 +223,7 @@ export function ClientReportForm({
                   {client.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </div>
 
@@ -229,7 +232,7 @@ export function ClientReportForm({
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Expediente (opcional)
           </label>
-          <select
+          <NativeSelect
             value={formData.case_id}
             onChange={(e) => {
               setFormData((prev) => ({ ...prev, case_id: e.target.value }));
@@ -243,7 +246,7 @@ export function ClientReportForm({
                 {c.expediente} {c.materia ? `— ${c.materia}` : ""}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Materia */}
@@ -251,7 +254,7 @@ export function ClientReportForm({
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Materia *
           </label>
-          <select
+          <NativeSelect
             value={formData.materia}
             onChange={(e) =>
               setFormData((prev) => ({ ...prev, materia: e.target.value as ReportMateria | "" }))
@@ -262,7 +265,7 @@ export function ClientReportForm({
             <option value="">Selecciona materia</option>
             <option value="Familia">Familia</option>
             <option value="Penal">Penal</option>
-          </select>
+          </NativeSelect>
         </div>
 
         {/* Fecha del estado y Estado actual */}
@@ -271,7 +274,7 @@ export function ClientReportForm({
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Fecha del estado *
             </label>
-            <input
+            <Input
               type="date"
               value={formData.status_date}
               onChange={(e) => setFormData((prev) => ({ ...prev, status_date: e.target.value }))}
@@ -283,7 +286,7 @@ export function ClientReportForm({
             <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Recordatorio (días) *
             </label>
-            <input
+            <Input
               type="number"
               min="1"
               value={formData.reminder_days}
@@ -301,7 +304,7 @@ export function ClientReportForm({
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Estado actual del proceso *
           </label>
-          <textarea
+          <Textarea
             value={formData.current_status}
             onChange={(e) => setFormData((prev) => ({ ...prev, current_status: e.target.value }))}
             required
@@ -316,7 +319,7 @@ export function ClientReportForm({
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Mensaje informativo *
           </label>
-          <textarea
+          <Textarea
             value={formData.informative_message}
             onChange={(e) =>
               setFormData((prev) => ({ ...prev, informative_message: e.target.value }))

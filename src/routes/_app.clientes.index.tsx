@@ -1,8 +1,29 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { FileSpreadsheet, Mail, MoreHorizontal, Phone, Plus, Search, Users, X } from "lucide-react";
+import {
+  FileSpreadsheet,
+  Mail,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  Search,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { CSVImport } from "@/components/csv-import";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EmptyState, LoadingState } from "@/components/ui/data-state";
+import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useCases } from "@/hooks/use-cases";
 import { useClients, useCreateClient } from "@/hooks/use-clients";
 import {
@@ -89,31 +110,24 @@ function ClientsPage() {
       subtitle="Directorio operativo de clientes"
       actions={
         <>
-          <button
-            type="button"
-            onClick={() => setShowImport(true)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border px-4 text-sm font-semibold"
-          >
+          <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="h-4 w-4" /> Importar
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
+          </Button>
+          <Button type="button" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" /> Nuevo cliente
-          </button>
+          </Button>
         </>
       }
     >
       <Card className="mb-5 p-4">
         <label className="relative block max-w-xl">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <input
+          <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar por nombre, teléfono o correo"
-            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            className="pl-9"
+            aria-label="Buscar clientes"
           />
         </label>
       </Card>
@@ -129,12 +143,25 @@ function ClientsPage() {
           <span className="sr-only">Acciones</span>
         </div>
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">Cargando clientes…</p>
+          <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
         ) : filtered.length === 0 ? (
-          <div className="p-10 text-center">
-            <Users className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">No hay clientes para mostrar.</p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title={search ? "No encontramos clientes" : "Todavía no hay clientes"}
+            description={
+              search
+                ? "Prueba con otro nombre, teléfono o correo."
+                : "Crea el primer registro para comenzar a organizar el directorio."
+            }
+            action={
+              !search ? (
+                <Button type="button" onClick={() => setShowForm(true)}>
+                  <UserPlus /> Nuevo cliente
+                </Button>
+              ) : undefined
+            }
+            className="rounded-none border-0 shadow-none"
+          />
         ) : (
           filtered.map((client) => (
             <div
@@ -186,96 +213,90 @@ function ClientsPage() {
         )}
       </Card>
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-          <Card className="w-full max-w-xl p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold">Nuevo cliente</h2>
-                <p className="text-sm text-muted-foreground">
-                  Registra solo la información necesaria para trabajar.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeForm}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      <Dialog open={showForm} onOpenChange={(open) => !open && closeForm()}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <div className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              <UserPlus className="h-5 w-5" aria-hidden="true" />
             </div>
-            <form onSubmit={submit} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Nombre completo" className="sm:col-span-2">
-                <input
+            <DialogTitle>Nuevo cliente</DialogTitle>
+            <DialogDescription>
+              Registra solo la información necesaria para trabajar.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit} className="grid gap-5">
+            <FormSection title="Información principal">
+              <FormField id="client-name" label="Nombre completo" className="sm:col-span-2">
+                <Input
+                  id="client-name"
                   required
+                  autoFocus
+                  autoComplete="name"
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Teléfono principal">
-                <input
+              </FormField>
+              <FormField id="client-phone" label="Teléfono principal">
+                <Input
+                  id="client-phone"
+                  type="tel"
                   inputMode="numeric"
+                  autoComplete="tel"
                   value={form.phone}
                   onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Correo (opcional)">
-                <input
+              </FormField>
+              <FormField id="client-email" label="Correo" optional>
+                <Input
+                  id="client-email"
                   type="email"
+                  autoComplete="email"
                   value={form.email}
                   onChange={(event) => setForm({ ...form, email: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Estado" className="sm:col-span-2">
-                <select
+              </FormField>
+              <FormField id="client-status" label="Estado" className="sm:col-span-2">
+                <NativeSelect
+                  id="client-status"
                   value={form.status}
                   onChange={(event) => setForm({ ...form, status: event.target.value })}
-                  className="field"
                 >
                   {CLIENT_STATUS_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
-                </select>
-              </Field>
-              {duplicateMatches.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm sm:col-span-2">
-                  <p className="font-semibold">Posibles coincidencias</p>
-                  {duplicateMatches.map((match) => (
-                    <p key={match.clientId}>
-                      {match.clientName}: {match.reason}
-                    </p>
-                  ))}
-                  <label className="mt-2 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={duplicatesAcknowledged}
-                      onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
-                    />
-                    Confirmo que es un cliente distinto.
-                  </label>
-                </div>
-              )}
-              {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <button type="button" onClick={closeForm} className="h-10 rounded-lg border px-4">
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={createClient.isPending}
-                  className="h-10 rounded-lg bg-primary px-4 font-semibold text-primary-foreground disabled:opacity-50"
-                >
-                  {createClient.isPending ? "Guardando…" : "Guardar cliente"}
-                </button>
+                </NativeSelect>
+              </FormField>
+            </FormSection>
+            {duplicateMatches.length > 0 && (
+              <div className="rounded-lg border border-warning/35 bg-warning/10 p-3 text-sm">
+                <p className="font-semibold">Posibles coincidencias</p>
+                {duplicateMatches.map((match) => (
+                  <p key={match.clientId}>
+                    {match.clientName}: {match.reason}
+                  </p>
+                ))}
+                <label className="mt-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={duplicatesAcknowledged}
+                    onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
+                  />
+                  Confirmo que es un cliente distinto.
+                </label>
               </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            )}
+            <FormErrorSummary>{error}</FormErrorSummary>
+            <FormActions>
+              <Button type="button" variant="outline" onClick={closeForm}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={createClient.isPending}>
+                Guardar cliente
+              </Button>
+            </FormActions>
+          </form>
+        </DialogContent>
+      </Dialog>
       {showImport && (
         <CSVImport
           onClose={() => setShowImport(false)}
@@ -286,22 +307,5 @@ function ClientsPage() {
         />
       )}
     </AppLayout>
-  );
-}
-
-function Field({
-  label,
-  className = "",
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
-      {label}
-      {children}
-    </label>
   );
 }

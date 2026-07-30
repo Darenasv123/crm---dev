@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppLayout, Card } from "@/components/app-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   useAgendaEvents,
   useCreateAgendaEvent,
@@ -55,11 +57,11 @@ const EMPTY_EVENT_FORM = {
 
 const typeColor: Record<EventType, { bg: string; dot: string; text: string }> = {
   Audiencia: { bg: "bg-primary/10 border-primary/30", dot: "bg-primary", text: "text-primary" },
-  Cita: { bg: "bg-sky-50 border-sky-200", dot: "bg-sky-500", text: "text-sky-700" },
+  Cita: { bg: "bg-info/10 border-info/25", dot: "bg-info", text: "text-info-foreground" },
   Recordatorio: {
-    bg: "bg-emerald-50 border-emerald-200",
-    dot: "bg-emerald-500",
-    text: "text-emerald-700",
+    bg: "bg-success/10 border-success/25",
+    dot: "bg-success",
+    text: "text-success-foreground",
   },
 };
 
@@ -634,7 +636,7 @@ function CalendarPage() {
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Tipo
                 </label>
-                <select
+                <NativeSelect
                   value={form.type}
                   onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as EventType }))}
                   className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
@@ -642,7 +644,7 @@ function CalendarPage() {
                   <option>Audiencia</option>
                   <option>Cita</option>
                   <option>Recordatorio</option>
-                </select>
+                </NativeSelect>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <AF
@@ -669,7 +671,7 @@ function CalendarPage() {
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Cliente (opcional)
                 </label>
-                <select
+                <NativeSelect
                   value={form.client_id}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, client_id: e.target.value, case_id: "" }))
@@ -682,13 +684,13 @@ function CalendarPage() {
                       {c.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Expediente (opcional)
                 </label>
-                <select
+                <NativeSelect
                   value={form.case_id}
                   onChange={(e) => {
                     const selectedCase = cases.find((item) => item.id === e.target.value);
@@ -706,7 +708,7 @@ function CalendarPage() {
                       {item.expediente} · {item.clients?.name ?? "Cliente"}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
               {formError && (
                 <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -747,10 +749,10 @@ function SyncBadge({ status }: { status: string | null }) {
     conflict: "Conflicto",
   };
   const tones: Record<string, string> = {
-    synced: "bg-emerald-50 text-emerald-700",
-    pending: "bg-sky-50 text-sky-700",
-    error: "bg-red-50 text-red-700",
-    conflict: "bg-amber-50 text-amber-700",
+    synced: "bg-success/10 text-success-foreground",
+    pending: "bg-info/10 text-info-foreground",
+    error: "bg-destructive/10 text-destructive",
+    conflict: "bg-warning/14 text-warning-foreground",
   };
   return (
     <span
@@ -832,7 +834,7 @@ function AF({
       <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </label>
-      <input
+      <Input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}

@@ -1,7 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Briefcase, MoreHorizontal, Plus, Search, X } from "lucide-react";
+import { Briefcase, FolderPlus, MoreHorizontal, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
+import { Button } from "@/components/ui/button";
+import { EmptyState, LoadingState } from "@/components/ui/data-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { useCases, useCreateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
 import {
@@ -71,23 +84,20 @@ function CasesPage() {
       title="Expedientes"
       subtitle="Seguimiento jurídico y próximas acciones"
       actions={
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
-        >
+        <Button type="button" onClick={() => setShowForm(true)}>
           <Plus className="h-4 w-4" /> Nuevo expediente
-        </button>
+        </Button>
       }
     >
       <Card className="mb-5 p-4">
         <label className="relative block max-w-xl">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <input
+          <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar por expediente, cliente, materia o proceso"
-            className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm"
+            className="pl-9"
+            aria-label="Buscar expedientes"
           />
         </label>
       </Card>
@@ -102,12 +112,25 @@ function CasesPage() {
           <span className="sr-only">Acciones</span>
         </div>
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">Cargando expedientes…</p>
+          <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
         ) : filtered.length === 0 ? (
-          <div className="p-10 text-center">
-            <Briefcase className="mx-auto h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium">No hay expedientes para mostrar.</p>
-          </div>
+          <EmptyState
+            icon={Briefcase}
+            title={search ? "No encontramos expedientes" : "Todavía no hay expedientes"}
+            description={
+              search
+                ? "Prueba con otro número, cliente, materia o tipo de proceso."
+                : "Crea el primer expediente para comenzar el seguimiento jurídico."
+            }
+            action={
+              !search ? (
+                <Button type="button" onClick={() => setShowForm(true)}>
+                  <FolderPlus /> Nuevo expediente
+                </Button>
+              ) : undefined
+            }
+            className="rounded-none border-0 shadow-none"
+          />
         ) : (
           filtered.map((item) => (
             <div
@@ -146,30 +169,26 @@ function CasesPage() {
         )}
       </Card>
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6" role="dialog">
-            <div className="flex justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-bold">Nuevo expediente</h2>
-                <p className="text-sm text-muted-foreground">Información operativa esencial.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <div className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              <FolderPlus className="h-5 w-5" aria-hidden="true" />
             </div>
-            <form onSubmit={submit} className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="Cliente" className="sm:col-span-2">
-                <select
+            <DialogTitle>Nuevo expediente</DialogTitle>
+            <DialogDescription>
+              Registra la información operativa esencial para iniciar el seguimiento.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit} className="grid gap-5">
+            <FormSection title="Información principal">
+              <FormField id="case-client" label="Cliente" className="sm:col-span-2">
+                <NativeSelect
+                  id="case-client"
                   required
+                  autoFocus
                   value={form.client_id}
                   onChange={(event) => setForm({ ...form, client_id: event.target.value })}
-                  className="field"
                 >
                   <option value="">Selecciona un cliente</option>
                   {clients.map((client) => (
@@ -177,90 +196,70 @@ function CasesPage() {
                       {client.name}
                     </option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Número de expediente">
-                <input
+                </NativeSelect>
+              </FormField>
+              <FormField id="case-number" label="Número de expediente">
+                <Input
+                  id="case-number"
                   value={form.expediente}
                   onChange={(event) => setForm({ ...form, expediente: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Materia">
-                <select
+              </FormField>
+              <FormField id="case-matter" label="Materia">
+                <NativeSelect
+                  id="case-matter"
                   value={form.materia}
                   onChange={(event) => setForm({ ...form, materia: event.target.value })}
-                  className="field"
                 >
                   {MATERIA_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Tipo de proceso">
-                <input
+                </NativeSelect>
+              </FormField>
+              <FormField id="case-process" label="Tipo de proceso">
+                <Input
+                  id="case-process"
                   required
                   value={form.process_type}
                   onChange={(event) => setForm({ ...form, process_type: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Estado">
-                <select
+              </FormField>
+              <FormField id="case-status" label="Estado">
+                <NativeSelect
+                  id="case-status"
                   value={form.status}
                   onChange={(event) => setForm({ ...form, status: event.target.value })}
-                  className="field"
                 >
                   {CASE_STATUS_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Próxima acción" className="sm:col-span-2">
-                <textarea
+                </NativeSelect>
+              </FormField>
+              <FormField
+                id="case-next-action"
+                label="Próxima acción"
+                optional
+                className="sm:col-span-2"
+              >
+                <Textarea
+                  id="case-next-action"
                   value={form.next_action}
                   onChange={(event) => setForm({ ...form, next_action: event.target.value })}
-                  className="field min-h-20"
                 />
-              </Field>
-              {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="h-10 rounded-lg border px-4"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={createCase.isPending}
-                  className="h-10 rounded-lg bg-primary px-4 font-semibold text-primary-foreground"
-                >
-                  {createCase.isPending ? "Guardando…" : "Guardar expediente"}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+              </FormField>
+            </FormSection>
+            <FormErrorSummary>{error}</FormErrorSummary>
+            <FormActions>
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={createCase.isPending}>
+                Guardar expediente
+              </Button>
+            </FormActions>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
-  );
-}
-
-function Field({
-  label,
-  className = "",
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
-      {label}
-      {children}
-    </label>
   );
 }

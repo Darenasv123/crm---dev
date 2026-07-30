@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CalendarDays, FileText, Loader2, Plus, Sparkles, X } from "lucide-react";
 import { Card, StatusBadge } from "@/components/app-layout";
 import { useCaseEvents, useCreateCaseEvent } from "@/hooks/legal/use-case-management";
 import { getPeruTodayISO } from "@/lib/peru-time";
 import type { Database } from "@/lib/database.types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 
 type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
 
@@ -64,14 +68,10 @@ export function CaseTimelinePanel({
             Actuaciones ordenadas por fecha y vinculadas con su fuente.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowForm((value) => !value)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
-        >
+        <Button type="button" onClick={() => setShowForm((value) => !value)} size="sm">
           {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           {showForm ? "Cerrar" : "Nueva actuación"}
-        </button>
+        </Button>
       </div>
 
       {showForm && (
@@ -101,15 +101,19 @@ export function CaseTimelinePanel({
             required
           />
           <div>
-            <label className="text-[10px] font-semibold uppercase text-muted-foreground">
+            <label
+              htmlFor="timeline-document"
+              className="text-[10px] font-semibold uppercase text-muted-foreground"
+            >
               Documento fuente
             </label>
-            <select
+            <NativeSelect
+              id="timeline-document"
               value={form.document_id}
               onChange={(event) =>
                 setForm((current) => ({ ...current, document_id: event.target.value }))
               }
-              className="mt-1.5 h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none"
+              className="mt-1.5"
             >
               <option value="">Sin documento vinculado</option>
               {documents.map((document) => (
@@ -117,30 +121,23 @@ export function CaseTimelinePanel({
                   {document.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <textarea
+          <Textarea
             value={form.description}
             onChange={(event) =>
               setForm((current) => ({ ...current, description: event.target.value }))
             }
-            rows={3}
             placeholder="Descripción de la actuación"
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none"
           />
           {formError && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               {formError}
             </p>
           )}
-          <button
-            type="submit"
-            disabled={createEvent.isPending}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-60"
-          >
-            {createEvent.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Guardar
-            actuación
-          </button>
+          <Button type="submit" size="sm" loading={createEvent.isPending}>
+            Guardar actuación
+          </Button>
         </form>
       )}
 
@@ -215,15 +212,19 @@ function Field({
   required?: boolean;
   type?: string;
 }) {
+  const id = useId();
   return (
     <div>
-      <label className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</label>
-      <input
+      <label htmlFor={id} className="text-[10px] font-semibold uppercase text-muted-foreground">
+        {label}
+      </label>
+      <Input
+        id={id}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required={required}
-        className="mt-1.5 h-10 w-full rounded-lg border border-border bg-card px-3 text-sm outline-none"
+        className="mt-1.5"
       />
     </div>
   );

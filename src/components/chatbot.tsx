@@ -8,6 +8,7 @@ import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { useAgendaEvents, useCreateAgendaEvent } from "@/hooks/use-agenda";
 import { getPeruTodayISO } from "@/lib/peru-time";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Message {
   role: "user" | "assistant";
@@ -331,15 +332,14 @@ export function Chatbot() {
           )}
 
           <div className="flex items-end gap-2 px-4 py-3 border-t border-border">
-            <textarea
+            <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Escribe un mensaje..."
-              rows={1}
               disabled={apiKeyMissing}
-              className="flex-1 resize-none rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground max-h-24 overflow-auto disabled:opacity-50"
-              style={{ scrollbarWidth: "none" }}
+              aria-label="Mensaje para el asistente"
+              className="max-h-24 min-h-10 flex-1 resize-none overflow-auto bg-muted/40 [scrollbar-width:none]"
             />
             <button
               onClick={() => handleSend()}

@@ -8,10 +8,21 @@ import {
   Mail,
   Phone,
   Save,
-  X,
+  UserRoundPen,
 } from "lucide-react";
 import { useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useClientReports } from "@/hooks/use-reports";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
@@ -118,19 +129,14 @@ function ClientDetail() {
       subtitle={`Registrado el ${new Date(client.registered_at).toLocaleDateString("es-PE")}`}
       actions={
         <>
-          <Link
-            to={"/clientes" as never}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
-          >
-            <ArrowLeft className="h-4 w-4" /> Volver
-          </Link>
-          <button
-            type="button"
-            onClick={openEdit}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
+          <Button asChild variant="outline">
+            <Link to={"/clientes" as never}>
+              <ArrowLeft className="h-4 w-4" /> Volver
+            </Link>
+          </Button>
+          <Button type="button" onClick={openEdit}>
             <Edit3 className="h-4 w-4" /> Editar
-          </button>
+          </Button>
         </>
       }
     >
@@ -203,89 +209,82 @@ function ClientDetail() {
         )}
       </Card>
 
-      {editing && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-          <Card className="w-full max-w-xl p-6">
-            <div className="flex justify-between">
-              <div>
-                <h2 className="text-lg font-bold">Editar cliente</h2>
-                <p className="text-sm text-muted-foreground">Información operativa principal.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <div className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              <UserRoundPen className="h-5 w-5" aria-hidden="true" />
             </div>
-            <form onSubmit={save} className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="Nombre completo" className="sm:col-span-2">
-                <input
+            <DialogTitle>Editar cliente</DialogTitle>
+            <DialogDescription>
+              Actualiza la información operativa principal del cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={save} className="grid gap-5">
+            <FormSection title="Información principal">
+              <FormField id="edit-client-name" label="Nombre completo" className="sm:col-span-2">
+                <Input
+                  id="edit-client-name"
+                  autoFocus
+                  required
+                  autoComplete="name"
                   value={form.name}
                   onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Teléfono">
-                <input
+              </FormField>
+              <FormField id="edit-client-phone" label="Teléfono">
+                <Input
+                  id="edit-client-phone"
+                  type="tel"
+                  autoComplete="tel"
                   value={form.phone}
                   onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Correo (opcional)">
-                <input
+              </FormField>
+              <FormField id="edit-client-email" label="Correo" optional>
+                <Input
+                  id="edit-client-email"
                   type="email"
+                  autoComplete="email"
                   value={form.email}
                   onChange={(event) => setForm({ ...form, email: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Estado" className="sm:col-span-2">
-                <select
+              </FormField>
+              <FormField id="edit-client-status" label="Estado" className="sm:col-span-2">
+                <NativeSelect
+                  id="edit-client-status"
                   value={form.status}
                   onChange={(event) => setForm({ ...form, status: event.target.value })}
-                  className="field"
                 >
                   {CLIENT_STATUS_OPTIONS.map((option) => (
                     <option key={option}>{option}</option>
                   ))}
-                </select>
-              </Field>
-              {duplicates.length > 0 && (
-                <label className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    checked={duplicatesAcknowledged}
-                    onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
-                    className="mr-2"
-                  />
-                  Revisé {duplicates.length} posible(s) coincidencia(s) y confirmo el cambio.
-                </label>
-              )}
-              {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <button
-                  type="button"
-                  onClick={() => setEditing(false)}
-                  className="h-10 rounded-lg border px-4"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={updateClient.isPending}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 font-semibold text-primary-foreground"
-                >
-                  <Save className="h-4 w-4" /> Guardar
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+                </NativeSelect>
+              </FormField>
+            </FormSection>
+            {duplicates.length > 0 && (
+              <label className="rounded-lg border border-warning/35 bg-warning/10 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={duplicatesAcknowledged}
+                  onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
+                  className="mr-2"
+                />
+                Revisé {duplicates.length} posible(s) coincidencia(s) y confirmo el cambio.
+              </label>
+            )}
+            <FormErrorSummary>{error}</FormErrorSummary>
+            <FormActions>
+              <Button type="button" variant="outline" onClick={() => setEditing(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={updateClient.isPending}>
+                <Save className="h-4 w-4" /> Guardar cambios
+              </Button>
+            </FormActions>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
@@ -335,22 +334,5 @@ function Activity({
         </div>
       </Card>
     </Link>
-  );
-}
-
-function Field({
-  label,
-  className = "",
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
-      {label}
-      {children}
-    </label>
   );
 }

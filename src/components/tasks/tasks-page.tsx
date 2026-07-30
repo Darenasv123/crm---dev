@@ -11,10 +11,21 @@ import {
   RotateCcw,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppLayout, Card } from "@/components/app-layout";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/data-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useClaimDailyTask,
@@ -47,6 +58,7 @@ import {
   type TaskFormValues,
   type TaskStatus,
 } from "@/lib/tasks";
+import { Textarea } from "@/components/ui/textarea";
 
 type PageMode = "available" | "assigned" | "all" | "board";
 
@@ -190,13 +202,9 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       subtitle="Cola compartida de trabajo y seguimiento"
       actions={
         isAdmin ? (
-          <button
-            type="button"
-            onClick={() => setShowForm(true)}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
-          >
+          <Button type="button" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" /> Nueva tarea
-          </button>
+          </Button>
         ) : undefined
       }
     >
@@ -233,7 +241,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <input
+            <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar tarea"
@@ -242,7 +250,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
           </label>
           <label className="relative">
             <Filter className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <select
+            <NativeSelect
               value={status}
               onChange={(event) => setStatus(event.target.value)}
               className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm"
@@ -253,9 +261,9 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                   {TASK_STATUS_LABELS[item]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
-          <select
+          <NativeSelect
             value={priority}
             onChange={(event) => setPriority(event.target.value)}
             className="h-9 rounded-lg border bg-background px-3 text-sm"
@@ -264,7 +272,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
             {TASK_PRIORITIES.map((item) => (
               <option key={item}>{item}</option>
             ))}
-          </select>
+          </NativeSelect>
           <label className="flex h-9 items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -273,7 +281,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
             />
             Mostrar terminadas
           </label>
-          <select
+          <NativeSelect
             value={clientId}
             disabled={withoutClient}
             onChange={(event) => {
@@ -288,8 +296,8 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                 {client.name}
               </option>
             ))}
-          </select>
-          <select
+          </NativeSelect>
+          <NativeSelect
             value={caseId}
             disabled={withoutCase || withoutClient}
             onChange={(event) => setCaseId(event.target.value)}
@@ -303,9 +311,9 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                   {item.expediente}
                 </option>
               ))}
-          </select>
+          </NativeSelect>
           {isAdmin && (
-            <select
+            <NativeSelect
               value={assignedTo}
               onChange={(event) => setAssignedTo(event.target.value)}
               className="h-9 rounded-lg border bg-background px-3 text-sm"
@@ -316,7 +324,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                   {person.full_name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <label className="flex items-center gap-2">
@@ -416,51 +424,46 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       )}
 
       {!isLoading && visibleTasks.length === 0 && (
-        <Card className="p-10 text-center">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-3 font-semibold">No hay tareas en esta vista.</p>
-          <p className="text-sm text-muted-foreground">
-            La lista se actualizará al cambiar la cola.
-          </p>
-        </Card>
+        <EmptyState
+          icon={CheckCircle2}
+          title="No hay tareas en esta vista"
+          description="La lista se actualizará al cambiar la cola o los filtros."
+          action={
+            isAdmin ? (
+              <Button type="button" variant="outline" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4" /> Crear tarea
+              </Button>
+            ) : undefined
+          }
+        />
       )}
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
-          <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6" role="dialog">
-            <div className="flex justify-between">
-              <div>
-                <h2 className="text-lg font-bold">Nueva tarea disponible</h2>
-                <p className="text-sm text-muted-foreground">
-                  Se crea pendiente y sin responsable para que el equipo pueda tomarla.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={create} className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field label="Tarea" className="sm:col-span-2">
-                <input
+      <Dialog open={showForm} onOpenChange={setShowForm}>
+        <DialogContent size="lg">
+          <DialogHeader icon={Plus}>
+            <DialogTitle>Nueva tarea disponible</DialogTitle>
+            <DialogDescription>
+              Se crea pendiente y sin responsable para que el equipo pueda tomarla.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={create}>
+            <FormSection title="Información de la tarea">
+              <FormField id="task-title" label="Tarea" required className="sm:col-span-2">
+                <Input
+                  id="task-title"
                   autoFocus
                   required
                   value={form.title}
                   onChange={(event) => setForm({ ...form, title: event.target.value })}
-                  className="field"
                 />
-              </Field>
-              <Field label="Cliente (opcional)">
-                <select
+              </FormField>
+              <FormField id="task-client" label="Cliente" optional>
+                <NativeSelect
+                  id="task-client"
                   value={form.client_id}
                   onChange={(event) =>
                     setForm({ ...form, client_id: event.target.value, case_id: "" })
                   }
-                  className="field"
                 >
                   <option value="">Tarea general</option>
                   {clients.map((client) => (
@@ -468,10 +471,11 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                       {client.name}
                     </option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Expediente (opcional)">
-                <select
+                </NativeSelect>
+              </FormField>
+              <FormField id="task-case" label="Expediente" optional>
+                <NativeSelect
+                  id="task-case"
                   value={form.case_id}
                   onChange={(event) => {
                     const selected = cases.find((item) => item.id === event.target.value);
@@ -481,7 +485,6 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                       client_id: selected?.client_id ?? form.client_id,
                     });
                   }}
-                  className="field"
                 >
                   <option value="">Sin expediente</option>
                   {cases
@@ -491,49 +494,46 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                         {item.case_number || item.expediente || item.process_type}
                       </option>
                     ))}
-                </select>
-              </Field>
-              <Field label="Prioridad" className="sm:col-span-2">
-                <select
+                </NativeSelect>
+              </FormField>
+              <FormField id="task-priority" label="Prioridad" className="sm:col-span-2">
+                <NativeSelect
+                  id="task-priority"
                   value={form.priority}
                   onChange={(event) =>
                     setForm({ ...form, priority: event.target.value as TaskFormValues["priority"] })
                   }
-                  className="field"
                 >
                   {TASK_PRIORITIES.map((item) => (
                     <option key={item}>{item}</option>
                   ))}
-                </select>
-              </Field>
-              <Field label="Observaciones" className="sm:col-span-2">
-                <textarea
+                </NativeSelect>
+              </FormField>
+              <FormField
+                id="task-description"
+                label="Observaciones"
+                optional
+                className="sm:col-span-2"
+              >
+                <Textarea
+                  id="task-description"
                   value={form.description}
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
-                  className="field min-h-28"
                 />
-              </Field>
-              {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="h-10 rounded-lg border px-4"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={createTask.isPending}
-                  className="h-10 rounded-lg bg-primary px-4 font-semibold text-primary-foreground"
-                >
-                  Crear tarea
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+              </FormField>
+              {error && <FormErrorSummary className="sm:col-span-2">{error}</FormErrorSummary>}
+            </FormSection>
+            <FormActions>
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={createTask.isPending}>
+                Crear tarea
+              </Button>
+            </FormActions>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Sheet
         open={!!selectedTask}
@@ -586,7 +586,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
               <div className="mt-6">
                 <label className="grid gap-2 text-sm font-medium">
                   Observaciones
-                  <textarea
+                  <Textarea
                     value={observationDraft}
                     onChange={(event) => setObservationDraft(event.target.value)}
                     readOnly={!isAdmin && selectedTask.assigned_to !== user?.id}
@@ -677,7 +677,7 @@ function TaskList({
               {task.cases?.case_number || task.cases?.expediente || "Sin expediente"}
             </span>
             {isAdmin || own ? (
-              <select
+              <NativeSelect
                 value={normalizeTaskStatus(task.status)}
                 onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
                 disabled={busyId === task.id || available}
@@ -688,13 +688,13 @@ function TaskList({
                     {TASK_STATUS_LABELS[item]}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             ) : (
               <TaskChip status={task.status} />
             )}
             <span className="text-sm">{normalizeTaskPriority(task.priority)}</span>
             {isAdmin ? (
-              <select
+              <NativeSelect
                 value={task.assigned_to ?? ""}
                 onChange={(event) => onAssign(task, event.target.value)}
                 disabled={busyId === task.id}
@@ -708,7 +708,7 @@ function TaskList({
                       {item.full_name}
                     </option>
                   ))}
-              </select>
+              </NativeSelect>
             ) : (
               <span className="truncate text-sm">{task.assignee?.full_name || "Disponible"}</span>
             )}
@@ -835,22 +835,5 @@ function Metric({ label, value }: { label: string; value: number }) {
       <p className="text-2xl font-bold">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </Card>
-  );
-}
-
-function Field({
-  label,
-  className = "",
-  children,
-}: {
-  label: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
-      {label}
-      {children}
-    </label>
   );
 }

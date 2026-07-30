@@ -31,6 +31,8 @@ import { useMemo, useState } from "react";
 import type { Database } from "@/lib/database.types";
 import { formatPeruDate, formatPeruDateTime, formatPeruTime } from "@/lib/peru-time";
 import { ClientReportForm, type ClientReportFormData } from "@/components/client-report-form";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export const Route = createFileRoute("/_app/reportes/")({
   head: () => ({ meta: [{ title: "Reportes — CRM Jurídico" }] }),
@@ -500,11 +502,12 @@ function ReportsPage() {
         <Card className="p-4 h-fit xl:sticky xl:top-24">
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
+            <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nombre, teléfono o correo..."
-              className="w-full h-10 pl-9 pr-3 rounded-lg bg-muted/40 border border-border focus:bg-card focus:border-primary focus:outline-none text-sm"
+              aria-label="Buscar cliente para reportes"
+              className="pl-9"
             />
           </div>
 
@@ -765,17 +768,18 @@ function CasesBlock({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <SectionHeader icon={Briefcase} title="Expedientes del Cliente" />
         {cases.length > 1 && (
-          <select
+          <NativeSelect
             value={selectedCaseId}
             onChange={(e) => onSelectCase(e.target.value)}
-            className="h-9 min-w-[220px] rounded-lg border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
+            aria-label="Seleccionar expediente"
+            className="h-9 min-w-[220px]"
           >
             {cases.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.expediente}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </div>
       <div className="space-y-3 mt-4">

@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, CalendarClock, CheckSquare, FileText, UserRound } from "lucide-react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
+import { Button } from "@/components/ui/button";
+import { EmptyState, LoadingState } from "@/components/ui/data-state";
 import { useCase } from "@/hooks/use-cases";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
@@ -19,16 +21,23 @@ function CaseDetail() {
   if (isLoading) {
     return (
       <AppLayout title="Expediente" subtitle="Cargando ficha">
-        <Card className="p-8 text-center text-sm text-muted-foreground">Cargando…</Card>
+        <LoadingState rows={5} />
       </AppLayout>
     );
   }
   if (!caseItem) {
     return (
       <AppLayout title="Expediente no encontrado">
-        <Link to={"/casos" as never} className="text-primary hover:underline">
-          Volver a expedientes
-        </Link>
+        <EmptyState
+          icon={FileText}
+          title="No encontramos este expediente"
+          description="Es posible que haya sido eliminado o que el enlace ya no sea válido."
+          action={
+            <Button asChild variant="outline">
+              <Link to={"/casos" as never}>Volver a expedientes</Link>
+            </Button>
+          }
+        />
       </AppLayout>
     );
   }
@@ -41,12 +50,11 @@ function CaseDetail() {
       title={caseItem.case_number || caseItem.expediente}
       subtitle={`${caseItem.materia || caseItem.process_type} · ${caseItem.clients?.name || "Sin cliente"}`}
       actions={
-        <Link
-          to={"/casos" as never}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
-        >
-          <ArrowLeft className="h-4 w-4" /> Volver
-        </Link>
+        <Button asChild variant="outline">
+          <Link to={"/casos" as never}>
+            <ArrowLeft className="h-4 w-4" /> Volver
+          </Link>
+        </Button>
       }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
@@ -65,6 +73,7 @@ function CaseDetail() {
           <dl className="mt-6 grid gap-5 sm:grid-cols-2">
             <Info label="Cliente" value={caseItem.clients?.name || "Sin cliente"} />
             <Info label="Materia" value={caseItem.materia || "Sin clasificar"} />
+            <Info label="Prioridad" value={caseItem.priority || "Normal"} />
             <Info label="Próxima acción" value={caseItem.next_action || "Sin acción registrada"} />
             <Info
               label="Última actualización"

@@ -6,6 +6,8 @@ import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   FileText,
   Folder,
@@ -16,7 +18,6 @@ import {
   X,
   Loader2,
   Trash2,
-  ChevronDown,
   ExternalLink,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
@@ -176,17 +177,19 @@ function DocsPage() {
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
+              <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar archivo o cliente..."
-                className="w-full h-8 pl-9 pr-3 rounded-lg bg-muted/40 border border-transparent focus:bg-card focus:border-primary focus:outline-none text-sm"
+                aria-label="Buscar archivo o cliente"
+                className="h-9 pl-9"
               />
             </div>
-            <select
+            <NativeSelect
               value={processingFilter}
               onChange={(e) => setProcessingFilter(e.target.value)}
-              className="h-8 max-w-[190px] rounded-lg border border-border bg-card px-2 text-xs outline-none"
+              aria-label="Filtrar por estado de procesamiento"
+              className="h-9 max-w-[190px] text-xs"
             >
               <option value="">Todos los estados</option>
               <option value="pending">Sin analizar</option>
@@ -195,7 +198,7 @@ function DocsPage() {
               <option value="analysis_completed">Analizado</option>
               <option value="review_required">Pendiente de revisión</option>
               <option value="failed">Con error</option>
-            </select>
+            </NativeSelect>
           </div>
 
           {isLoading ? (
@@ -414,35 +417,40 @@ function DocsPage() {
 
               {/* Type */}
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <label
+                  htmlFor="document-type"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
                   Tipo de documento
                 </label>
-                <div className="relative mt-1.5">
-                  <select
+                <div className="mt-1.5">
+                  <NativeSelect
+                    id="document-type"
                     value={uploadForm.type}
                     onChange={(e) => setUploadForm((f) => ({ ...f, type: e.target.value }))}
-                    className="w-full h-10 pl-3 pr-9 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm appearance-none"
                   >
                     {DOC_TYPES.map((t) => (
                       <option key={t}>{t}</option>
                     ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  </NativeSelect>
                 </div>
               </div>
 
               {/* Client */}
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <label
+                  htmlFor="document-client"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
                   Cliente (opcional)
                 </label>
-                <div className="relative mt-1.5">
-                  <select
+                <div className="mt-1.5">
+                  <NativeSelect
+                    id="document-client"
                     value={uploadForm.clientId}
                     onChange={(e) =>
                       setUploadForm((f) => ({ ...f, clientId: e.target.value, caseId: "" }))
                     }
-                    className="w-full h-10 pl-3 pr-9 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm appearance-none"
                   >
                     <option value="">Sin cliente</option>
                     {clients.map((c) => (
@@ -450,17 +458,20 @@ function DocsPage() {
                         {c.name}
                       </option>
                     ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  </NativeSelect>
                 </div>
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <label
+                  htmlFor="document-case"
+                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
                   Expediente (opcional)
                 </label>
-                <div className="relative mt-1.5">
-                  <select
+                <div className="mt-1.5">
+                  <NativeSelect
+                    id="document-case"
                     value={uploadForm.caseId}
                     onChange={(e) => {
                       const selectedCase = cases.find((item) => item.id === e.target.value);
@@ -470,7 +481,6 @@ function DocsPage() {
                         clientId: selectedCase?.client_id ?? f.clientId,
                       }));
                     }}
-                    className="w-full h-10 pl-3 pr-9 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 text-sm appearance-none"
                   >
                     <option value="">Sin expediente específico</option>
                     {uploadCases.map((item) => (
@@ -478,8 +488,7 @@ function DocsPage() {
                         {item.expediente} · {item.clients?.name ?? "Cliente"}
                       </option>
                     ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  </NativeSelect>
                 </div>
               </div>
 

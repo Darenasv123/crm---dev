@@ -1,6 +1,9 @@
 import { Card, StatusBadge } from "@/components/app-layout";
 import { AlertTriangle, Check, Edit3, X } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface FindingDetailPanelProps {
   finding: {
@@ -64,23 +67,24 @@ export function FindingDetailPanel({ finding, onDecide, isSaving }: FindingDetai
       <div className="mt-5 rounded-lg border border-border p-4">
         {editing ? (
           <div className="flex gap-2">
-            <input
+            <Input
               autoFocus
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
-              className="h-10 min-w-0 flex-1 rounded-lg border border-border px-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+              aria-label={`Editar ${finding.fieldName}`}
+              className="min-w-0 flex-1"
             />
-            <button
+            <Button
               type="button"
               disabled={isSaving}
               onClick={() => {
                 onDecide("edited", editValue, notes);
                 setEditing(false);
               }}
-              className="h-10 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+              size="sm"
             >
               Guardar
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="text-base font-semibold">{finding.value}</div>
@@ -97,61 +101,71 @@ export function FindingDetailPanel({ finding, onDecide, isSaving }: FindingDetai
 
       {/* Notas de revisión */}
       <div className="mt-4">
-        <label className="text-xs font-semibold text-muted-foreground">
+        <label
+          htmlFor="finding-review-notes"
+          className="text-xs font-semibold text-muted-foreground"
+        >
           Notas de revisión (opcional):
         </label>
-        <textarea
+        <Textarea
+          id="finding-review-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Escribe observaciones o contexto técnico..."
-          className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-xs outline-none focus:ring-1 focus:ring-primary resize-none h-16"
+          className="mt-1 min-h-20 text-xs"
         />
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
-        <button
+        <Button
           type="button"
           disabled={isSaving}
           onClick={() => onDecide("approved", undefined, notes)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition"
+          variant="success"
+          size="sm"
         >
           <Check className="h-3.5 w-3.5" /> Aprobar dato
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={isSaving}
           onClick={() => {
             setEditing(true);
             setEditValue(finding.value);
           }}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50 transition"
+          variant="outline"
+          size="sm"
         >
           <Edit3 className="h-3.5 w-3.5" /> Editar dato
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={isSaving}
           onClick={() => onDecide("rejected", undefined, notes)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 transition"
+          variant="destructive"
+          size="sm"
         >
           <X className="h-3.5 w-3.5" /> Rechazar
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={isSaving}
           onClick={() => onDecide("conflict", undefined, notes)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-50 transition"
+          variant="outline"
+          size="sm"
+          className="border-warning/35 text-warning-foreground hover:bg-warning/10"
         >
           <AlertTriangle className="h-3.5 w-3.5" /> Marcar conflicto
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={isSaving}
           onClick={() => onDecide("pending", undefined, notes)}
-          className="h-9 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted disabled:opacity-50 transition"
+          variant="ghost"
+          size="sm"
         >
           Dejar pendiente
-        </button>
+        </Button>
       </div>
     </Card>
   );

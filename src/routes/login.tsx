@@ -2,6 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Scale, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FormErrorSummary } from "@/components/ui/form-layout";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Iniciar sesión — CRM Jurídico" }] }),
@@ -74,58 +78,48 @@ function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Correo electrónico
-              </label>
-              <input
+              <Label htmlFor="login-email">Correo electrónico</Label>
+              <Input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nombre@abogados.pe"
                 required
                 autoComplete="email"
-                className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition"
+                className="mt-2"
               />
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Contraseña
-              </label>
-              <div className="relative mt-1.5">
-                <input
+              <Label htmlFor="login-password">Contraseña</Label>
+              <div className="relative mt-2">
+                <Input
+                  id="login-password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Tu contraseña"
                   required
                   autoComplete="current-password"
-                  className="w-full h-10 px-3 pr-10 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary text-sm transition"
+                  className="pr-11"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3">
-                {error}
-              </div>
-            )}
+            <FormErrorSummary>{error}</FormErrorSummary>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:brightness-110 active:scale-[0.99] transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Ingresando..." : "Ingresar al sistema"}
-            </button>
+            <Button type="submit" loading={submitting} className="w-full">
+              Ingresar al sistema
+            </Button>
           </form>
         </div>
 

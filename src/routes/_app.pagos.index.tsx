@@ -13,6 +13,8 @@ import { useSignedUrl } from "@/hooks/use-documents";
 import { supabase } from "@/lib/supabase";
 import { exportPaymentsExcel } from "@/lib/export-excel";
 import { formatPeruDate } from "@/lib/peru-time";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Plus,
   Download,
@@ -25,7 +27,7 @@ import {
   Paperclip,
   FileText,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 
 export const Route = createFileRoute("/_app/pagos/")({
   head: () => ({ meta: [{ title: "Pagos — CRM Jurídico" }] }),
@@ -372,14 +374,18 @@ function PaymentsContent() {
         <ModalWrapper title="Nuevo pago" onClose={() => setModal(null)}>
           <form onSubmit={handleNewPayment} className="space-y-4">
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <label
+                htmlFor="new-payment-client"
+                className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
                 Cliente *
               </label>
-              <select
+              <NativeSelect
+                id="new-payment-client"
                 value={newForm.client_id}
                 onChange={(e) => setNewForm((f) => ({ ...f, client_id: e.target.value }))}
                 required
-                className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
+                className="mt-1.5"
               >
                 <option value="">Seleccionar cliente...</option>
                 {clients.map((c) => (
@@ -387,7 +393,7 @@ function PaymentsContent() {
                     {c.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <PF
               label="Servicio / descripción *"
@@ -442,10 +448,14 @@ function PaymentsContent() {
           <form onSubmit={handleRegisterPayment} className="space-y-4">
             {/* Amount — capped at remaining balance */}
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <label
+                htmlFor="payment-amount"
+                className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
                 Monto del abono (S/) *
               </label>
-              <input
+              <Input
+                id="payment-amount"
                 type="number"
                 value={regForm.amount}
                 min="0.01"
@@ -462,7 +472,7 @@ function PaymentsContent() {
                   }
                 }}
                 required
-                className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+                className="mt-1.5"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Máximo: {currency(Number(selectedPayment.fees) - Number(selectedPayment.paid))}{" "}
@@ -472,19 +482,23 @@ function PaymentsContent() {
 
             {/* Payment method */}
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <label
+                htmlFor="payment-method"
+                className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
                 Método de pago
               </label>
-              <select
+              <NativeSelect
+                id="payment-method"
                 value={regForm.method}
                 onChange={(e) => setRegForm((f) => ({ ...f, method: e.target.value }))}
-                className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
+                className="mt-1.5"
               >
                 <option>Transferencia bancaria</option>
                 <option>Yape / Plin</option>
                 <option>Efectivo</option>
                 <option>Tarjeta</option>
-              </select>
+              </NativeSelect>
             </div>
 
             {/* Voucher file attachment */}
@@ -619,8 +633,8 @@ function KPI({
 }) {
   const tones = {
     navy: "bg-primary/10 text-primary",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-700",
+    success: "bg-success/10 text-success-foreground",
+    warning: "bg-warning/14 text-warning-foreground",
   };
   return (
     <Card className="p-5 flex items-center gap-4">
@@ -705,17 +719,22 @@ function PF({
   required?: boolean;
   type?: string;
 }) {
+  const id = useId();
   return (
     <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <label
+        htmlFor={id}
+        className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+      >
         {label}
       </label>
-      <input
+      <Input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+        className="mt-1.5"
       />
     </div>
   );

@@ -41,6 +41,7 @@ import { FolderCreateModal } from "./folder-create-modal";
 import { FolderRenameModal } from "./folder-rename-modal";
 import { FolderMoveModal } from "./folder-move-modal";
 import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/input";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
 
@@ -410,12 +411,12 @@ export function DocumentFolderBrowser({ clientId, isAdmin, onUploadInFolder }: P
         {/* Buscador */}
         <div className="relative w-48">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
+          <Input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar…"
-            className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/15"
+            className="h-9 pl-8 text-xs"
             aria-label="Buscar documentos y carpetas"
           />
         </div>

@@ -1,5 +1,6 @@
-import { Filter, Search } from "lucide-react";
+import { Filter } from "lucide-react";
 import type { FindingFilterOptions, VerificationStatus } from "@/lib/ai-review/findings-service";
+import { NativeSelect } from "@/components/ui/native-select";
 
 interface FindingsFiltersProps {
   filters: FindingFilterOptions;
@@ -24,7 +25,7 @@ export function FindingsFilters({
         </div>
 
         {/* Estado */}
-        <select
+        <NativeSelect
           value={filters.status ?? "all"}
           onChange={(e) =>
             onChange({
@@ -33,7 +34,8 @@ export function FindingsFilters({
               page: 1,
             })
           }
-          className="h-9 rounded-md border border-border bg-background px-3 text-xs outline-none focus:ring-1 focus:ring-primary"
+          aria-label="Filtrar hallazgos por estado"
+          className="h-9 text-xs"
         >
           <option value="all">Todos los estados</option>
           <option value="pending">Pendientes</option>
@@ -41,11 +43,11 @@ export function FindingsFilters({
           <option value="edited">Editados</option>
           <option value="rejected">Rechazados</option>
           <option value="conflict">Conflicto</option>
-        </select>
+        </NativeSelect>
 
         {/* Importación */}
         {!isDemoMode && importJobs.length > 0 && (
-          <select
+          <NativeSelect
             value={filters.importJobId ?? "all"}
             onChange={(e) =>
               onChange({
@@ -54,7 +56,8 @@ export function FindingsFilters({
                 page: 1,
               })
             }
-            className="h-9 rounded-md border border-border bg-background px-3 text-xs outline-none focus:ring-1 focus:ring-primary"
+            aria-label="Filtrar por importación"
+            className="h-9 text-xs"
           >
             <option value="all">Todas las importaciones</option>
             {importJobs.map((job) => (
@@ -62,11 +65,11 @@ export function FindingsFilters({
                 {job.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
 
         {/* Nivel de confianza */}
-        <select
+        <NativeSelect
           value={filters.minConfidence ?? 0}
           onChange={(e) =>
             onChange({
@@ -75,13 +78,14 @@ export function FindingsFilters({
               page: 1,
             })
           }
-          className="h-9 rounded-md border border-border bg-background px-3 text-xs outline-none focus:ring-1 focus:ring-primary"
+          aria-label="Filtrar por nivel de confianza"
+          className="h-9 text-xs"
         >
           <option value={0}>Cualquier confianza</option>
           <option value={0.7}>Confianza ≥ 70%</option>
           <option value={0.85}>Confianza ≥ 85%</option>
           <option value={0.95}>Confianza ≥ 95%</option>
-        </select>
+        </NativeSelect>
       </div>
 
       {/* Selector Modo Real vs Demo */}

@@ -7,6 +7,7 @@ import { Loader2, Pencil, X } from "lucide-react";
 import { Card } from "@/components/app-layout";
 import { useRenameFolder } from "@/hooks/use-document-folders";
 import { validateFolderName } from "@/lib/folder-utils";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   folderId: string;
@@ -75,16 +76,20 @@ export function FolderRenameModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <label
+              htmlFor="rename-folder-name"
+              className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
               Nuevo nombre *
             </label>
-            <input
+            <Input
+              id="rename-folder-name"
               autoFocus
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={120}
-              className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
+              className="mt-1.5"
             />
             <p className="mt-1 text-[11px] text-muted-foreground">
               Renombrar no mueve los archivos físicos en el almacenamiento.
