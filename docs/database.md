@@ -1,52 +1,31 @@
-# Base de datos
+# Base de datos esperada
 
-## Migración de esta fase
+## Migraciones locales de la fase final
 
-`supabase/migrations/20260721090000_legal_case_foundation.sql` es aditiva y autosuficiente respecto a las funciones de rol. Debe ejecutarse sobre una base que ya contenga el esquema principal del CRM.
+Aplicar en staging, en este orden:
 
-Antes de producción:
+1. `20260729210000_simplify_clients_and_cases.sql`
+2. `20260729211000_task_claim_workflow.sql`
+3. `20260729212000_google_calendar_sync.sql`
+4. `20260729213000_drop_deprecated_client_case_fields.sql`
 
-1. Crear un respaldo de la base desde Supabase.
-2. Verificar que `profiles`, `clients`, `cases`, `documents` y `payments` existen.
-3. Ejecutar las migraciones en orden.
-4. Revisar que RLS esté habilitado en las tablas nuevas.
-5. Probar con una cuenta `Personal` y otra `Administrador`.
+La cuarta migración es destructiva y permanece bloqueada salvo que la sesión confirme
+`BACKUP_VERIFIED`. Antes de ejecutarla se requiere respaldo restaurado, prueba en staging,
+inventario de consumidores externos y aprobación del responsable de datos.
 
-## Tablas ampliadas
+## Modelo funcional
 
-- `clients`: tipo/número de documento, WhatsApp, ocupación, observaciones, autor y actualización.
-- `cases`: código interno, materia, área, etapa, órgano jurisdiccional, número, año, responsable, resumen, última y próxima acción.
-- `documents`: nombres, tipo documental, fuente, referencia externa, tamaño, estado de procesamiento, verificación y confidencialidad.
-- `payments`: relación opcional con expediente.
+- `clients`: nombre, teléfono, correo opcional, estado, registro y metadatos técnicos.
+- `cases`: cliente, número, materia, estado, prioridad, resumen y próximas acciones.
+- `case_tasks`: cola operativa, responsable, estado, prioridad y auditoría de toma.
+- `agenda_events`: única fuente local del calendario y estado de sincronización.
+- `google_calendar_connections`: conexión cifrada administrada en servidor.
+- `google_calendar_channels`: canales webhook y su expiración.
+- `google_calendar_sync_requests`: cola deduplicada de notificaciones.
+- `google_calendar_sync_log`: trazabilidad de sincronización.
 
-## Tablas nuevas
+La tabla histórica de personas vinculadas al expediente no se elimina en esta fase. Se conserva
+para evitar una pérdida de datos hasta que staging confirme que no existen consumidores externos.
 
-- `case_parties`: personas y roles del expediente.
-- `document_extractions`: texto y estructura extraídos de un documento.
-- `case_events`: línea de tiempo procesal con fuente y verificación.
-- `case_tasks`: próximas acciones, responsables y vencimientos.
-- `import_jobs`: estado agregado de una importación.
-- `import_folders`: carpetas inventariadas y coincidencias probables.
-- `ai_analysis_runs`: ejecución, proveedor, versión, salida y coste estimado.
-- `ai_findings`: propuestas individuales pendientes de decisión humana.
-- `source_references`: trazabilidad de un campo hasta documento, página y fragmento.
-
-## RLS
-
-Las tablas nuevas permiten lectura, inserción y actualización a perfiles activos con rol `Administrador` o `Personal`. La eliminación se reserva al administrador. La migración recrea `is_staff()` e `is_admin()` antes de declarar políticas para evitar fallos de orden.
-
-## Índices
-
-Se indexan documentos de identidad, teléfonos, números de expediente, responsables, estados, fechas, relaciones con expedientes y colas de revisión. No se añade todavía búsqueda semántica ni `pgvector`.
-
-## Reversión
-
-No se incluye una reversión automática porque podría eliminar información incorporada después de la puesta en marcha. Una reversión segura debe:
-
-1. Exportar las tablas nuevas.
-2. Desactivar temporalmente los módulos nuevos.
-3. Eliminar primero claves foráneas e índices de la ampliación.
-4. Eliminar tablas nuevas solo después de validar el respaldo.
-5. Conservar las columnas heredadas y los archivos del bucket.
-
-El rollback debe prepararse para el estado concreto de producción y nunca ejecutarse a ciegas.
+`src/lib/database.types.ts` representa manualmente el esquema esperado. Debe regenerarse desde
+staging después de aplicar y verificar las migraciones.

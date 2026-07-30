@@ -2,7 +2,8 @@
 
 ## Principio
 
-La IA propone; el personal confirma. Ningún hallazgo pendiente modifica clientes, expedientes, partes, documentos, actuaciones o tareas.
+La IA propone; el personal confirma. Ningún hallazgo pendiente modifica clientes, expedientes,
+documentos, actuaciones o tareas.
 
 ## Pantalla actual
 
