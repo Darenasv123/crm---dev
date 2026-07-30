@@ -33,6 +33,6 @@ describe("UTF-8 text utilities", () => {
   });
 
   it("strips a UTF-8 BOM at the beginning of CSV text", () => {
-    expect(stripUtf8Bom("\uFEFFnombre,dni")).toBe("nombre,dni");
+    expect(stripUtf8Bom("\uFEFFnombre,telefono")).toBe("nombre,telefono");
   });
 });
