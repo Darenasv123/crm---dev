@@ -1,8 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Briefcase, FolderPlus, MoreHorizontal, Plus, Search } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Briefcase, Edit3, Eye, FolderPlus, MoreHorizontal, Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EmptyState, LoadingState } from "@/components/ui/data-state";
 import {
   Dialog,
@@ -15,7 +21,8 @@ import { FormActions, FormErrorSummary, FormField, FormSection } from "@/compone
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCases, useCreateCase } from "@/hooks/use-cases";
+import { useAuth } from "@/hooks/use-auth";
+import { useCases, useCreateCase, useUpdateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
 import {
   CASE_STATUS_OPTIONS,
@@ -23,6 +30,7 @@ import {
   validateCaseForm,
   type CaseFormValues,
 } from "@/lib/case-validation";
+import { isAdminRole } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/casos/")({
   component: CasesPage,
@@ -38,13 +46,21 @@ const EMPTY_FORM: CaseFormValues = {
 };
 
 function CasesPage() {
+  const { profile } = useAuth();
+  const navigate = useNavigate();
   const { data: cases = [], isLoading } = useCases();
   const { data: clients = [] } = useClients();
   const createCase = useCreateCase();
+  const updateCase = useUpdateCase();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [form, setForm] = useState<CaseFormValues>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+
+  const isAdmin = isAdminRole(profile?.role);
+  const editingCase = editingCaseId ? cases.find((c) => c.id === editingCaseId) : null;
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -58,6 +74,30 @@ function CasesPage() {
         (item.clients?.name ?? "").toLowerCase().includes(term),
     );
   }, [cases, search]);
+
+  function openEdit(caseId: string) {
+    const caseItem = cases.find((c) => c.id === caseId);
+    if (!caseItem) return;
+
+    setEditingCaseId(caseId);
+    setForm({
+      client_id: caseItem.client_id,
+      expediente: caseItem.expediente,
+      materia: caseItem.materia || "Familia",
+      process_type: caseItem.process_type,
+      status: caseItem.status,
+      next_action: caseItem.next_action || "",
+    });
+    setError(null);
+    setShowEditDialog(true);
+  }
+
+  function closeEdit() {
+    setShowEditDialog(false);
+    setEditingCaseId(null);
+    setForm(EMPTY_FORM);
+    setError(null);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -76,6 +116,30 @@ function CasesPage() {
       setShowForm(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo crear el expediente.");
+    }
+  }
+
+  async function saveEdit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingCaseId) return;
+
+    setError(null);
+    try {
+      const values = validateCaseForm(form);
+      await updateCase.mutateAsync({
+        id: editingCaseId,
+        updates: {
+          client_id: values.client_id,
+          expediente: values.expediente || "Sin número",
+          materia: values.materia,
+          process_type: values.process_type,
+          status: values.status,
+          next_action: values.next_action || null,
+        },
+      });
+      closeEdit();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo actualizar el expediente.");
     }
   }
 
@@ -140,7 +204,7 @@ function CasesPage() {
               <Link
                 to={"/casos/$id" as never}
                 params={{ id: item.id } as never}
-                className="font-semibold hover:text-primary"
+                className="text-sm font-medium hover:text-primary"
               >
                 {item.case_number || item.expediente}
               </Link>
@@ -156,14 +220,34 @@ function CasesPage() {
               <p className="mt-3 truncate text-sm text-muted-foreground md:mt-0">
                 {item.next_action || "Sin acción registrada"}
               </p>
-              <Link
-                to={"/casos/$id" as never}
-                params={{ id: item.id } as never}
-                aria-label={`Abrir ${item.expediente}`}
-                className="mt-3 grid h-9 w-9 place-items-center rounded-lg border hover:bg-muted md:mt-0"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3 h-9 w-9 p-0 md:mt-0"
+                    aria-label={`Abrir acciones para ${item.expediente}`}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem
+                    onClick={() =>
+                      navigate({ to: "/casos/$id" as never, params: { id: item.id } as never })
+                    }
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver ficha
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={() => openEdit(item.id)}>
+                      <Edit3 className="h-4 w-4" />
+                      Editar
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))
         )}
@@ -255,6 +339,98 @@ function CasesPage() {
               </Button>
               <Button type="submit" loading={createCase.isPending}>
                 Guardar expediente
+              </Button>
+            </FormActions>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEditDialog} onOpenChange={(open) => !open && closeEdit()}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <div className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Edit3 className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <DialogTitle>Editar expediente</DialogTitle>
+            <DialogDescription>
+              Actualiza la información operativa del expediente.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={saveEdit} className="grid gap-5">
+            <FormSection title="Información principal">
+              <FormField id="edit-case-client" label="Cliente" className="sm:col-span-2">
+                <NativeSelect
+                  id="edit-case-client"
+                  required
+                  autoFocus
+                  value={form.client_id}
+                  onChange={(event) => setForm({ ...form, client_id: event.target.value })}
+                >
+                  <option value="">Selecciona un cliente</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </FormField>
+              <FormField id="edit-case-number" label="Número de expediente">
+                <Input
+                  id="edit-case-number"
+                  value={form.expediente}
+                  onChange={(event) => setForm({ ...form, expediente: event.target.value })}
+                />
+              </FormField>
+              <FormField id="edit-case-matter" label="Materia">
+                <NativeSelect
+                  id="edit-case-matter"
+                  value={form.materia}
+                  onChange={(event) => setForm({ ...form, materia: event.target.value })}
+                >
+                  {MATERIA_OPTIONS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </NativeSelect>
+              </FormField>
+              <FormField id="edit-case-process" label="Tipo de proceso">
+                <Input
+                  id="edit-case-process"
+                  required
+                  value={form.process_type}
+                  onChange={(event) => setForm({ ...form, process_type: event.target.value })}
+                />
+              </FormField>
+              <FormField id="edit-case-status" label="Estado">
+                <NativeSelect
+                  id="edit-case-status"
+                  value={form.status}
+                  onChange={(event) => setForm({ ...form, status: event.target.value })}
+                >
+                  {CASE_STATUS_OPTIONS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </NativeSelect>
+              </FormField>
+              <FormField
+                id="edit-case-next-action"
+                label="Próxima acción"
+                optional
+                className="sm:col-span-2"
+              >
+                <Textarea
+                  id="edit-case-next-action"
+                  value={form.next_action}
+                  onChange={(event) => setForm({ ...form, next_action: event.target.value })}
+                />
+              </FormField>
+            </FormSection>
+            <FormErrorSummary>{error}</FormErrorSummary>
+            <FormActions>
+              <Button type="button" variant="outline" onClick={closeEdit}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={updateCase.isPending}>
+                Guardar cambios
               </Button>
             </FormActions>
           </form>
