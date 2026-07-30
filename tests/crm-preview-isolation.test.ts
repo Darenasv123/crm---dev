@@ -33,7 +33,7 @@ describe("aislamiento del preview visual del CRM", () => {
     // no forman parte del árbol de rutas de TanStack Router
     const catalogHTML = source("dev/ui-catalog.html");
     const previewHTML = source("dev/crm-preview.html");
-    
+
     expect(catalogHTML).toContain("noindex,nofollow");
     expect(previewHTML).toContain("noindex,nofollow");
   });

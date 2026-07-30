@@ -112,10 +112,42 @@ const DEMO_CASES = [
 ];
 
 const DEMO_TASKS = [
-  { id: "1", title: "Elaborar escrito de subsanación", client: "Andrea Mendoza Ruiz", case: "00123-2026-0-1801-JP-FC-01", status: "pending", priority: "Alta", assignee: null },
-  { id: "2", title: "Revisar resolución judicial recibida", client: "Andrea Mendoza Ruiz", case: "00456-2025-0-1801-JR-CI-02", status: "in_progress", priority: "Normal", assignee: "Juan Pérez Demo" },
-  { id: "3", title: "Preparar documentación para presentar", client: "Carlos Ramírez Salazar", case: "04782-2025-0-1801-JR-PE-02", status: "pending", priority: "Alta", assignee: null },
-  { id: "4", title: "Coordinar entrega de copias certificadas", client: "Andrea Mendoza Ruiz", case: "00123-2026-0-1801-JP-FC-01", status: "blocked", priority: "Normal", assignee: "María López Demo" },
+  {
+    id: "1",
+    title: "Elaborar escrito de subsanación",
+    client: "Andrea Mendoza Ruiz",
+    case: "00123-2026-0-1801-JP-FC-01",
+    status: "pending",
+    priority: "Alta",
+    assignee: null,
+  },
+  {
+    id: "2",
+    title: "Revisar resolución judicial recibida",
+    client: "Andrea Mendoza Ruiz",
+    case: "00456-2025-0-1801-JR-CI-02",
+    status: "in_progress",
+    priority: "Normal",
+    assignee: "Juan Pérez Demo",
+  },
+  {
+    id: "3",
+    title: "Preparar documentación para presentar",
+    client: "Carlos Ramírez Salazar",
+    case: "04782-2025-0-1801-JR-PE-02",
+    status: "pending",
+    priority: "Alta",
+    assignee: null,
+  },
+  {
+    id: "4",
+    title: "Coordinar entrega de copias certificadas",
+    client: "Andrea Mendoza Ruiz",
+    case: "00123-2026-0-1801-JP-FC-01",
+    status: "blocked",
+    priority: "Normal",
+    assignee: "María López Demo",
+  },
 ];
 
 const navItems = [
@@ -198,7 +230,9 @@ export function CRMPreview() {
 
         {/* Content */}
         <main className="p-4 pb-24 lg:p-8">
-          {currentView === "dashboard" && <DashboardView onOpenDialog={() => setDialogOpen(true)} />}
+          {currentView === "dashboard" && (
+            <DashboardView onOpenDialog={() => setDialogOpen(true)} />
+          )}
           {currentView === "clients" && <ClientsView onOpenDialog={() => setDialogOpen(true)} />}
           {currentView === "cases" && <CasesView onOpenDialog={() => setDialogOpen(true)} />}
           {currentView === "tasks" && <TasksView />}
@@ -216,9 +250,7 @@ export function CRMPreview() {
               key={item.view}
               type="button"
               onClick={() => setCurrentView(item.view)}
-              className={
-                currentView === item.view ? "text-primary" : "text-muted-foreground"
-              }
+              className={currentView === item.view ? "text-primary" : "text-muted-foreground"}
             >
               <item.icon className="mx-auto h-5 w-5" />
               <span className="mt-0.5 block text-[10px]">{item.label}</span>
@@ -229,7 +261,10 @@ export function CRMPreview() {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 lg:hidden" onClick={() => setMobileMenuOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 bg-black/50 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        >
           <aside
             className="absolute left-0 top-0 h-full w-64 bg-sidebar text-sidebar-foreground"
             onClick={(e) => e.stopPropagation()}
