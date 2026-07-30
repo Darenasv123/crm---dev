@@ -1,990 +1,285 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  ArrowLeft,
+  Briefcase,
+  CheckSquare,
+  Edit3,
+  FileText,
+  Mail,
+  Phone,
+  Save,
+  X,
+} from "lucide-react";
+import { useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useClient, useClients, useUpdateClient } from "@/hooks/use-clients";
-import { useCases } from "@/hooks/use-cases";
-import { usePayments } from "@/hooks/use-payments";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
-import { DocumentFolderBrowser } from "@/components/document-folders/document-folder-browser";
-import { useAuth } from "@/hooks/use-auth";
-import { useProfiles } from "@/hooks/use-profiles";
 import { useClientReports } from "@/hooks/use-reports";
-import { useAgendaEvents } from "@/hooks/use-agenda";
-import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
-import { usePermissions } from "@/lib/permissions";
-import { supabase } from "@/lib/supabase";
+import { useDocuments } from "@/hooks/use-documents";
+import { useCaseTasks } from "@/hooks/legal/use-case-management";
+import { useCases } from "@/hooks/use-cases";
+import { useClient, useClients, useUpdateClient } from "@/hooks/use-clients";
 import {
   buildClientInitials,
   CLIENT_STATUS_OPTIONS,
-  DOCUMENT_TYPE_OPTIONS,
   findClientDuplicates,
-  normalizeDigits,
   validateClientForm,
+  type ClientFormValues,
 } from "@/lib/client-validation";
-import {
-  ArrowLeft,
-  Edit3,
-  CreditCard,
-  FileUp,
-  Briefcase,
-  Phone,
-  Mail,
-  IdCard,
-  FileText,
-  X,
-  Loader2,
-  Trash2,
-  Save,
-  History,
-  CheckSquare,
-  AlertTriangle,
-  CalendarClock,
-  Plus,
-} from "lucide-react";
-import { useState, useRef } from "react";
 
 export const Route = createFileRoute("/_app/clientes/$id")({
   component: ClientDetail,
 });
 
-const TABS = ["Resumen", "Expedientes", "Documentos", "Pagos", "Agenda", "Historial"] as const;
-type Tab = (typeof TABS)[number];
-
-const DOC_TYPES = ["DNI", "Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
-
-function currency(n: number) {
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
 function ClientDetail() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
-
-  const { data: client, isLoading: loadingClient } = useClient(id);
+  const { data: client, isLoading } = useClient(id);
   const { data: allClients = [] } = useClients();
-  const { data: allCases = [] } = useCases();
-  const { data: allDocs = [] } = useDocuments();
-  const { data: allReports = [] } = useClientReports();
-  const { data: allAgendaEvents = [] } = useAgendaEvents();
-  const { data: profiles = [] } = useProfiles();
-  const { profile } = useAuth();
-  const { canViewPayments } = usePermissions(profile);
-  // Pagos solo se consultan si el rol tiene permiso
-  const { data: allPayments = [] } = usePayments({ enabled: canViewPayments });
-  const clientCaseIds = allCases.filter((item) => item.client_id === id).map((item) => item.id);
-  const { data: clientTasks = [] } = useCaseTasks({ clientId: id });
-  const { data: clientEvents = [] } = useCaseEvents(clientCaseIds);
+  const { data: cases = [] } = useCases();
+  const { data: documents = [] } = useDocuments();
+  const { data: reports = [] } = useClientReports();
+  const { data: tasks = [] } = useCaseTasks({ clientId: id });
   const updateClient = useUpdateClient();
-  const uploadDoc = useUploadDocument();
-
-  const [tab, setTab] = useState<Tab>("Resumen");
   const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [form, setForm] = useState<ClientFormValues>({
+    name: "",
+    phone: "",
+    email: "",
+    status: "Activo",
+  });
+  const [error, setError] = useState<string | null>(null);
   const [duplicatesAcknowledged, setDuplicatesAcknowledged] = useState(false);
 
-  // Upload doc state
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadType, setUploadType] = useState("Otros");
-  const [uploading, setUploading] = useState(false);
-  const [showUpload, setShowUpload] = useState(false);
-  const [uploadFolderId, setUploadFolderId] = useState<string | null>(null);
-
-  function openUpload(folderId: string | null = null) {
-    setUploadFolderId(folderId);
-    setShowUpload(true);
-  }
-
-  if (loadingClient) {
+  if (isLoading) {
     return (
-      <AppLayout title="Cargando..." subtitle="">
-        <div className="flex items-center justify-center py-32">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+      <AppLayout title="Cliente" subtitle="Cargando ficha">
+        <Card className="p-8 text-center text-sm text-muted-foreground">Cargando…</Card>
       </AppLayout>
     );
   }
-
   if (!client) {
     return (
-      <AppLayout title="Cliente no encontrado" subtitle="">
-        <div className="text-center py-32">
-          <p className="text-muted-foreground mb-4">El cliente no existe o fue eliminado.</p>
-          <Link
-            to={"/clientes" as never}
-            className="text-primary hover:underline text-sm font-semibold"
-          >
-            Volver a clientes
-          </Link>
-        </div>
+      <AppLayout title="Cliente no encontrado">
+        <Link to={"/clientes" as never} className="text-primary hover:underline">
+          Volver al directorio
+        </Link>
       </AppLayout>
     );
   }
 
-  const loadedClient = client;
-  const clientCases = allCases.filter((c) => c.client_id === id);
-  const clientPayments = allPayments.filter((p) => p.client_id === id);
-  const clientDocs = allDocs.filter((d) => d.client_id === id);
-  const unclassifiedClientDocs = clientDocs.filter((d) => !d.case_id);
-  const clientReports = allReports.filter((report) => report.client_id === id);
-  const clientAgendaEvents = allAgendaEvents.filter(
-    (event) => event.client_id === id || clientCaseIds.includes(event.case_id ?? ""),
+  const clientCases = cases.filter((item) => item.client_id === id);
+  const caseIds = new Set(clientCases.map((item) => item.id));
+  const clientDocuments = documents.filter(
+    (item) => item.client_id === id || (item.case_id ? caseIds.has(item.case_id) : false),
   );
-  const isAdmin = profile?.role === "Administrador";
-  const profilesById = new Map(profiles.map((item) => [item.id, item.full_name] as const));
-  const responsibleId =
-    clientCases.find((item) => item.responsible_user_id)?.responsible_user_id ??
-    loadedClient.created_by;
-  const responsibleName = responsibleId
-    ? (profilesById.get(responsibleId) ?? "Asignado")
-    : "Sin asignar";
-  const latestDocument = [...clientDocs].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at),
-  )[0];
-  const nextAgendaEvent = [...clientAgendaEvents]
-    .filter(
-      (event) =>
-        event.event_date >= new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" }),
-    )
-    .sort((a, b) =>
-      `${a.event_date} ${a.event_time}`.localeCompare(`${b.event_date} ${b.event_time}`),
-    )[0];
-  const editDuplicateMatches = editing
-    ? findClientDuplicates(
-        {
-          name: editForm.name ?? "",
-          document_type: editForm.document_type ?? "DNI",
-          document_number: editForm.document_number ?? "",
-          phone: editForm.phone ?? "",
-          email: editForm.email ?? "",
-          status: editForm.status ?? "Activo",
-        },
-        allClients,
-        id,
-      )
-    : [];
-  const pendingTasks = clientTasks.filter(
-    (task) => !["completed", "cancelled"].includes(task.status),
-  );
-  const nextTask = [...pendingTasks]
-    .filter((task) => task.due_date)
-    .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))[0];
-  const lastEvent = [...clientEvents].sort((a, b) => b.event_date.localeCompare(a.event_date))[0];
-  const pendingBalance = clientPayments.reduce(
-    (sum, payment) => sum + Math.max(0, Number(payment.fees) - Number(payment.paid)),
-    0,
-  );
-  const overdueTasks = pendingTasks.filter(
-    (task) => !!task.due_date && new Date(task.due_date) < new Date(),
-  );
-  const historyItems = [
-    ...clientCases.map((item) => ({
-      id: `case-${item.id}`,
-      date: item.created_at,
-      title: `Expediente registrado: ${item.expediente}`,
-      detail: item.process_type,
-    })),
-    ...clientDocs.map((item) => ({
-      id: `doc-${item.id}`,
-      date: item.created_at,
-      title: `Documento incorporado: ${item.name}`,
-      detail: item.type,
-    })),
-    ...clientReports.map((item) => ({
-      id: `report-${item.id}`,
-      date: item.created_at,
-      title: `Reporte publicado: ${item.title}`,
-      detail: item.category,
-    })),
-    ...clientEvents.map((item) => ({
-      id: `event-${item.id}`,
-      date: `${item.event_date}T00:00:00-05:00`,
-      title: item.title,
-      detail: item.event_type,
-    })),
-  ].sort((a, b) => b.date.localeCompare(a.date));
+  const clientReports = reports.filter((item) => item.client_id === id);
+  const activeTasks = tasks.filter((task) => !["completed", "cancelled"].includes(task.status));
+  const duplicates = editing ? findClientDuplicates(form, allClients, id) : [];
 
-  function startEdit() {
-    setEditForm({
-      name: loadedClient.name,
-      dni: loadedClient.dni ?? "",
-      phone: loadedClient.phone ?? "",
-      email: loadedClient.email ?? "",
-      status: loadedClient.status,
-      document_type: loadedClient.document_type || "DNI",
-      document_number: loadedClient.document_number ?? loadedClient.dni ?? "",
+  function openEdit() {
+    if (!client) return;
+    setForm({
+      name: client.name,
+      phone: client.phone ?? "",
+      email: client.email ?? "",
+      status: client.status,
     });
-    setEditing(true);
-    setEditError(null);
+    setError(null);
     setDuplicatesAcknowledged(false);
+    setEditing(true);
   }
 
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    setEditError(null);
-
-    let normalized;
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
     try {
-      normalized = validateClientForm({
-        name: editForm.name ?? "",
-        document_type: editForm.document_type ?? "DNI",
-        document_number: editForm.document_number ?? "",
-        phone: editForm.phone ?? "",
-        email: editForm.email ?? "",
-        status: editForm.status ?? "Activo",
-      });
-      if (editDuplicateMatches.length > 0 && !duplicatesAcknowledged) {
-        setEditError("Revisa los posibles duplicados y confirma si deseas continuar.");
+      const values = validateClientForm(form);
+      if (duplicates.length > 0 && !duplicatesAcknowledged) {
+        setError("Confirma las posibles coincidencias antes de guardar.");
         return;
       }
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Datos incompletos o inválidos.");
-      return;
-    }
-
-    setSaving(true);
-    try {
       await updateClient.mutateAsync({
         id,
         updates: {
-          name: normalized.name,
-          initials: buildClientInitials(normalized.name),
-          dni: normalized.document_number,
-          phone: normalized.phone,
-          email: normalized.email || null,
-          status: normalized.status,
-          document_type: normalized.document_type,
-          document_number: normalized.document_number,
+          name: values.name,
+          initials: buildClientInitials(values.name),
+          phone: values.phone || null,
+          email: values.email || null,
+          status: values.status,
         },
       });
       setEditing(false);
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Error al guardar.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function archiveClient() {
-    if (loadedClient.status === "Archivado") return;
-    if (
-      !window.confirm(
-        `¿Archivar al cliente "${loadedClient.name}"? La ficha y sus expedientes se conservaran.`,
-      )
-    ) {
-      return;
-    }
-    updateClient.mutate({
-      id,
-      updates: { status: "Archivado" },
-    });
-  }
-
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!uploadFile) return;
-    setUploading(true);
-    try {
-      await uploadDoc.mutateAsync({
-        file: uploadFile,
-        type: uploadType,
-        clientId: id,
-        folderId: uploadFolderId ?? null,
-      });
-      setShowUpload(false);
-      setUploadFile(null);
-    } finally {
-      setUploading(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo actualizar el cliente.");
     }
   }
 
   return (
     <AppLayout
       title={client.name}
-      subtitle={`Cliente desde ${new Date(client.registered_at).toLocaleDateString("es-PE", { month: "long", year: "numeric" })}`}
+      subtitle={`Registrado el ${new Date(client.registered_at).toLocaleDateString("es-PE")}`}
       actions={
         <>
           <Link
             to={"/clientes" as never}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+            className="inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium"
           >
             <ArrowLeft className="h-4 w-4" /> Volver
           </Link>
           <button
             type="button"
-            onClick={startEdit}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+            onClick={openEdit}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
           >
-            <Edit3 className="h-4 w-4" /> Editar cliente
+            <Edit3 className="h-4 w-4" /> Editar
           </button>
-          <Link
-            to={"/casos" as never}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-          >
-            <Plus className="h-4 w-4" /> Nuevo expediente
-          </Link>
-          <button
-            type="button"
-            onClick={() => openUpload(null)}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-          >
-            <FileUp className="h-4 w-4" /> Subir documento
-          </button>
-          {isAdmin && (
-            <Link
-              to={"/pagos" as never}
-              className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-            >
-              <CreditCard className="h-4 w-4" /> Registrar pago
-            </Link>
-          )}
-          <Link
-            to={"/agenda" as never}
-            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110"
-          >
-            <CalendarClock className="h-4 w-4" /> Agendar actividad
-          </Link>
         </>
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
-        {/* Profile card */}
-        <div className="space-y-4">
-          <Card className="p-6 text-center">
-            <div
-              className="grid h-20 w-20 mx-auto place-items-center rounded-full text-2xl font-bold text-white shadow-card"
+      <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,2fr)]">
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <span
+              className="grid h-14 w-14 place-items-center rounded-full text-lg font-bold text-white"
               style={{ background: client.color }}
             >
               {client.initials}
-            </div>
-            <h2 className="mt-4 text-lg font-bold">{client.name}</h2>
-            <p className="text-xs text-muted-foreground">{client.process_type ?? "—"}</p>
-            <div className="mt-3 flex justify-center">
-              <StatusBadge
-                tone={
-                  client.status === "Activo"
-                    ? "success"
-                    : client.status === "En espera"
-                      ? "warning"
-                      : "default"
-                }
-              >
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate font-bold">{client.name}</h2>
+              <StatusBadge tone={client.status === "Activo" ? "success" : "default"}>
                 {client.status}
               </StatusBadge>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                onClick={startEdit}
-                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110"
-              >
-                <Edit3 className="h-3.5 w-3.5" /> Editar
-              </button>
-              <button
-                onClick={() => {
-                  setTab("Pagos");
-                }}
-                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg bg-gold text-gold-foreground text-xs font-semibold hover:brightness-105"
-              >
-                <CreditCard className="h-3.5 w-3.5" /> Pagos
-              </button>
-              <button
-                onClick={() => {
-                  openUpload(null);
-                }}
-                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border text-xs font-semibold hover:bg-muted/60"
-              >
-                <FileUp className="h-3.5 w-3.5" /> Documento
-              </button>
-              <button
-                onClick={() => navigate({ to: "/casos" as never })}
-                className="inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border text-xs font-semibold hover:bg-muted/60"
-              >
-                <Briefcase className="h-3.5 w-3.5" /> Expedientes
-              </button>
-              {isAdmin && (
-                <button
-                  onClick={archiveClient}
-                  disabled={loadedClient.status === "Archivado" || updateClient.isPending}
-                  className="col-span-2 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-amber-200 bg-amber-50/50 text-amber-700 text-xs font-semibold hover:bg-amber-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />{" "}
-                  {loadedClient.status === "Archivado" ? "Cliente archivado" : "Archivar cliente"}
-                </button>
-              )}
-            </div>
-          </Card>
-
-          <Card className="p-5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Contacto
-            </h3>
-            <ul className="space-y-3 text-sm">
-              <InfoRow icon={Phone} label="Teléfono principal" value={client.phone ?? "—"} />
-              <InfoRow icon={Phone} label="Teléfono alternativo" value={client.whatsapp ?? "—"} />
-              <InfoRow icon={Mail} label="Correo" value={client.email ?? "—"} />
-              <InfoRow
-                icon={IdCard}
-                label={client.document_type || "DNI/RUC"}
-                value={client.document_number || client.dni || "—"}
-              />
-            </ul>
-          </Card>
-        </div>
-
-        {/* Tabs */}
-        <div>
-          <div className="flex items-center gap-1 border-b border-border mb-6 overflow-x-auto">
-            {TABS.filter((t) => t !== "Pagos" || canViewPayments).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`relative px-4 py-3 text-sm font-semibold whitespace-nowrap transition ${tab === t ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                {t}
-                {tab === t && (
-                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gold" />
-                )}
-              </button>
-            ))}
           </div>
+          <dl className="mt-6 space-y-4">
+            <Contact icon={Phone} label="Teléfono" value={client.phone || "Sin teléfono"} />
+            {client.email && <Contact icon={Mail} label="Correo" value={client.email} />}
+          </dl>
+        </Card>
 
-          {tab === "Resumen" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="p-5">
-                <h4 className="text-sm font-semibold mb-3">Datos generales</h4>
-                <dl className="space-y-0">
-                  <DataRow k="Nombre completo" v={client.name} />
-                  <DataRow k="Responsable" v={responsibleName} />
-                  <DataRow k="Tipo de documento" v={client.document_type || "DNI"} />
-                  <DataRow k="N.º de documento" v={client.document_number || client.dni || "—"} />
-                  <DataRow k="Teléfono" v={client.phone ?? "—"} />
-                  <DataRow k="WhatsApp" v={client.whatsapp || client.phone || "—"} />
-                  <DataRow k="Correo" v={client.email ?? "—"} />
-                  <DataRow k="Dirección" v={client.address || "—"} />
-                  <DataRow k="Ocupación" v={client.occupation || "—"} />
-                  <DataRow k="Materia principal" v={client.process_type ?? "—"} />
-                  <DataRow k="Estado" v={client.status} />
-                  <DataRow
-                    k="Registrado"
-                    v={new Date(client.registered_at).toLocaleDateString("es-PE")}
-                  />
-                  <DataRow k="Observaciones" v={client.notes || "—"} />
-                </dl>
-              </Card>
-              <Card className="p-5">
-                <h4 className="text-sm font-semibold mb-4">Resumen jurídico</h4>
-                <div className="grid grid-cols-2 gap-3 text-center">
-                  <Stat n={clientCases.length} l="Expedientes" />
-                  <Stat
-                    n={clientCases.filter((item) => item.status !== "Archivado").length}
-                    l="Activos"
-                  />
-                  <Stat n={unclassifiedClientDocs.length} l="Docs sin clasificar" />
-                  <Stat n={currency(pendingBalance)} l="Saldo pendiente" />
-                </div>
-              </Card>
-              <Card className="p-5">
-                <h4 className="flex items-center gap-2 text-sm font-semibold">
-                  <CalendarClock className="h-4 w-4 text-primary" /> Seguimiento inmediato
-                </h4>
-                <dl className="mt-4 space-y-3">
-                  <DataRow
-                    k="Próxima actividad"
-                    v={
-                      nextAgendaEvent
-                        ? `${nextAgendaEvent.event_date} · ${nextAgendaEvent.title}`
-                        : nextTask?.title ||
-                          clientCases.find((item) => item.next_action)?.next_action ||
-                          "Sin actividad definida"
-                    }
-                  />
-                  <DataRow
-                    k="Próxima acción procesal"
-                    v={
-                      nextTask?.title ||
-                      clientCases.find((item) => item.next_action)?.next_action ||
-                      "Sin acción definida"
-                    }
-                  />
-                  <DataRow
-                    k="Último documento"
-                    v={
-                      latestDocument
-                        ? `${latestDocument.name} · ${new Date(latestDocument.created_at).toLocaleDateString("es-PE")}`
-                        : "Sin documentos"
-                    }
-                  />
-                  <DataRow
-                    k="Última actuación"
-                    v={
-                      lastEvent
-                        ? `${lastEvent.event_date} · ${lastEvent.title}`
-                        : "Sin actuaciones registradas"
-                    }
-                  />
-                </dl>
-              </Card>
-              <Card className="p-5">
-                <h4 className="flex items-center gap-2 text-sm font-semibold">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" /> Alertas
-                </h4>
-                {overdueTasks.length === 0 ? (
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    No hay tareas vencidas para este cliente.
-                  </p>
-                ) : (
-                  <div className="mt-4 space-y-2">
-                    {overdueTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-                      >
-                        {task.title}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
-          )}
-
-          {tab === "Expedientes" && (
-            <Card className="overflow-hidden">
-              {clientCases.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No hay expedientes registrados para este cliente.
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-3 px-4">Expediente</th>
-                      <th className="py-3 px-4">Materia</th>
-                      <th className="py-3 px-4">Estado</th>
-                      <th className="py-3 px-4">Prioridad</th>
-                      <th className="py-3 px-4">Próx. audiencia</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clientCases.map((c) => (
-                      <tr key={c.id} className="border-t border-border hover:bg-muted/30">
-                        <td className="py-3 px-4 font-mono text-xs text-muted-foreground">
-                          <Link
-                            to={"/casos/$id" as never}
-                            params={{ id: c.id } as never}
-                            className="font-semibold text-primary hover:underline"
-                          >
-                            {c.expediente}
-                          </Link>
-                        </td>
-                        <td className="py-3 px-4">{c.process_type}</td>
-                        <td className="py-3 px-4">
-                          <StatusBadge tone="navy">{c.status}</StatusBadge>
-                        </td>
-                        <td className="py-3 px-4">
-                          <StatusBadge
-                            tone={
-                              c.priority === "Alta"
-                                ? "danger"
-                                : c.priority === "Media"
-                                  ? "warning"
-                                  : "info"
-                            }
-                          >
-                            {c.priority}
-                          </StatusBadge>
-                        </td>
-                        <td className="py-3 px-4 text-xs text-muted-foreground">
-                          {c.next_hearing
-                            ? new Date(c.next_hearing).toLocaleDateString("es-PE", {
-                                day: "2-digit",
-                                month: "short",
-                                year: "numeric",
-                              })
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-          )}
-
-          {tab === "Pagos" && canViewPayments && (
-            <Card className="overflow-hidden">
-              {clientPayments.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No hay pagos registrados para este cliente.
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-3 px-4">Servicio</th>
-                      <th className="py-3 px-4">Honorarios</th>
-                      <th className="py-3 px-4">Pagado</th>
-                      <th className="py-3 px-4">Cuotas</th>
-                      <th className="py-3 px-4">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clientPayments.map((p) => {
-                      const pct = Math.round((Number(p.paid) / Number(p.fees)) * 100);
-                      return (
-                        <tr key={p.id} className="border-t border-border hover:bg-muted/30">
-                          <td className="py-3 px-4">{p.service}</td>
-                          <td className="py-3 px-4 font-semibold tabular-nums">
-                            {currency(Number(p.fees))}
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                                <div
-                                  className="h-full rounded-full bg-primary"
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className="text-xs tabular-nums">
-                                {currency(Number(p.paid))}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-xs text-muted-foreground">
-                            {p.paid_installments}/{p.total_installments}
-                          </td>
-                          <td className="py-3 px-4">
-                            <StatusBadge
-                              tone={
-                                p.status === "Pagado"
-                                  ? "success"
-                                  : p.status === "Vencido"
-                                    ? "danger"
-                                    : "warning"
-                              }
-                            >
-                              {p.status}
-                            </StatusBadge>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-          )}
-
-          {tab === "Documentos" && (
-            <div>
-              <DocumentFolderBrowser
-                clientId={id}
-                isAdmin={isAdmin}
-                onUploadInFolder={(folderId) => openUpload(folderId)}
-              />
-            </div>
-          )}
-
-          {tab === "Agenda" && (
-            <Card className="overflow-hidden">
-              {clientAgendaEvents.length === 0 ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  No hay actividades de agenda vinculadas a este cliente.
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-3 px-4">Fecha</th>
-                      <th className="py-3 px-4">Hora</th>
-                      <th className="py-3 px-4">Actividad</th>
-                      <th className="py-3 px-4">Tipo</th>
-                      <th className="py-3 px-4">Lugar</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...clientAgendaEvents]
-                      .sort((a, b) =>
-                        `${a.event_date} ${a.event_time}`.localeCompare(
-                          `${b.event_date} ${b.event_time}`,
-                        ),
-                      )
-                      .map((event) => (
-                        <tr key={event.id} className="border-t border-border hover:bg-muted/30">
-                          <td className="py-3 px-4 text-xs text-muted-foreground">
-                            {new Date(`${event.event_date}T00:00:00-05:00`).toLocaleDateString(
-                              "es-PE",
-                            )}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-xs text-muted-foreground">
-                            {String(event.event_time).slice(0, 5)}
-                          </td>
-                          <td className="py-3 px-4 font-semibold">{event.title}</td>
-                          <td className="py-3 px-4">
-                            <StatusBadge tone="info">{event.type}</StatusBadge>
-                          </td>
-                          <td className="py-3 px-4 text-xs text-muted-foreground">
-                            {event.location || "-"}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-          )}
-
-          {tab === "Historial" && (
-            <Card className="p-5">
-              <h3 className="flex items-center gap-2 text-sm font-semibold">
-                <History className="h-4 w-4 text-primary" /> Historial del cliente
-              </h3>
-              {historyItems.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  Todavía no hay actividad registrada.
-                </p>
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {historyItems.map((item) => (
-                    <div key={item.id} className="flex gap-3 rounded-lg border border-border p-3">
-                      <CheckSquare className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase text-muted-foreground">
-                          {new Date(item.date).toLocaleDateString("es-PE")}
-                        </div>
-                        <div className="mt-0.5 text-sm font-semibold">{item.title}</div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {item.detail}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Activity icon={Briefcase} label="Expedientes" value={clientCases.length} href="/casos" />
+          <Activity
+            icon={CheckSquare}
+            label="Tareas activas"
+            value={activeTasks.length}
+            href="/tareas"
+          />
+          <Activity
+            icon={FileText}
+            label="Documentos"
+            value={clientDocuments.length}
+            href="/documentos"
+          />
+          <Activity
+            icon={FileText}
+            label="Reportes"
+            value={clientReports.length}
+            href="/reportes"
+          />
         </div>
       </div>
 
-      {/* Edit Modal */}
+      <Card className="mt-5 overflow-hidden">
+        <div className="border-b p-5">
+          <h2 className="font-bold">Expedientes del cliente</h2>
+        </div>
+        {clientCases.length === 0 ? (
+          <p className="p-6 text-sm text-muted-foreground">Aún no hay expedientes registrados.</p>
+        ) : (
+          clientCases.map((item) => (
+            <Link
+              key={item.id}
+              to={"/casos/$id" as never}
+              params={{ id: item.id } as never}
+              className="grid gap-1 border-b px-5 py-4 last:border-b-0 hover:bg-muted/40 sm:grid-cols-[1.2fr_1fr_140px]"
+            >
+              <span className="font-semibold">{item.case_number || item.expediente}</span>
+              <span className="text-sm text-muted-foreground">
+                {item.materia || item.process_type}
+              </span>
+              <span className="text-sm">{item.status}</span>
+            </Link>
+          ))
+        )}
+      </Card>
+
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-lg p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Editar cliente</h3>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4">
+          <Card className="w-full max-w-xl p-6">
+            <div className="flex justify-between">
+              <div>
+                <h2 className="text-lg font-bold">Editar cliente</h2>
+                <p className="text-sm text-muted-foreground">Información operativa principal.</p>
+              </div>
               <button
+                type="button"
                 onClick={() => setEditing(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+                className="grid h-9 w-9 place-items-center rounded-lg hover:bg-muted"
+                aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <form onSubmit={saveEdit} className="space-y-4">
-              <EF
-                label="Nombre completo *"
-                v={editForm.name}
-                set={(v) => setEditForm((f) => ({ ...f, name: v }))}
-                required
-              />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <ES
-                  label="Tipo de documento *"
-                  v={editForm.document_type}
-                  set={(v) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      document_type: v,
-                      document_number: normalizeDigits(f.document_number).slice(
-                        0,
-                        v === "RUC" ? 11 : v === "DNI" ? 8 : 15,
-                      ),
-                    }))
-                  }
-                  options={[...DOCUMENT_TYPE_OPTIONS]}
+            <form onSubmit={save} className="mt-6 grid gap-4 sm:grid-cols-2">
+              <Field label="Nombre completo" className="sm:col-span-2">
+                <input
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  className="field"
                 />
-                <EF
-                  label="DNI/RUC *"
-                  v={editForm.document_number}
-                  set={(v) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      document_number: normalizeDigits(v).slice(
-                        0,
-                        f.document_type === "RUC" ? 11 : f.document_type === "DNI" ? 8 : 15,
-                      ),
-                    }))
-                  }
-                  required
+              </Field>
+              <Field label="Teléfono">
+                <input
+                  value={form.phone}
+                  onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                  className="field"
                 />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <EF
-                  label="Teléfono principal *"
-                  v={editForm.phone}
-                  set={(v) => setEditForm((f) => ({ ...f, phone: normalizeDigits(v).slice(0, 9) }))}
-                  required
-                />
-                <EF
-                  label="Correo"
-                  v={editForm.email}
-                  set={(v) => setEditForm((f) => ({ ...f, email: v }))}
+              </Field>
+              <Field label="Correo (opcional)">
+                <input
                   type="email"
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  className="field"
                 />
-              </div>
-              <ES
-                label="Estado *"
-                v={editForm.status}
-                set={(v) => setEditForm((f) => ({ ...f, status: v }))}
-                options={[...CLIENT_STATUS_OPTIONS]}
-              />
-              {editDuplicateMatches.length > 0 && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                  <p className="text-sm font-semibold text-amber-900">Posibles duplicados</p>
-                  <div className="mt-2 space-y-1">
-                    {editDuplicateMatches.slice(0, 4).map((match) => (
-                      <div key={match.clientId} className="text-xs text-amber-800">
-                        <span className="font-semibold">{match.clientName}</span> · {match.reason}
-                        {match.strength === "approximate" && " (aproximado)"}
-                      </div>
-                    ))}
-                  </div>
-                  <label className="mt-3 flex items-start gap-2 text-xs text-amber-900">
-                    <input
-                      type="checkbox"
-                      checked={duplicatesAcknowledged}
-                      onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
-                      className="mt-0.5"
-                    />
-                    Confirmo que revise estos clientes y deseo continuar sin sobrescribir datos
-                    existentes.
-                  </label>
-                </div>
+              </Field>
+              <Field label="Estado" className="sm:col-span-2">
+                <select
+                  value={form.status}
+                  onChange={(event) => setForm({ ...form, status: event.target.value })}
+                  className="field"
+                >
+                  {CLIENT_STATUS_OPTIONS.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+              </Field>
+              {duplicates.length > 0 && (
+                <label className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={duplicatesAcknowledged}
+                    onChange={(event) => setDuplicatesAcknowledged(event.target.checked)}
+                    className="mr-2"
+                  />
+                  Revisé {duplicates.length} posible(s) coincidencia(s) y confirmo el cambio.
+                </label>
               )}
-              {editError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {editError}
-                </p>
-              )}
-              <div className="flex gap-3 pt-2">
+              {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
+              <div className="flex justify-end gap-2 sm:col-span-2">
                 <button
                   type="button"
                   onClick={() => setEditing(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
+                  className="h-10 rounded-lg border px-4"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
+                  disabled={updateClient.isPending}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 font-semibold text-primary-foreground"
                 >
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      Guardar cambios
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Upload doc modal */}
-      {showUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold">Subir documento</h3>
-              <button
-                onClick={() => setShowUpload(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Archivo *
-                </label>
-                <div
-                  onClick={() => fileRef.current?.click()}
-                  className={`mt-1.5 flex flex-col items-center justify-center gap-2 h-20 rounded-lg border-2 border-dashed cursor-pointer transition ${uploadFile ? "border-primary/40 bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}
-                >
-                  {uploadFile ? (
-                    <>
-                      <FileText className="h-5 w-5 text-primary" />
-                      <span className="text-xs font-medium text-primary truncate max-w-[260px]">
-                        {uploadFile.name}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        Haz clic para seleccionar
-                      </span>
-                    </>
-                  )}
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tipo
-                </label>
-                <select
-                  value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value)}
-                  className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-                >
-                  {DOC_TYPES.map((t) => (
-                    <option key={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowUpload(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!uploadFile || uploading}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Subiendo...
-                    </>
-                  ) : (
-                    <>
-                      <FileUp className="h-4 w-4" />
-                      Subir
-                    </>
-                  )}
+                  <Save className="h-4 w-4" /> Guardar
                 </button>
               </div>
             </form>
@@ -995,7 +290,7 @@ function ClientDetail() {
   );
 }
 
-function InfoRow({
+function Contact({
   icon: Icon,
   label,
   value,
@@ -1005,86 +300,57 @@ function InfoRow({
   value: string;
 }) {
   return (
-    <li className="flex items-start gap-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted/60">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </div>
+    <div className="flex gap-3">
+      <Icon className="mt-0.5 h-4 w-4 text-primary" />
       <div className="min-w-0">
-        <div className="text-[11px] text-muted-foreground">{label}</div>
-        <div className="text-sm font-medium break-all">{value}</div>
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className="truncate text-sm font-medium" title={value}>
+          {value}
+        </dd>
       </div>
-    </li>
-  );
-}
-function DataRow({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0">
-      <dt className="text-xs text-muted-foreground shrink-0">{k}</dt>
-      <dd className="text-sm font-medium text-right">{v}</dd>
     </div>
   );
 }
-function Stat({ n, l }: { n: number | string; l: string }) {
-  return (
-    <div className="rounded-lg bg-muted/40 py-3">
-      <div className="text-2xl font-bold text-primary">{n}</div>
-      <div className="text-[11px] text-muted-foreground">{l}</div>
-    </div>
-  );
-}
-function EF({
+
+function Activity({
+  icon: Icon,
   label,
-  v,
-  set,
-  required,
-  type = "text",
+  value,
+  href,
 }: {
+  icon: typeof Briefcase;
   label: string;
-  v: string;
-  set: (s: string) => void;
-  required?: boolean;
-  type?: string;
+  value: number;
+  href: string;
 }) {
   return (
-    <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={v}
-        onChange={(e) => set(e.target.value)}
-        required={required}
-        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary text-sm"
-      />
-    </div>
+    <Link to={href as never}>
+      <Card className="flex h-full items-center gap-4 p-5 transition hover:border-primary/40">
+        <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-sm text-muted-foreground">{label}</p>
+        </div>
+      </Card>
+    </Link>
   );
 }
-function ES({
+
+function Field({
   label,
-  v,
-  set,
-  options,
+  className = "",
+  children,
 }: {
   label: string;
-  v: string;
-  set: (s: string) => void;
-  options: string[];
+  className?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </label>
-      <select
-        value={v}
-        onChange={(e) => set(e.target.value)}
-        className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card focus:outline-none text-sm"
-      >
-        {options.map((o) => (
-          <option key={o}>{o}</option>
-        ))}
-      </select>
-    </div>
+    <label className={`grid gap-1.5 text-sm font-medium ${className}`}>
+      {label}
+      {children}
+    </label>
   );
 }

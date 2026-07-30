@@ -2,14 +2,11 @@ import { z } from "zod";
 import type { Database } from "@/lib/database.types";
 
 export const CLIENT_STATUS_OPTIONS = ["Activo", "En espera", "Cerrado"] as const;
-export const DOCUMENT_TYPE_OPTIONS = ["DNI", "RUC", "CE", "Pasaporte", "Otro"] as const;
 
 export type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 
 export type ClientFormValues = {
   name: string;
-  document_type: string;
-  document_number: string;
   phone: string;
   email: string;
   status: string;
@@ -39,11 +36,8 @@ export function normalizeText(value: string | null | undefined) {
 }
 
 export function normalizeClientForm(input: ClientFormValues): ClientFormValues {
-  const documentType = input.document_type.trim() || "DNI";
   return {
     name: input.name.trim().replace(/\s+/g, " "),
-    document_type: documentType,
-    document_number: normalizeDigits(input.document_number),
     phone: normalizeDigits(input.phone),
     email: input.email.trim().toLowerCase(),
     status: input.status.trim() || "Activo",
@@ -51,14 +45,7 @@ export function normalizeClientForm(input: ClientFormValues): ClientFormValues {
 }
 
 export function buildClientInitials(name: string) {
-  const words = normalizeClientForm({
-    name,
-    document_type: "DNI",
-    document_number: "",
-    phone: "",
-    email: "",
-    status: "Activo",
-  }).name.split(/\s+/);
+  const words = name.trim().replace(/\s+/g, " ").split(" ");
   return (
     (words.length >= 2 ? `${words[0][0]}${words[1][0]}` : (words[0] ?? "CL").slice(0, 2))
       .toUpperCase()
@@ -69,21 +56,9 @@ export function buildClientInitials(name: string) {
 export function validateClientForm(input: ClientFormValues): ClientFormValues {
   const form = normalizeClientForm(input);
   if (!form.name) throw new Error("Ingresa el nombre completo o razón social.");
-  if (!form.document_number) throw new Error("Ingresa el DNI o RUC del cliente.");
-
-  const docType = form.document_type.toUpperCase();
-  if (docType === "DNI" && form.document_number.length !== 8) {
-    throw new Error("El DNI debe tener exactamente 8 dígitos.");
-  }
-  if (docType === "RUC" && form.document_number.length !== 11) {
-    throw new Error("El RUC debe tener exactamente 11 dígitos.");
-  }
-  if (docType !== "DNI" && docType !== "RUC" && form.document_number.length < 6) {
-    throw new Error("El documento debe tener al menos 6 dígitos.");
-  }
-
-  if (form.phone && form.phone.length !== 9)
+  if (form.phone && form.phone.length !== 9) {
     throw new Error("El teléfono principal debe tener 9 dígitos.");
+  }
   const emailResult = emailSchema.safeParse(form.email);
   if (!emailResult.success) {
     throw new Error(emailResult.error.issues[0]?.message ?? "Ingresa un correo válido.");
@@ -97,10 +72,6 @@ export function findClientDuplicates(
   excludeId?: string,
 ): ClientDuplicateMatch[] {
   const form = normalizeClientForm(input);
-  const documentNumber = form.document_number;
-  const phone = form.phone;
-  const email = form.email;
-  const name = normalizeText(form.name);
   const matches = new Map<string, ClientDuplicateMatch>();
 
   function add(client: ClientRow, reason: string, strength: ClientDuplicateMatch["strength"]) {
@@ -109,33 +80,31 @@ export function findClientDuplicates(
   }
 
   for (const client of clients) {
-    const clientDoc = normalizeDigits(client.document_number || client.dni);
-    const clientPhone = normalizeDigits(client.phone);
-    const clientWhatsapp = normalizeDigits(client.whatsapp);
-    const clientEmail = (client.email ?? "").trim().toLowerCase();
-    const clientName = normalizeText(client.name);
+    const phone = normalizeDigits(client.phone);
+    const email = (client.email ?? "").trim().toLowerCase();
+    const name = normalizeText(client.name);
 
-    if (documentNumber && clientDoc && documentNumber === clientDoc) {
-      add(client, "Mismo DNI/RUC", "exact");
-      continue;
-    }
-    if (phone && (phone === clientPhone || phone === clientWhatsapp)) {
+    if (form.phone && phone && form.phone === phone) {
       add(client, "Mismo teléfono", "exact");
       continue;
     }
-    if (email && clientEmail && email === clientEmail) {
+    if (form.email && email && form.email === email) {
       add(client, "Mismo correo", "exact");
       continue;
     }
-    if (name && clientName && name === clientName) {
+    if (normalizeText(form.name) === name) {
       add(client, "Mismo nombre normalizado", "exact");
       continue;
     }
 
-    const nameTokens = new Set(name.split(" ").filter((token) => token.length > 2));
-    const clientTokens = new Set(clientName.split(" ").filter((token) => token.length > 2));
-    const shared = [...nameTokens].filter((token) => clientTokens.has(token)).length;
-    const denominator = Math.max(1, Math.min(nameTokens.size, clientTokens.size));
+    const inputTokens = new Set(
+      normalizeText(form.name)
+        .split(" ")
+        .filter((token) => token.length > 2),
+    );
+    const clientTokens = new Set(name.split(" ").filter((token) => token.length > 2));
+    const shared = [...inputTokens].filter((token) => clientTokens.has(token)).length;
+    const denominator = Math.max(1, Math.min(inputTokens.size, clientTokens.size));
     if (shared >= 2 && shared / denominator >= 0.75) {
       add(client, "Nombre muy parecido", "approximate");
     }

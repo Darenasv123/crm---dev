@@ -48,10 +48,8 @@ function styleDataRow(row: ExcelJS.Row, index: number) {
 // ──────────────────────────────────────────────
 export interface ExportClient {
   name: string;
-  dni: string | null;
   phone: string | null;
   email: string | null;
-  process_type: string | null;
   status: string;
   registered_at: string;
 }
@@ -65,10 +63,8 @@ export async function exportClientsExcel(clients: ExportClient[]) {
 
   ws.columns = [
     { header: "Nombre completo", key: "name", width: 30 },
-    { header: "DNI", key: "dni", width: 12 },
     { header: "Teléfono", key: "phone", width: 14 },
     { header: "Correo", key: "email", width: 28 },
-    { header: "Proceso", key: "process_type", width: 35 },
     { header: "Estado", key: "status", width: 14 },
     { header: "Registro", key: "registered_at", width: 14 },
   ];
@@ -78,16 +74,14 @@ export async function exportClientsExcel(clients: ExportClient[]) {
   clients.forEach((c, i) => {
     const row = ws.addRow({
       ...c,
-      dni: c.dni ?? "",
       phone: c.phone ?? "",
       email: c.email ?? "",
-      process_type: c.process_type ?? "",
       registered_at: formatPeruDate(c.registered_at),
     });
     styleDataRow(row, i);
   });
 
-  ws.autoFilter = { from: "A1", to: "G1" };
+  ws.autoFilter = { from: "A1", to: "E1" };
 
   const buf = await wb.xlsx.writeBuffer();
   const date = getPeruTodayISO();
@@ -101,9 +95,10 @@ export interface ExportCase {
   expediente: string;
   client: string;
   process_type: string;
+  materia: string | null;
   status: string;
   priority: string;
-  juzgado: string;
+  next_action: string | null;
   next_hearing: string | null;
   created_at: string;
 }
@@ -119,9 +114,10 @@ export async function exportCasesExcel(cases: ExportCase[]) {
     { header: "N° Expediente", key: "expediente", width: 28 },
     { header: "Cliente", key: "client", width: 28 },
     { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Materia", key: "materia", width: 18 },
     { header: "Estado", key: "status", width: 20 },
     { header: "Prioridad", key: "priority", width: 12 },
-    { header: "Juzgado", key: "juzgado", width: 35 },
+    { header: "Próxima acción", key: "next_action", width: 35 },
     { header: "Próxima audiencia", key: "next_hearing", width: 20 },
     { header: "Registrado", key: "created_at", width: 14 },
   ];
@@ -293,10 +289,8 @@ export async function exportFullBackup(data: {
   const wsC = wb.addWorksheet("Clientes", { views: [{ state: "frozen", ySplit: 1 }] });
   wsC.columns = [
     { header: "Nombre completo", key: "name", width: 30 },
-    { header: "DNI", key: "dni", width: 12 },
     { header: "Teléfono", key: "phone", width: 14 },
     { header: "Correo", key: "email", width: 28 },
-    { header: "Proceso", key: "process_type", width: 35 },
     { header: "Estado", key: "status", width: 14 },
     { header: "Registro", key: "registered_at", width: 14 },
   ];
@@ -316,9 +310,10 @@ export async function exportFullBackup(data: {
     { header: "N° Expediente", key: "expediente", width: 28 },
     { header: "Cliente", key: "client", width: 28 },
     { header: "Proceso", key: "process_type", width: 35 },
+    { header: "Materia", key: "materia", width: 18 },
     { header: "Estado", key: "status", width: 20 },
     { header: "Prioridad", key: "priority", width: 12 },
-    { header: "Juzgado", key: "juzgado", width: 35 },
+    { header: "Próxima acción", key: "next_action", width: 35 },
     { header: "Próxima audiencia", key: "next_hearing", width: 20 },
     { header: "Registrado", key: "created_at", width: 14 },
   ];
