@@ -138,7 +138,7 @@ export function TaskFormSheet({
 
   return (
     <Sheet open={open} onOpenChange={requestClose}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent className="w-full max-w-none overflow-y-auto p-4 sm:max-w-2xl sm:p-6">
         <SheetHeader>
           <SheetTitle>{task ? "Editar tarea" : "Nueva tarea"}</SheetTitle>
           <SheetDescription>
@@ -340,7 +340,7 @@ export function TaskFormSheet({
             </div>
           )}
 
-          <SheetFooter>
+          <SheetFooter className="sticky bottom-0 -mx-4 border-t border-border bg-background px-4 pb-1 pt-4 sm:-mx-6 sm:px-6">
             <button
               type="button"
               onClick={() => requestClose(false)}

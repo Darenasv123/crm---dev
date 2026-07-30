@@ -621,6 +621,7 @@ export function TaskCenter({
         clients={clients}
         cases={cases}
         profiles={profiles}
+        hasActiveFilters={activeFilterCount > 0}
         onOpenChange={setFiltersOpen}
         onChange={updateAdvancedFilters}
         onClear={resetFilters}

@@ -29,6 +29,7 @@ export function TaskFiltersSheet({
   clients,
   cases,
   profiles,
+  hasActiveFilters,
   onOpenChange,
   onChange,
   onClear,
@@ -38,6 +39,7 @@ export function TaskFiltersSheet({
   clients: ClientOption[];
   cases: CaseOption[];
   profiles: ProfileOption[];
+  hasActiveFilters: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (updates: Partial<TaskAdvancedFilters>) => void;
   onClear: () => void;
@@ -160,14 +162,16 @@ export function TaskFiltersSheet({
           </fieldset>
         </div>
 
-        <SheetFooter className="mt-6 gap-2">
-          <button
-            type="button"
-            onClick={onClear}
-            className="h-11 rounded-lg border border-border px-4 text-sm font-semibold"
-          >
-            Limpiar todo
-          </button>
+        <SheetFooter className="sticky bottom-0 -mx-6 mt-6 gap-2 border-t border-border bg-background px-6 pb-1 pt-4">
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="h-11 rounded-lg border border-border px-4 text-sm font-semibold"
+            >
+              Limpiar todo
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onOpenChange(false)}
