@@ -767,7 +767,7 @@ function TaskList({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-muted/35 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
+      <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-primary/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
         <span>Tarea</span>
         <span>Cliente</span>
         <span>Expediente</span>
@@ -782,7 +782,8 @@ function TaskList({
         return (
           <article
             key={task.id}
-            className="grid gap-3 border-b p-4 last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center"
+            className="grid gap-3 border-b border-l-2 p-4 transition-colors hover:bg-primary/2 last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center"
+            style={available ? { borderLeftColor: "hsl(var(--primary))" } : { borderLeftColor: "transparent" }}
           >
             <div className="min-w-0">
               <h3 className="font-semibold">{task.title}</h3>
@@ -838,7 +839,7 @@ function TaskList({
               <button
                 type="button"
                 onClick={() => onOpen(task)}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50"
               >
                 <MessageSquareText className="h-4 w-4" /> Ver detalle
               </button>
@@ -847,7 +848,7 @@ function TaskList({
                   type="button"
                   onClick={() => onClaim(task)}
                   disabled={busyId === task.id}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-shadow hover:shadow-md disabled:opacity-50"
                 >
                   <Hand className="h-4 w-4" /> Tomar tarea
                 </button>
@@ -857,7 +858,7 @@ function TaskList({
                   type="button"
                   onClick={() => onReturn(task)}
                   disabled={busyId === task.id}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50"
                 >
                   <RotateCcw className="h-4 w-4" /> Devolver tarea
                 </button>
@@ -866,7 +867,7 @@ function TaskList({
                 <Link
                   to={"/casos/$id" as never}
                   params={{ id: task.case_id } as never}
-                  className="grid h-9 w-9 place-items-center rounded-lg border"
+                  className="grid h-9 w-9 place-items-center rounded-lg border transition-colors hover:bg-muted/50"
                   aria-label="Abrir expediente"
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -877,7 +878,7 @@ function TaskList({
                   type="button"
                   onClick={() => onDelete(task)}
                   disabled={busyId === task.id}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 text-red-600"
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 text-red-600 transition-colors hover:bg-red-50"
                   aria-label="Eliminar tarea"
                 >
                   <Trash2 className="h-4 w-4" />

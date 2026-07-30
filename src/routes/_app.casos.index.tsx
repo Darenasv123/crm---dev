@@ -167,7 +167,7 @@ function CasesPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] gap-4 border-b bg-muted/35 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+        <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
           <span>Expediente</span>
           <span>Cliente</span>
           <span>Materia</span>
@@ -199,7 +199,8 @@ function CasesPage() {
           filtered.map((item) => (
             <div
               key={item.id}
-              className="border-b p-4 last:border-b-0 md:grid md:grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] md:items-center md:gap-4 md:px-5"
+              className="border-b border-l-2 border-l-transparent p-4 transition-colors hover:bg-primary/2 last:border-b-0 md:grid md:grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] md:items-center md:gap-4 md:px-5"
+              style={item.status === "Archivado" ? {} : { borderLeftColor: "hsl(var(--primary))" }}
             >
               <Link
                 to={"/casos/$id" as never}

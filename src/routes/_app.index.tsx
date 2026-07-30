@@ -481,14 +481,14 @@ function KpiCard({
   };
   return (
     <Link to={to as never} className="block">
-      <Card className="p-5 hover:shadow-card transition-shadow">
+      <Card className="p-5 transition-shadow hover:shadow-md">
         <div className="flex items-center gap-4">
           <div className={`grid h-12 w-12 place-items-center rounded-xl ${tones[tone]}`}>
             <Icon className="h-6 w-6" />
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight">{value}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
           </div>
         </div>
       </Card>

@@ -207,7 +207,7 @@ function ClientsPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] items-center gap-4 border-b border-border bg-muted/35 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
+        <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] items-center gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
           <span>Cliente</span>
           <span>Teléfono</span>
           <span>Correo</span>
@@ -240,7 +240,8 @@ function ClientsPage() {
           filtered.map((client) => (
             <div
               key={client.id}
-              className="border-b border-border p-4 last:border-b-0 md:grid md:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] md:items-center md:gap-4 md:px-5"
+              className="border-b border-l-2 border-l-transparent p-4 transition-colors hover:bg-primary/2 last:border-b-0 md:grid md:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] md:items-center md:gap-4 md:px-5"
+              style={client.status === "Activo" ? { borderLeftColor: "hsl(var(--primary))" } : {}}
             >
               <Link
                 to={"/clientes/$id" as never}
@@ -279,7 +280,7 @@ function ClientsPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="mt-3 h-9 w-9 p-0 md:mt-0"
+                    className="mt-3 h-9 w-9 p-0 md:mt-0 hover:bg-primary/10"
                     aria-label={`Abrir acciones para ${client.name}`}
                   >
                     <MoreHorizontal className="h-4 w-4" />
