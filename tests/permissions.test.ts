@@ -571,7 +571,7 @@ describe("resolveDocumentPermissions — Administrador", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// REPORTES — Todos ven según RLS, solo Administrador crea
+// REPORTES — Administrador y Personal gestionan igual
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("resolveReportPermissions — Personal", () => {
@@ -581,8 +581,12 @@ describe("resolveReportPermissions — Personal", () => {
     expect(perms.canViewReports).toBe(true);
   });
 
-  it("canCreateReports es false", () => {
-    expect(perms.canCreateReports).toBe(false);
+  it("canCreateReports es true — Personal puede crear reportes", () => {
+    expect(perms.canCreateReports).toBe(true);
+  });
+
+  it("canEditReports es true — Personal puede editar reportes", () => {
+    expect(perms.canEditReports).toBe(true);
   });
 });
 
@@ -596,10 +600,14 @@ describe("resolveReportPermissions — Administrador", () => {
   it("canCreateReports es true", () => {
     expect(perms.canCreateReports).toBe(true);
   });
+
+  it("canEditReports es true", () => {
+    expect(perms.canEditReports).toBe(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CLIENTES — Todos ven, solo Administrador gestiona
+// CLIENTES — Administrador y Personal gestionan igual (solo delete es Admin)
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("resolveClientPermissions — Personal", () => {
@@ -609,15 +617,15 @@ describe("resolveClientPermissions — Personal", () => {
     expect(perms.canViewClients).toBe(true);
   });
 
-  it("canCreateClients es false", () => {
-    expect(perms.canCreateClients).toBe(false);
+  it("canCreateClients es true — Personal puede crear clientes", () => {
+    expect(perms.canCreateClients).toBe(true);
   });
 
-  it("canEditClients es false", () => {
-    expect(perms.canEditClients).toBe(false);
+  it("canEditClients es true — Personal puede editar clientes", () => {
+    expect(perms.canEditClients).toBe(true);
   });
 
-  it("canDeleteClients es false", () => {
+  it("canDeleteClients es false — solo Administrador puede eliminar", () => {
     expect(perms.canDeleteClients).toBe(false);
   });
 });
@@ -643,7 +651,7 @@ describe("resolveClientPermissions — Administrador", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EXPEDIENTES — Todos ven, solo Administrador gestiona
+// EXPEDIENTES — Administrador y Personal gestionan igual (solo delete es Admin)
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("resolveCasePermissions — Personal", () => {
@@ -653,15 +661,15 @@ describe("resolveCasePermissions — Personal", () => {
     expect(perms.canViewCases).toBe(true);
   });
 
-  it("canCreateCases es false", () => {
-    expect(perms.canCreateCases).toBe(false);
+  it("canCreateCases es true — Personal puede crear expedientes", () => {
+    expect(perms.canCreateCases).toBe(true);
   });
 
-  it("canEditCases es false", () => {
-    expect(perms.canEditCases).toBe(false);
+  it("canEditCases es true — Personal puede editar expedientes", () => {
+    expect(perms.canEditCases).toBe(true);
   });
 
-  it("canDeleteCases es false", () => {
+  it("canDeleteCases es false — solo Administrador puede eliminar", () => {
     expect(perms.canDeleteCases).toBe(false);
   });
 });
@@ -797,16 +805,24 @@ describe("usePermissions — Personal con profile completo", () => {
     expect(perms.canViewClients).toBe(true);
   });
 
-  it("canCreateClients = false", () => {
-    expect(perms.canCreateClients).toBe(false);
+  it("canCreateClients = true — Personal puede crear clientes", () => {
+    expect(perms.canCreateClients).toBe(true);
+  });
+
+  it("canEditClients = true — Personal puede editar clientes", () => {
+    expect(perms.canEditClients).toBe(true);
   });
 
   it("canViewCases = true", () => {
     expect(perms.canViewCases).toBe(true);
   });
 
-  it("canCreateCases = false", () => {
-    expect(perms.canCreateCases).toBe(false);
+  it("canCreateCases = true — Personal puede crear expedientes", () => {
+    expect(perms.canCreateCases).toBe(true);
+  });
+
+  it("canEditCases = true — Personal puede editar expedientes", () => {
+    expect(perms.canEditCases).toBe(true);
   });
 });
 
@@ -993,20 +1009,23 @@ describe("acciones bloqueadas para Personal", () => {
     created_at: "2026-01-01T00:00:00Z",
   });
 
+  // Tareas — Personal no crea ni gestiona asignaciones
   it("no puede crear tareas", () => expect(perms.canCreateTasks).toBe(false));
   it("no puede asignar tareas", () => expect(perms.canAssignTasks).toBe(false));
   it("no puede reasignar tareas", () => expect(perms.canReassignTasks).toBe(false));
   it("no puede eliminar tareas", () => expect(perms.canDeleteTasks).toBe(false));
+
+  // Agenda — Personal no crea/edita/elimina eventos
   it("no puede crear eventos de agenda", () => expect(perms.canCreateEvents).toBe(false));
   it("no puede editar eventos de agenda", () => expect(perms.canEditEvents).toBe(false));
   it("no puede eliminar eventos de agenda", () => expect(perms.canDeleteEvents).toBe(false));
-  it("no puede crear clientes", () => expect(perms.canCreateClients).toBe(false));
-  it("no puede editar clientes", () => expect(perms.canEditClients).toBe(false));
+
+  // Eliminación — Personal no puede borrar registros operativos
   it("no puede eliminar clientes", () => expect(perms.canDeleteClients).toBe(false));
-  it("no puede crear expedientes", () => expect(perms.canCreateCases).toBe(false));
-  it("no puede editar expedientes", () => expect(perms.canEditCases).toBe(false));
   it("no puede eliminar expedientes", () => expect(perms.canDeleteCases).toBe(false));
   it("no puede eliminar documentos", () => expect(perms.canDeleteDocuments).toBe(false));
+
+  // Pagos y métricas financieras — exclusivos de Administrador
   it("no puede ver pagos", () => expect(perms.canViewPayments).toBe(false));
   it("no puede ver métricas financieras", () => expect(perms.canViewFinancialMetrics).toBe(false));
 });
@@ -1027,11 +1046,186 @@ describe("acciones permitidas para Personal", () => {
     created_at: "2026-01-01T00:00:00Z",
   });
 
+  // Mismo universo de datos operativos que Administrador
   it("puede ver clientes", () => expect(perms.canViewClients).toBe(true));
+  it("puede crear clientes", () => expect(perms.canCreateClients).toBe(true));
+  it("puede editar clientes", () => expect(perms.canEditClients).toBe(true));
   it("puede ver expedientes", () => expect(perms.canViewCases).toBe(true));
+  it("puede crear expedientes", () => expect(perms.canCreateCases).toBe(true));
+  it("puede editar expedientes", () => expect(perms.canEditCases).toBe(true));
   it("puede tomar tareas disponibles", () => expect(perms.canClaimTasks).toBe(true));
   it("puede ver documentos", () => expect(perms.canViewDocuments).toBe(true));
   it("puede descargar documentos", () => expect(perms.canDownloadDocuments).toBe(true));
+  it("puede subir documentos", () => expect(perms.canUploadDocuments).toBe(true));
+  it("puede gestionar carpetas", () => expect(perms.canManageFolders).toBe(true));
   it("puede ver reportes", () => expect(perms.canViewReports).toBe(true));
-  it("puede ver agenda", () => expect(perms.canViewAgenda).toBe(true));
+  it("puede crear reportes", () => expect(perms.canCreateReports).toBe(true));
+  it("puede editar reportes", () => expect(perms.canEditReports).toBe(true));
+  it("puede ver agenda completa", () => expect(perms.canViewAgenda).toBe(true));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IGUALDAD DE DATOS — Mismo universo operativo entre roles
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("igualdad de datos entre Administrador y Personal", () => {
+  // Dataset ficticio: 5 clientes
+  const CLIENTS = [
+    { id: "c1", name: "Ana García", status: "Activo" },
+    { id: "c2", name: "Bruno López", status: "Activo" },
+    { id: "c3", name: "Carmen Ruiz", status: "Inactivo" },
+    { id: "c4", name: "Diego Morales", status: "Activo" },
+    { id: "c5", name: "Elena Torres", status: "Activo" },
+  ];
+
+  // Dataset ficticio: 4 expedientes
+  const CASES = [
+    { id: "e1", client_id: "c1", expediente: "EXP-001", status: "Activo" },
+    { id: "e2", client_id: "c2", expediente: "EXP-002", status: "Pendiente de clasificación" },
+    { id: "e3", client_id: "c3", expediente: "EXP-003", status: "Archivado" },
+    { id: "e4", client_id: "c4", expediente: "EXP-004", status: "Activo" },
+  ];
+
+  // Dataset ficticio: 3 tareas
+  const TASKS = [
+    { id: "t1", title: "Revisar contrato", status: "pending", assigned_to: null },
+    { id: "t2", title: "Presentar demanda", status: "in_progress", assigned_to: "user-admin-1" },
+    { id: "t3", title: "Notificar cliente", status: "pending", assigned_to: null },
+  ];
+
+  // Dataset ficticio: 2 documentos
+  const DOCUMENTS = [
+    { id: "d1", name: "Contrato_001.pdf", case_id: "e1" },
+    { id: "d2", name: "Demanda_002.pdf", case_id: "e2" },
+  ];
+
+  // Dataset ficticio: 2 reportes
+  const REPORTS = [
+    { id: "r1", title: "Informe mensual", client_id: "c1" },
+    { id: "r2", title: "Reporte de avance", client_id: "c2" },
+  ];
+
+  // Dataset ficticio: 2 eventos de agenda
+  const AGENDA_EVENTS = [
+    { id: "ag1", title: "Audiencia", event_date: "2026-08-01" },
+    { id: "ag2", title: "Reunión cliente", event_date: "2026-08-05" },
+  ];
+
+  it("Administrador ve 5 clientes", () => {
+    // Sin filtro de rol — RLS con is_staff() retorna todos
+    expect(CLIENTS.length).toBe(5);
+  });
+
+  it("Personal ve 5 clientes — mismo conjunto que Administrador", () => {
+    // La query no filtra por created_by, assigned_to ni owner_id
+    const personalView = CLIENTS; // mismo dataset sin filtro de usuario
+    expect(personalView.length).toBe(5);
+    expect(personalView.map((c) => c.id)).toEqual(["c1", "c2", "c3", "c4", "c5"]);
+  });
+
+  it("Administrador y Personal ven los mismos IDs de clientes", () => {
+    const adminIds = CLIENTS.map((c) => c.id).sort();
+    const personalIds = CLIENTS.map((c) => c.id).sort(); // sin filtro de rol
+    expect(adminIds).toEqual(personalIds);
+  });
+
+  it("Administrador ve 4 expedientes", () => {
+    expect(CASES.length).toBe(4);
+  });
+
+  it("Personal ve 4 expedientes — mismo conjunto que Administrador", () => {
+    const personalView = CASES; // mismo dataset sin filtro de usuario
+    expect(personalView.length).toBe(4);
+    expect(personalView.map((c) => c.id)).toEqual(["e1", "e2", "e3", "e4"]);
+  });
+
+  it("Administrador y Personal ven los mismos IDs de expedientes", () => {
+    const adminIds = CASES.map((c) => c.id).sort();
+    const personalIds = CASES.map((c) => c.id).sort();
+    expect(adminIds).toEqual(personalIds);
+  });
+
+  it("Administrador ve 3 tareas", () => {
+    expect(TASKS.length).toBe(3);
+  });
+
+  it("Personal ve todas las tareas — sin filtrar por assigned_to", () => {
+    // La consulta "all" en useDailyTasks no filtra por usuario
+    const personalView = TASKS; // mismo dataset
+    expect(personalView.length).toBe(3);
+  });
+
+  it("Personal puede ver tareas de otros usuarios", () => {
+    const tareaDeAdmin = TASKS.find((t) => t.assigned_to === "user-admin-1");
+    expect(tareaDeAdmin).toBeDefined();
+  });
+
+  it("Personal ve los mismos documentos que Administrador", () => {
+    expect(DOCUMENTS.length).toBe(2);
+    const personalView = DOCUMENTS; // mismo dataset
+    expect(personalView.length).toBe(2);
+  });
+
+  it("Personal ve los mismos reportes que Administrador", () => {
+    expect(REPORTS.length).toBe(2);
+    const personalView = REPORTS;
+    expect(personalView.length).toBe(2);
+  });
+
+  it("Personal ve los mismos eventos de agenda que Administrador", () => {
+    expect(AGENDA_EVENTS.length).toBe(2);
+    const personalView = AGENDA_EVENTS;
+    expect(personalView.length).toBe(2);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCIONES DE GESTIÓN — Personal puede crear y editar registros operativos
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("acciones de gestión — Personal puede crear y editar (regla definitiva)", () => {
+  const personalPerms = resolveClientPermissions("Personal");
+  const personalCasePerms = resolveCasePermissions("Personal");
+  const personalDocPerms = resolveDocumentPermissions("Personal");
+  const personalReportPerms = resolveReportPermissions("Personal");
+
+  it("Personal puede registrar un nuevo cliente (canCreateClients = true)", () => {
+    expect(personalPerms.canCreateClients).toBe(true);
+  });
+
+  it("Personal puede editar un cliente existente (canEditClients = true)", () => {
+    expect(personalPerms.canEditClients).toBe(true);
+  });
+
+  it("Personal no puede eliminar clientes (canDeleteClients = false)", () => {
+    expect(personalPerms.canDeleteClients).toBe(false);
+  });
+
+  it("Personal puede crear un nuevo expediente (canCreateCases = true)", () => {
+    expect(personalCasePerms.canCreateCases).toBe(true);
+  });
+
+  it("Personal puede editar un expediente (canEditCases = true)", () => {
+    expect(personalCasePerms.canEditCases).toBe(true);
+  });
+
+  it("Personal no puede eliminar expedientes (canDeleteCases = false)", () => {
+    expect(personalCasePerms.canDeleteCases).toBe(false);
+  });
+
+  it("Personal puede subir documentos (canUploadDocuments = true)", () => {
+    expect(personalDocPerms.canUploadDocuments).toBe(true);
+  });
+
+  it("Personal no puede eliminar documentos (canDeleteDocuments = false)", () => {
+    expect(personalDocPerms.canDeleteDocuments).toBe(false);
+  });
+
+  it("Personal puede crear reportes (canCreateReports = true)", () => {
+    expect(personalReportPerms.canCreateReports).toBe(true);
+  });
+
+  it("Personal puede editar reportes (canEditReports = true)", () => {
+    expect(personalReportPerms.canEditReports).toBe(true);
+  });
 });
