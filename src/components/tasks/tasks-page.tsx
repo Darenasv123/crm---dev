@@ -133,12 +133,10 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const deleteTask = useDeleteDailyTask();
 
   const visibleTasks = useMemo(() => {
-    const roleRows =
-      mode === "board" && !isAdmin
-        ? tasks.filter((task) => isAvailableTask(task) || task.assigned_to === user?.id)
-        : tasks;
-    return [...roleRows].sort(compareTasks);
-  }, [isAdmin, mode, tasks, user?.id]);
+    // Administrador y Personal ven el mismo universo de tareas.
+    // No se filtra por rol en el tablero; el servidor ya aplica RLS correctamente.
+    return [...tasks].sort(compareTasks);
+  }, [tasks]);
 
   const metrics = {
     available: visibleTasks.filter(isAvailableTask).length,
@@ -212,6 +210,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
     : [
         { to: "/tareas", label: "Disponibles" },
         { to: "/tareas/mias", label: "Mis tareas" },
+        { to: "/tareas/todas", label: "Todas" },
         { to: "/tareas/tablero", label: "Tablero" },
       ];
 

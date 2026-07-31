@@ -36,7 +36,7 @@ import {
   validateClientForm,
   type ClientFormValues,
 } from "@/lib/client-validation";
-import { isAdminRole } from "@/lib/permissions";
+import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/clientes/$id")({
   component: ClientDetail,
@@ -45,7 +45,8 @@ export const Route = createFileRoute("/_app/clientes/$id")({
 function ClientDetail() {
   const { id } = Route.useParams();
   const { profile } = useAuth();
-  const canEdit = isAdminRole(profile?.role);
+  const permissions = usePermissions(profile);
+  const canEdit = permissions.canEditClients;
   const { data: client, isLoading, error: clientError } = useClient(id);
   const { data: allClients = [] } = useClients();
   const { data: cases = [] } = useCases();

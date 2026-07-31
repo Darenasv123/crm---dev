@@ -30,7 +30,7 @@ import {
   validateCaseForm,
   type CaseFormValues,
 } from "@/lib/case-validation";
-import { isAdminRole } from "@/lib/permissions";
+import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/casos/")({
   component: CasesPage,
@@ -59,7 +59,9 @@ function CasesPage() {
   const [form, setForm] = useState<CaseFormValues>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
 
-  const isAdmin = isAdminRole(profile?.role);
+  const permissions = usePermissions(profile);
+  const canCreate = permissions.canCreateCases;
+  const canEdit = permissions.canEditCases;
   const editingCase = editingCaseId ? cases.find((c) => c.id === editingCaseId) : null;
 
   const filtered = useMemo(() => {
@@ -148,7 +150,7 @@ function CasesPage() {
       title="Expedientes"
       subtitle="Seguimiento jurídico y próximas acciones"
       actions={
-        isAdmin ? (
+        canCreate ? (
           <Button type="button" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" /> Nuevo expediente
           </Button>
@@ -189,7 +191,7 @@ function CasesPage() {
                 : "Crea el primer expediente para comenzar el seguimiento jurídico."
             }
             action={
-              !search && isAdmin ? (
+              !search && canCreate ? (
                 <Button type="button" onClick={() => setShowForm(true)}>
                   <FolderPlus /> Nuevo expediente
                 </Button>
@@ -243,7 +245,7 @@ function CasesPage() {
                     <Eye className="h-4 w-4" />
                     Ver ficha
                   </DropdownMenuItem>
-                  {isAdmin && (
+                  {canEdit && (
                     <DropdownMenuItem onClick={() => openEdit(item.id)}>
                       <Edit3 className="h-4 w-4" />
                       Editar

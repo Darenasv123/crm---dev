@@ -42,7 +42,7 @@ import {
   validateClientForm,
   type ClientFormValues,
 } from "@/lib/client-validation";
-import { isAdminRole } from "@/lib/permissions";
+import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/clientes/")({
   component: ClientsPage,
@@ -71,7 +71,9 @@ function ClientsPage() {
   const [error, setError] = useState<string | null>(null);
   const [duplicatesAcknowledged, setDuplicatesAcknowledged] = useState(false);
 
-  const isAdmin = isAdminRole(profile?.role);
+  const permissions = usePermissions(profile);
+  const canCreate = permissions.canCreateClients;
+  const canEdit = permissions.canEditClients;
   const editingClient = editingClientId ? clients.find((c) => c.id === editingClientId) : null;
 
   const caseCounts = useMemo(
@@ -183,7 +185,7 @@ function ClientsPage() {
       title="Clientes"
       subtitle="Directorio operativo de clientes"
       actions={
-        isAdmin ? (
+        canCreate ? (
           <>
             <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
               <FileSpreadsheet className="h-4 w-4" /> Importar
@@ -230,7 +232,7 @@ function ClientsPage() {
                 : "Crea el primer registro para comenzar a organizar el directorio."
             }
             action={
-              !search && isAdmin ? (
+              !search && canCreate ? (
                 <Button type="button" onClick={() => setShowForm(true)}>
                   <UserPlus /> Nuevo cliente
                 </Button>
@@ -297,7 +299,7 @@ function ClientsPage() {
                     <Eye className="h-4 w-4" />
                     Ver ficha
                   </DropdownMenuItem>
-                  {isAdmin && (
+                  {canEdit && (
                     <DropdownMenuItem onClick={() => openEdit(client.id)}>
                       <Edit3 className="h-4 w-4" />
                       Editar
