@@ -23,6 +23,7 @@ import {
 import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { useAuth } from "@/hooks/use-auth";
 import { useClientReports } from "@/hooks/use-reports";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
@@ -35,6 +36,7 @@ import {
   validateClientForm,
   type ClientFormValues,
 } from "@/lib/client-validation";
+import { isAdminRole } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/clientes/$id")({
   component: ClientDetail,
@@ -42,6 +44,8 @@ export const Route = createFileRoute("/_app/clientes/$id")({
 
 function ClientDetail() {
   const { id } = Route.useParams();
+  const { profile } = useAuth();
+  const canEdit = isAdminRole(profile?.role);
   const { data: client, isLoading, error: clientError } = useClient(id);
   const { data: allClients = [] } = useClients();
   const { data: cases = [] } = useCases();
@@ -152,9 +156,11 @@ function ClientDetail() {
               <ArrowLeft className="h-4 w-4" /> Volver
             </Link>
           </Button>
-          <Button type="button" onClick={openEdit}>
-            <Edit3 className="h-4 w-4" /> Editar
-          </Button>
+          {canEdit && (
+            <Button type="button" onClick={openEdit}>
+              <Edit3 className="h-4 w-4" /> Editar
+            </Button>
+          )}
         </>
       }
     >

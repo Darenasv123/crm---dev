@@ -186,7 +186,7 @@ export function Chatbot() {
       });
 
       const actionMatch = responseText.match(/\{[\s\S]*"action"\s*:\s*"create_event"[\s\S]*\}/);
-      if (actionMatch) {
+      if (actionMatch && isAdmin) {
         try {
           const action = JSON.parse(actionMatch[0]);
           if (action.action === "create_event") {

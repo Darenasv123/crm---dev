@@ -183,14 +183,16 @@ function ClientsPage() {
       title="Clientes"
       subtitle="Directorio operativo de clientes"
       actions={
-        <>
-          <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
-            <FileSpreadsheet className="h-4 w-4" /> Importar
-          </Button>
-          <Button type="button" onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4" /> Nuevo cliente
-          </Button>
-        </>
+        isAdmin ? (
+          <>
+            <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
+              <FileSpreadsheet className="h-4 w-4" /> Importar
+            </Button>
+            <Button type="button" onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4" /> Nuevo cliente
+            </Button>
+          </>
+        ) : undefined
       }
     >
       <Card className="mb-5 p-4">
@@ -228,7 +230,7 @@ function ClientsPage() {
                 : "Crea el primer registro para comenzar a organizar el directorio."
             }
             action={
-              !search ? (
+              !search && isAdmin ? (
                 <Button type="button" onClick={() => setShowForm(true)}>
                   <UserPlus /> Nuevo cliente
                 </Button>

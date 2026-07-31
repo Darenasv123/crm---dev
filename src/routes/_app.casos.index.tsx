@@ -148,9 +148,11 @@ function CasesPage() {
       title="Expedientes"
       subtitle="Seguimiento jurídico y próximas acciones"
       actions={
-        <Button type="button" onClick={() => setShowForm(true)}>
-          <Plus className="h-4 w-4" /> Nuevo expediente
-        </Button>
+        isAdmin ? (
+          <Button type="button" onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4" /> Nuevo expediente
+          </Button>
+        ) : undefined
       }
     >
       <Card className="mb-5 p-4">
@@ -187,7 +189,7 @@ function CasesPage() {
                 : "Crea el primer expediente para comenzar el seguimiento jurídico."
             }
             action={
-              !search ? (
+              !search && isAdmin ? (
                 <Button type="button" onClick={() => setShowForm(true)}>
                   <FolderPlus /> Nuevo expediente
                 </Button>
