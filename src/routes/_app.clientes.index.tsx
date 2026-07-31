@@ -244,30 +244,38 @@ function ClientsPage() {
           filtered.map((client) => (
             <div
               key={client.id}
-              className="border-b border-l-2 border-l-transparent p-4 transition-colors hover:bg-primary/2 last:border-b-0 md:grid md:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] md:items-center md:gap-4 md:px-5"
-              style={client.status === "Activo" ? { borderLeftColor: "hsl(var(--primary))" } : {}}
+              className={[
+                "border-b border-l-2 p-4 transition-colors last:border-b-0",
+                "md:grid md:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] md:items-center md:gap-4 md:px-5",
+                "hover:bg-primary/5",
+                client.status === "Activo" ? "border-l-primary" : "border-l-transparent",
+              ].join(" ")}
             >
               <Link
                 to={"/clientes/$id" as never}
                 params={{ id: client.id } as never}
-                className="flex min-w-0 items-center gap-3 font-semibold hover:text-primary"
+                className="flex min-w-0 items-center gap-3 font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
               >
                 <span
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white ring-2 ring-white/20"
                   style={{ background: client.color }}
+                  aria-hidden="true"
                 >
                   {client.initials}
                 </span>
                 <span className="truncate">{client.name}</span>
               </Link>
               <div className="mt-3 flex items-center gap-2 text-sm md:mt-0">
-                <Phone className="h-4 w-4 text-muted-foreground md:hidden" />
-                {client.phone || "Sin teléfono"}
+                <Phone className="h-4 w-4 text-info-foreground md:hidden" aria-hidden="true" />
+                {client.phone || <span className="text-muted-foreground">Sin teléfono</span>}
               </div>
               <div className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground md:mt-0">
-                <Mail className="h-4 w-4 shrink-0 md:hidden" />
+                <Mail
+                  className="h-4 w-4 shrink-0 text-success-foreground md:hidden"
+                  aria-hidden="true"
+                />
                 <span className="truncate" title={client.email ?? undefined}>
-                  {client.email || "Sin correo"}
+                  {client.email || <span className="text-muted-foreground">Sin correo</span>}
                 </span>
               </div>
               <div className="mt-3 text-sm md:mt-0">{caseCounts[client.id] ?? 0}</div>

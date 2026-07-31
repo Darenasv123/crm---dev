@@ -57,12 +57,20 @@ const EMPTY_EVENT_FORM = {
 };
 
 const typeColor: Record<EventType, { bg: string; dot: string; text: string }> = {
-  Audiencia: { bg: "bg-primary/10 border-primary/30", dot: "bg-primary", text: "text-primary" },
-  Cita: { bg: "bg-info/10 border-info/25", dot: "bg-info", text: "text-info-foreground" },
+  Audiencia: {
+    bg: "bg-[var(--event-hearing)]/10 border-[var(--event-hearing)]/30",
+    dot: "bg-[var(--event-hearing)]",
+    text: "text-[var(--event-hearing)]",
+  },
+  Cita: {
+    bg: "bg-[var(--event-appointment)]/10 border-[var(--event-appointment)]/25",
+    dot: "bg-[var(--event-appointment)]",
+    text: "text-[var(--event-appointment-foreground)]",
+  },
   Recordatorio: {
-    bg: "bg-success/10 border-success/25",
-    dot: "bg-success",
-    text: "text-success-foreground",
+    bg: "bg-[var(--event-reminder)]/10 border-[var(--event-reminder)]/25",
+    dot: "bg-[var(--event-reminder)]",
+    text: "text-[var(--event-reminder-foreground)]",
   },
 };
 
@@ -333,7 +341,7 @@ function CalendarPage() {
                   >
                     <div
                       className={`text-xs font-semibold mb-1 flex items-center justify-center h-6 w-6 rounded-full mx-auto
-                      ${isToday ? "bg-gold text-gold-foreground" : isSelected ? "bg-primary text-primary-foreground" : c.inMonth ? "text-foreground" : "text-muted-foreground/40"}`}
+                      ${isToday ? "bg-gold text-gold-foreground ring-2 ring-gold/40" : isSelected ? "bg-primary text-primary-foreground" : c.inMonth ? "text-foreground" : "text-muted-foreground/40"}`}
                     >
                       {c.date.getDate()}
                     </div>
@@ -783,9 +791,9 @@ function SyncBadge({ status }: { status: string | null }) {
   const value = status || "pending";
   const labels: Record<string, string> = {
     synced: "Sincronizado",
-    pending: "Sincronizando",
-    error: "Error de sincronización",
-    conflict: "Conflicto",
+    pending: "Pendiente de sincronización",
+    error: "Error al sincronizar con Google Calendar",
+    conflict: "Conflicto de versión",
   };
   const tones: Record<string, string> = {
     synced: "bg-success/10 text-success-foreground",
@@ -795,6 +803,8 @@ function SyncBadge({ status }: { status: string | null }) {
   };
   return (
     <span
+      title={labels[value] ?? value}
+      aria-label={labels[value] ?? value}
       className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
         tones[value] ?? "bg-muted text-muted-foreground"
       }`}

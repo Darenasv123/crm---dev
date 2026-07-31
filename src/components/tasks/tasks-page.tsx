@@ -2,10 +2,10 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   AlertCircle,
   CheckCircle2,
-  Circle,
   ExternalLink,
   Filter,
   Hand,
+  Loader2,
   MessageSquareText,
   Plus,
   RotateCcw,
@@ -54,13 +54,14 @@ import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   compareTasks,
-  isAvailableTask,
   normalizeTaskPriority,
   normalizeTaskStatus,
   type TaskFormValues,
   type TaskStatus,
 } from "@/lib/tasks";
 import { usePermissions } from "@/lib/permissions";
+import { getTaskVisualState } from "@/lib/task-visual";
+import { TaskPriorityBadge } from "@/components/tasks/TaskPriorityBadge";
 
 type PageMode = "available" | "assigned" | "all" | "board";
 
@@ -108,6 +109,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const [observationDraft, setObservationDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [claimedId, setClaimedId] = useState<string | null>(null);
 
   const { data: tasks = [], isLoading } = useDailyTasks({
     view,
@@ -139,7 +141,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   }, [tasks]);
 
   const metrics = {
-    available: visibleTasks.filter(isAvailableTask).length,
+    available: visibleTasks.filter((t) => getTaskVisualState(t, user?.id).canClaim).length,
     mine: visibleTasks.filter((task) => task.assigned_to === user?.id).length,
     running: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress")
       .length,
@@ -233,6 +235,20 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       await action();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo actualizar la tarea.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleClaim(task: DailyTask) {
+    setBusyId(task.id);
+    setError(null);
+    try {
+      await claimTask.mutateAsync(task.id);
+      setClaimedId(task.id);
+      setTimeout(() => setClaimedId(null), 700);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo tomar la tarea.");
     } finally {
       setBusyId(null);
     }
@@ -489,7 +505,7 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       )}
 
       {mode === "board" ? (
-        <TaskBoard tasks={visibleTasks} />
+        <TaskBoard tasks={visibleTasks} userId={user?.id} />
       ) : (
         <TaskList
           tasks={visibleTasks}
@@ -497,7 +513,8 @@ export function TasksPage({ mode }: { mode: PageMode }) {
           userId={user?.id}
           profiles={profiles}
           busyId={busyId}
-          onClaim={(task) => runAction(task, () => claimTask.mutateAsync(task.id))}
+          claimedId={claimedId}
+          onClaim={handleClaim}
           onReturn={(task) =>
             runAction(task, async () => {
               if (!window.confirm("¿Devolver esta tarea a Disponibles?")) return;
@@ -745,6 +762,7 @@ function TaskList({
   userId,
   profiles,
   busyId,
+  claimedId,
   onClaim,
   onReturn,
   onStatus,
@@ -757,6 +775,7 @@ function TaskList({
   userId?: string;
   profiles: Array<{ id: string; full_name: string; role: string; status: string }>;
   busyId: string | null;
+  claimedId: string | null;
   onClaim: (task: DailyTask) => void;
   onReturn: (task: DailyTask) => void;
   onStatus: (task: DailyTask, status: TaskStatus) => void;
@@ -766,7 +785,7 @@ function TaskList({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-primary/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
+      <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-primary/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
         <span>Tarea</span>
         <span>Cliente</span>
         <span>Expediente</span>
@@ -776,38 +795,48 @@ function TaskList({
         <span>Acción principal</span>
       </div>
       {tasks.map((task) => {
-        const available = isAvailableTask(task);
+        const vs = getTaskVisualState(task, userId);
+        const available = vs.canClaim;
         const own = task.assigned_to === userId;
+        const isBusy = busyId === task.id;
+        const Icon = vs.icon;
         return (
           <article
             key={task.id}
-            className="grid gap-3 border-b border-l-2 p-4 transition-colors hover:bg-primary/2 last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_110px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center"
-            style={
-              available
-                ? { borderLeftColor: "hsl(var(--primary))" }
-                : { borderLeftColor: "transparent" }
-            }
+            aria-label={`${task.title} — ${vs.ariaDescription}`}
+            className={`grid gap-3 border-b border-l-2 p-4 transition-colors last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center ${vs.rowBg} ${vs.accentBorder} ${claimedId === task.id ? "animate-task-claimed" : ""}`}
           >
+            {/* Título + descripción */}
             <div className="min-w-0">
-              <h3 className="font-semibold">{task.title}</h3>
+              <div className="flex items-center gap-2">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <h3 className="truncate font-semibold">{task.title}</h3>
+              </div>
               {task.description && (
                 <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                   {task.description}
                 </p>
               )}
             </div>
+
+            {/* Cliente */}
             <span className="truncate text-sm">
               {task.cases?.clients?.name || task.clients?.name || "General"}
             </span>
-            <span className="truncate text-sm">
+
+            {/* Expediente */}
+            <span className="truncate text-sm font-mono text-xs">
               {task.cases?.case_number || task.cases?.expediente || "Sin expediente"}
             </span>
+
+            {/* Estado */}
             {isAdmin || own ? (
               <NativeSelect
                 value={normalizeTaskStatus(task.status)}
                 onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
-                disabled={busyId === task.id || available}
+                disabled={isBusy || available}
                 className="h-9 rounded-lg border bg-background px-2 text-xs"
+                aria-label="Cambiar estado de tarea"
               >
                 {TASK_STATUSES.map((item) => (
                   <option key={item} value={item}>
@@ -816,15 +845,25 @@ function TaskList({
                 ))}
               </NativeSelect>
             ) : (
-              <TaskChip status={task.status} />
+              <span
+                className={`inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${vs.badgeClasses}`}
+              >
+                <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                {vs.label}
+              </span>
             )}
-            <span className="text-sm">{normalizeTaskPriority(task.priority)}</span>
+
+            {/* Prioridad */}
+            <TaskPriorityBadge priority={task.priority} />
+
+            {/* Responsable */}
             {isAdmin ? (
               <NativeSelect
                 value={task.assigned_to ?? ""}
                 onChange={(event) => onAssign(task, event.target.value)}
-                disabled={busyId === task.id}
+                disabled={isBusy}
                 className="h-9 min-w-0 rounded-lg border bg-background px-2 text-xs"
+                aria-label="Asignar responsable"
               >
                 <option value="">Liberar a Disponibles</option>
                 {profiles
@@ -836,55 +875,78 @@ function TaskList({
                   ))}
               </NativeSelect>
             ) : (
-              <span className="truncate text-sm">{task.assignee?.full_name || "Disponible"}</span>
+              <span className="truncate text-sm">
+                {task.assignee?.full_name || (
+                  <span className="text-muted-foreground">Sin asignar</span>
+                )}
+              </span>
             )}
+
+            {/* Acciones */}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => onOpen(task)}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50"
+                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2"
               >
-                <MessageSquareText className="h-4 w-4" /> Ver detalle
+                <MessageSquareText className="h-4 w-4" aria-hidden="true" />
+                Ver detalle
               </button>
+
               {available && (
                 <button
                   type="button"
                   onClick={() => onClaim(task)}
-                  disabled={busyId === task.id}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-shadow hover:shadow-md disabled:opacity-50"
+                  disabled={isBusy}
+                  aria-label={`Tomar tarea: ${task.title}`}
+                  className="inline-flex h-9 min-w-[120px] items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-shadow hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
                 >
-                  <Hand className="h-4 w-4" /> Tomar tarea
+                  {isBusy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      <span>Tomando…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Hand className="h-4 w-4" aria-hidden="true" />
+                      <span>Tomar tarea</span>
+                    </>
+                  )}
                 </button>
               )}
+
               {own && !isAdmin && normalizeTaskStatus(task.status) !== "completed" && (
                 <button
                   type="button"
                   onClick={() => onReturn(task)}
-                  disabled={busyId === task.id}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50"
+                  disabled={isBusy}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 disabled:opacity-50"
                 >
-                  <RotateCcw className="h-4 w-4" /> Devolver tarea
+                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                  Devolver tarea
                 </button>
               )}
+
               {task.case_id && (
                 <Link
                   to={"/casos/$id" as never}
                   params={{ id: task.case_id } as never}
-                  className="grid h-9 w-9 place-items-center rounded-lg border transition-colors hover:bg-muted/50"
-                  aria-label="Abrir expediente"
+                  className="grid h-9 w-9 place-items-center rounded-lg border transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2"
+                  aria-label="Abrir expediente relacionado"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
                 </Link>
               )}
+
               {isAdmin && (
                 <button
                   type="button"
                   onClick={() => onDelete(task)}
-                  disabled={busyId === task.id}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-red-200 text-red-600 transition-colors hover:bg-red-50"
-                  aria-label="Eliminar tarea"
+                  disabled={isBusy}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-destructive/30 text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                  aria-label={`Eliminar tarea: ${task.title}`}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -912,27 +974,41 @@ function DetailValue({
   );
 }
 
-function TaskBoard({ tasks }: { tasks: DailyTask[] }) {
+function TaskBoard({ tasks, userId }: { tasks: DailyTask[]; userId?: string }) {
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       {TASK_STATUSES.map((status) => {
         const rows = tasks.filter((task) => normalizeTaskStatus(task.status) === status);
+        const columnAccent: Record<string, string> = {
+          pending: "border-t-primary/40",
+          in_progress: "border-t-[var(--task-progress)]/60",
+          ready_to_file: "border-t-success/60",
+          blocked: "border-t-destructive/60",
+          completed: "border-t-muted-foreground/30",
+        };
         return (
-          <section key={status}>
+          <section key={status} aria-label={`Columna: ${TASK_STATUS_LABELS[status]}`}>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold">{TASK_STATUS_LABELS[status]}</h2>
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{rows.length}</span>
             </div>
-            <div className="min-h-28 space-y-2 rounded-xl bg-muted/35 p-2">
-              {rows.map((task) => (
-                <Card key={task.id} className="p-3">
-                  <p className="text-sm font-semibold">{task.title}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {task.assignee?.full_name || "Disponible"} ·{" "}
-                    {normalizeTaskPriority(task.priority)}
-                  </p>
-                </Card>
-              ))}
+            <div
+              className={`min-h-28 space-y-2 rounded-xl border-t-2 bg-muted/35 p-2 ${columnAccent[status] ?? ""}`}
+            >
+              {rows.map((task) => {
+                const vs = getTaskVisualState(task, userId);
+                return (
+                  <Card key={task.id} className={`border-l-2 p-3 ${vs.accentBorder}`}>
+                    <p className="text-sm font-semibold line-clamp-2">{task.title}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <TaskPriorityBadge priority={task.priority} iconOnly />
+                      <span className="text-xs text-muted-foreground truncate">
+                        {task.assignee?.full_name || "Sin asignar"}
+                      </span>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           </section>
         );
@@ -941,16 +1017,15 @@ function TaskBoard({ tasks }: { tasks: DailyTask[] }) {
   );
 }
 
-function TaskChip({ status }: { status: string }) {
-  const normalized = normalizeTaskStatus(status);
+function TaskChip({ status, userId }: { status: string; userId?: string }) {
+  const vs = getTaskVisualState({ status, assigned_to: null }, userId);
+  const Icon = vs.icon;
   return (
-    <span className="inline-flex w-fit items-center gap-1 rounded-full border px-2 py-1 text-xs font-semibold">
-      {normalized === "completed" ? (
-        <CheckCircle2 className="h-3.5 w-3.5" />
-      ) : (
-        <Circle className="h-3.5 w-3.5" />
-      )}
-      {TASK_STATUS_LABELS[normalized]}
+    <span
+      className={`inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${vs.badgeClasses}`}
+    >
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {TASK_STATUS_LABELS[normalizeTaskStatus(status)]}
     </span>
   );
 }

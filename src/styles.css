@@ -51,6 +51,57 @@
   --color-task-blocked: var(--task-blocked);
   --color-task-completed: var(--task-completed);
 
+  /* ── Tokens de estado de tarea ── */
+  --color-task-mine: var(--task-mine);
+  --color-task-mine-foreground: var(--task-mine-foreground);
+  --color-task-mine-border: var(--task-mine-border);
+  --color-task-other: var(--task-other);
+  --color-task-other-foreground: var(--task-other-foreground);
+
+  /* ── Tokens de prioridad ── */
+  --color-priority-low: var(--priority-low);
+  --color-priority-low-foreground: var(--priority-low-foreground);
+  --color-priority-normal: var(--priority-normal);
+  --color-priority-normal-foreground: var(--priority-normal-foreground);
+  --color-priority-high: var(--priority-high);
+  --color-priority-high-foreground: var(--priority-high-foreground);
+  --color-priority-urgent: var(--priority-urgent);
+  --color-priority-urgent-foreground: var(--priority-urgent-foreground);
+
+  /* ── Tokens semánticos de evento de agenda ── */
+  --color-event-hearing: var(--event-hearing);
+  --color-event-hearing-foreground: var(--event-hearing-foreground);
+  --color-event-appointment: var(--event-appointment);
+  --color-event-appointment-foreground: var(--event-appointment-foreground);
+  --color-event-reminder: var(--event-reminder);
+  --color-event-reminder-foreground: var(--event-reminder-foreground);
+  --color-event-general: var(--event-general);
+  --color-event-general-foreground: var(--event-general-foreground);
+
+  /* ── Tokens semánticos de tipo de documento ── */
+  --color-doc-demand: var(--doc-demand);
+  --color-doc-resolution: var(--doc-resolution);
+  --color-doc-sentence: var(--doc-sentence);
+  --color-doc-power: var(--doc-power);
+  --color-doc-contract: var(--doc-contract);
+  --color-doc-other: var(--doc-other);
+
+  /* ── Tokens de módulo (dashboard KPIs) ── */
+  --color-kpi-clients: var(--kpi-clients);
+  --color-kpi-clients-foreground: var(--kpi-clients-foreground);
+  --color-kpi-cases: var(--kpi-cases);
+  --color-kpi-cases-foreground: var(--kpi-cases-foreground);
+  --color-kpi-tasks-available: var(--kpi-tasks-available);
+  --color-kpi-tasks-available-foreground: var(--kpi-tasks-available-foreground);
+  --color-kpi-tasks-mine: var(--kpi-tasks-mine);
+  --color-kpi-tasks-mine-foreground: var(--kpi-tasks-mine-foreground);
+  --color-kpi-agenda: var(--kpi-agenda);
+  --color-kpi-agenda-foreground: var(--kpi-agenda-foreground);
+  --color-kpi-documents: var(--kpi-documents);
+  --color-kpi-documents-foreground: var(--kpi-documents-foreground);
+  --color-kpi-reports: var(--kpi-reports);
+  --color-kpi-reports-foreground: var(--kpi-reports-foreground);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -115,6 +166,58 @@
   --task-blocked: oklch(0.62 0.2 27);
   --task-completed: oklch(0.57 0.02 255);
 
+  /* ── Estado de tarea: asignada a mí ── */
+  --task-mine: oklch(0.96 0.02 255);
+  --task-mine-foreground: oklch(0.34 0.09 255);
+  --task-mine-border: oklch(0.72 0.08 255);
+  /* ── Estado de tarea: asignada a otro ── */
+  --task-other: oklch(0.965 0.01 285);
+  --task-other-foreground: oklch(0.45 0.06 280);
+
+  /* ── Prioridades ── */
+  --priority-low: oklch(0.96 0.005 250);
+  --priority-low-foreground: oklch(0.5 0.015 255);
+  --priority-normal: oklch(0.94 0.025 240);
+  --priority-normal-foreground: oklch(0.38 0.09 245);
+  --priority-high: oklch(0.97 0.05 80);
+  --priority-high-foreground: oklch(0.46 0.12 72);
+  --priority-urgent: oklch(0.97 0.04 25);
+  --priority-urgent-foreground: oklch(0.54 0.2 25);
+
+  /* ── Eventos de agenda ── */
+  --event-hearing: oklch(0.34 0.09 255);
+  --event-hearing-foreground: oklch(0.985 0 0);
+  --event-appointment: oklch(0.62 0.13 235);
+  --event-appointment-foreground: oklch(0.22 0.07 240);
+  --event-reminder: oklch(0.62 0.14 155);
+  --event-reminder-foreground: oklch(0.22 0.08 155);
+  --event-general: oklch(0.55 0.02 255);
+  --event-general-foreground: oklch(0.22 0.04 255);
+
+  /* ── Tipos de documento ── */
+  --doc-demand: oklch(0.34 0.09 255);
+  --doc-resolution: oklch(0.74 0.12 80);
+  --doc-sentence: oklch(0.62 0.14 155);
+  --doc-power: oklch(0.62 0.18 25);
+  --doc-contract: oklch(0.55 0.13 290);
+  --doc-other: oklch(0.55 0.02 255);
+
+  /* ── KPIs del dashboard ── */
+  --kpi-clients: oklch(0.34 0.09 255);
+  --kpi-clients-foreground: oklch(0.985 0 0);
+  --kpi-cases: oklch(0.46 0.1 270);
+  --kpi-cases-foreground: oklch(0.985 0 0);
+  --kpi-tasks-available: oklch(0.78 0.15 75);
+  --kpi-tasks-available-foreground: oklch(0.34 0.08 65);
+  --kpi-tasks-mine: oklch(0.62 0.13 210);
+  --kpi-tasks-mine-foreground: oklch(0.22 0.07 220);
+  --kpi-agenda: oklch(0.57 0.16 300);
+  --kpi-agenda-foreground: oklch(0.985 0 0);
+  --kpi-documents: oklch(0.6 0.14 185);
+  --kpi-documents-foreground: oklch(0.985 0 0);
+  --kpi-reports: oklch(0.62 0.14 155);
+  --kpi-reports-foreground: oklch(0.985 0 0);
+
   --border: oklch(0.92 0.008 250);
   --input: oklch(0.92 0.008 250);
   --ring: oklch(0.34 0.09 255);
@@ -170,6 +273,57 @@
   --navy-foreground: oklch(0.15 0.03 255);
   --gold: oklch(0.78 0.12 80);
   --gold-foreground: oklch(0.2 0.04 70);
+
+  /* ── Estado de tarea oscuro ── */
+  --task-mine: oklch(0.26 0.05 255);
+  --task-mine-foreground: oklch(0.8 0.09 245);
+  --task-mine-border: oklch(0.45 0.09 250);
+  --task-other: oklch(0.27 0.04 285);
+  --task-other-foreground: oklch(0.75 0.07 280);
+
+  /* ── Prioridades oscuras ── */
+  --priority-low: oklch(0.28 0.015 255);
+  --priority-low-foreground: oklch(0.72 0.02 255);
+  --priority-normal: oklch(0.27 0.04 245);
+  --priority-normal-foreground: oklch(0.78 0.1 245);
+  --priority-high: oklch(0.3 0.06 80);
+  --priority-high-foreground: oklch(0.85 0.12 80);
+  --priority-urgent: oklch(0.3 0.07 25);
+  --priority-urgent-foreground: oklch(0.85 0.18 25);
+
+  /* ── Eventos de agenda oscuros ── */
+  --event-hearing: oklch(0.72 0.11 245);
+  --event-hearing-foreground: oklch(0.15 0.03 255);
+  --event-appointment: oklch(0.7 0.12 235);
+  --event-appointment-foreground: oklch(0.15 0.03 240);
+  --event-reminder: oklch(0.7 0.13 155);
+  --event-reminder-foreground: oklch(0.15 0.05 155);
+  --event-general: oklch(0.6 0.02 255);
+  --event-general-foreground: oklch(0.94 0.008 250);
+
+  /* ── Tipos de documento oscuros ── */
+  --doc-demand: oklch(0.72 0.11 245);
+  --doc-resolution: oklch(0.78 0.12 80);
+  --doc-sentence: oklch(0.7 0.13 155);
+  --doc-power: oklch(0.67 0.18 25);
+  --doc-contract: oklch(0.65 0.13 290);
+  --doc-other: oklch(0.6 0.02 255);
+
+  /* ── KPIs del dashboard oscuros ── */
+  --kpi-clients: oklch(0.72 0.11 245);
+  --kpi-clients-foreground: oklch(0.15 0.03 255);
+  --kpi-cases: oklch(0.62 0.1 270);
+  --kpi-cases-foreground: oklch(0.15 0.03 255);
+  --kpi-tasks-available: oklch(0.78 0.14 75);
+  --kpi-tasks-available-foreground: oklch(0.2 0.05 65);
+  --kpi-tasks-mine: oklch(0.68 0.12 210);
+  --kpi-tasks-mine-foreground: oklch(0.15 0.04 220);
+  --kpi-agenda: oklch(0.65 0.15 300);
+  --kpi-agenda-foreground: oklch(0.15 0.03 255);
+  --kpi-documents: oklch(0.65 0.13 185);
+  --kpi-documents-foreground: oklch(0.15 0.03 185);
+  --kpi-reports: oklch(0.7 0.13 155);
+  --kpi-reports-foreground: oklch(0.15 0.05 155);
 }
 
 @layer base {
@@ -350,5 +504,58 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Microinteracciones ──────────────────────────────────────────────────── */
+
+/* Pulso único al reclamar una tarea (solo se reproduce una vez) */
+@keyframes task-claim-pulse {
+  0%   { box-shadow: 0 0 0 0 oklch(0.34 0.09 255 / 0.35); }
+  60%  { box-shadow: 0 0 0 8px oklch(0.34 0.09 255 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.34 0.09 255 / 0); }
+}
+
+.animate-task-claimed {
+  animation: task-claim-pulse 600ms ease-out 1;
+}
+
+/* Aparición suave de badges y chips */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 180ms ease-out both;
+}
+
+/* Transición de fondo para filas de tabla */
+.row-transition {
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease;
+}
+
+/* Hover de tarjetas: desplazamiento sutil de 1px + sombra */
+.card-hover {
+  transition:
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-task-claimed,
+  .animate-fade-in-up,
+  .card-hover:hover {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
   }
 }

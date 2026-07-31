@@ -115,16 +115,22 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 to={item.to as never}
                 aria-current={active ? "page" : undefined}
                 className={[
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
                   active
                     ? "bg-sidebar-accent text-white shadow-soft ring-1 ring-inset ring-sidebar-border"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
                 ].join(" ")}
               >
-                <Icon className={`h-[18px] w-[18px] ${active ? "text-gold" : ""}`} />
+                <Icon
+                  className={`h-[18px] w-[18px] shrink-0 transition-colors ${active ? "text-gold" : "text-sidebar-foreground/60 group-hover:text-white"}`}
+                  aria-hidden="true"
+                />
                 <span>{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground">
+                  <span
+                    aria-label={`${taskAttentionCount} tareas requieren atención`}
+                    className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground"
+                  >
                     {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
                   </span>
                 )}
@@ -327,8 +333,10 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
         </footer>
       </div>
 
-      {/* ── Bottom navigation — mobile only ── */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border safe-area-inset-bottom">
+      <nav
+        aria-label="Navegación principal móvil"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-card border-t border-border safe-area-inset-bottom"
+      >
         <div className="grid grid-cols-5 h-16">
           {bottomNav.map((item) => {
             const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
@@ -338,13 +346,22 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 key={item.to}
                 to={item.to as never}
                 aria-current={active ? "page" : undefined}
-                className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors
+                className={`relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors min-h-[44px]
                   ${active ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
               >
-                <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} />
+                {active && (
+                  <span
+                    className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full bg-primary"
+                    aria-hidden="true"
+                  />
+                )}
+                <Icon className={`h-5 w-5 ${active ? "text-primary" : ""}`} aria-hidden="true" />
                 <span className="truncate">{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                  <span
+                    aria-label={`${taskAttentionCount} tareas`}
+                    className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground"
+                  >
                     {taskAttentionCount > 9 ? "9+" : taskAttentionCount}
                   </span>
                 )}
@@ -355,9 +372,9 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             type="button"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Abrir menú completo"
-            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground"
+            className="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-muted-foreground min-h-[44px]"
           >
-            <MoreHorizontal className="h-5 w-5" />
+            <MoreHorizontal className="h-5 w-5" aria-hidden="true" />
             <span>Más</span>
           </button>
         </div>
@@ -387,7 +404,7 @@ export function StatusBadge({
   };
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tones[tone] ?? tones.default}`}
     >
       {children}
     </span>

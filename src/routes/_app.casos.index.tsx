@@ -32,6 +32,26 @@ import {
 } from "@/lib/case-validation";
 import { usePermissions } from "@/lib/permissions";
 
+/** Devuelve la clase de borde lateral izquierdo según el estado del expediente */
+function caseBorderClass(status: string): string {
+  if (status === "Archivado" || status === "Concluido") return "border-l-transparent";
+  if (status === "Audiencia") return "border-l-warning";
+  if (status === "Bloqueado") return "border-l-destructive";
+  return "border-l-primary";
+}
+
+/** Devuelve el tono del badge de estado del expediente */
+function caseStatusTone(
+  status: string,
+): "default" | "info" | "warning" | "danger" | "success" | "gold" | "navy" {
+  if (status === "Archivado" || status === "Concluido") return "default";
+  if (status === "Audiencia") return "warning";
+  if (status === "Sentencia") return "success";
+  if (status === "En proceso" || status === "Demanda presentada") return "navy";
+  if (status === "Documentación") return "info";
+  return "info";
+}
+
 export const Route = createFileRoute("/_app/casos/")({
   component: CasesPage,
 });
@@ -203,27 +223,32 @@ function CasesPage() {
           filtered.map((item) => (
             <div
               key={item.id}
-              className="border-b border-l-2 border-l-transparent p-4 transition-colors hover:bg-primary/2 last:border-b-0 md:grid md:grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] md:items-center md:gap-4 md:px-5"
-              style={item.status === "Archivado" ? {} : { borderLeftColor: "hsl(var(--primary))" }}
+              className={[
+                "border-b border-l-2 p-4 transition-colors last:border-b-0 hover:bg-primary/5",
+                "md:grid md:grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] md:items-center md:gap-4 md:px-5",
+                caseBorderClass(item.status),
+              ].join(" ")}
             >
               <Link
                 to={"/casos/$id" as never}
                 params={{ id: item.id } as never}
-                className="text-sm font-medium hover:text-primary"
+                className="text-sm font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
               >
-                {item.case_number || item.expediente}
+                <span className="font-mono text-xs text-muted-foreground">
+                  {item.case_number || item.expediente}
+                </span>
               </Link>
               <p className="mt-2 truncate text-sm md:mt-0">{item.clients?.name || "Sin cliente"}</p>
               <p className="mt-2 text-sm text-muted-foreground md:mt-0">
                 {item.materia || item.process_type}
               </p>
               <div className="mt-3 md:mt-0">
-                <StatusBadge tone={item.status === "Archivado" ? "default" : "info"}>
-                  {item.status}
-                </StatusBadge>
+                <StatusBadge tone={caseStatusTone(item.status)}>{item.status}</StatusBadge>
               </div>
               <p className="mt-3 truncate text-sm text-muted-foreground md:mt-0">
-                {item.next_action || "Sin acción registrada"}
+                {item.next_action || (
+                  <span className="text-muted-foreground/60 italic">Sin acción registrada</span>
+                )}
               </p>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

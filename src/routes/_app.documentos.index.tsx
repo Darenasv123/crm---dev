@@ -29,14 +29,45 @@ export const Route = createFileRoute("/_app/documentos/")({
 
 const DOC_TYPES = ["Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
 
-const typeColor: Record<string, string> = {
-  Demanda: "oklch(0.34 0.09 255)",
-  Resolución: "oklch(0.74 0.12 80)",
-  Sentencia: "oklch(0.62 0.14 155)",
-  Poder: "oklch(0.62 0.18 25)",
-  Contrato: "oklch(0.55 0.13 290)",
-  Otros: "oklch(0.55 0.02 255)",
+/** Mapea tipo de documento a token CSS semántico */
+const typeTokenColor: Record<string, string> = {
+  Demanda: "var(--doc-demand)",
+  Resolución: "var(--doc-resolution)",
+  Sentencia: "var(--doc-sentence)",
+  Poder: "var(--doc-power)",
+  Contrato: "var(--doc-contract)",
+  Otros: "var(--doc-other)",
 };
+
+/** Devuelve el color CSS para el tipo de documento dado */
+function docTypeColor(type: string): string {
+  return typeTokenColor[type] ?? typeTokenColor.Otros;
+}
+
+/** Icono por extensión de archivo */
+function FileExtIcon({ name, className }: { name: string; className?: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const colorMap: Record<string, string> = {
+    pdf: "text-red-500",
+    doc: "text-blue-600",
+    docx: "text-blue-600",
+    xls: "text-green-600",
+    xlsx: "text-green-600",
+    jpg: "text-amber-500",
+    jpeg: "text-amber-500",
+    png: "text-amber-500",
+    gif: "text-amber-500",
+  };
+  const colorClass = colorMap[ext] ?? "text-muted-foreground";
+  return (
+    <div
+      className={`grid h-8 w-8 place-items-center rounded-lg bg-muted/50 shrink-0 ${className ?? ""}`}
+      aria-hidden="true"
+    >
+      <FileText className={`h-4 w-4 ${colorClass}`} />
+    </div>
+  );
+}
 
 function displayDocumentType(type: string) {
   return DOC_TYPES.includes(type) ? type : "Otros";
@@ -164,7 +195,7 @@ function DocsPage() {
                 onClick={() => setActiveType(t)}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition ${activeType === t ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
               >
-                <Folder className="h-4 w-4 shrink-0" style={{ color: typeColor[t] }} />
+                <Folder className="h-4 w-4 shrink-0" style={{ color: docTypeColor(t) }} />
                 <span className="flex-1 text-left truncate">{t}</span>
                 <span className="text-[11px] text-muted-foreground">{countByType[t] ?? 0}</span>
               </button>
@@ -242,9 +273,7 @@ function DocsPage() {
                     >
                       <td className="py-2.5 pl-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-500 shrink-0">
-                            <FileText className="h-4 w-4" />
-                          </div>
+                          <FileExtIcon name={d.name} />
                           <div className="min-w-0">
                             <div className="text-sm font-medium truncate max-w-[200px]">
                               {d.name}
@@ -633,9 +662,7 @@ function PreviewPanel({
             ) : (
               /* Non-image: show an icon + file extension badge */
               <div className="flex flex-col items-center gap-3 p-4">
-                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-primary/10 text-primary">
-                  <FileText className="h-8 w-8" />
-                </div>
+                <FileExtIcon name={selected.name} className="h-16 w-16 rounded-2xl" />
                 <div className="text-center">
                   <div className="text-xs font-semibold text-foreground truncate max-w-[200px]">
                     {selected.name}

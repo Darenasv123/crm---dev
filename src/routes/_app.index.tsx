@@ -12,6 +12,8 @@ import { usePermissions } from "@/lib/permissions";
 import { displayCaseNumber, normalizeCaseStatus } from "@/lib/case-validation";
 import { formatPeruDate, getPeruHour, getPeruTodayISO } from "@/lib/peru-time";
 import { compareTasks, normalizeTaskStatus, TASK_STATUS_LABELS } from "@/lib/tasks";
+import { getTaskVisualState } from "@/lib/task-visual";
+import { TaskPriorityBadge } from "@/components/tasks/TaskPriorityBadge";
 import {
   Users,
   Briefcase,
@@ -22,11 +24,13 @@ import {
   UserPlus,
   ScrollText,
   Gavel,
-  ChevronRight,
   ClipboardList,
   CalendarPlus,
   FolderPlus,
   Landmark,
+  ListTodo,
+  FolderArchive,
+  BarChart3,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/")({
@@ -145,21 +149,21 @@ function Dashboard() {
           icon={Users}
           label="Clientes activos"
           value={activeClients.length}
-          tone="navy"
+          tone="clients"
           to="/clientes"
         />
         <KpiCard
           icon={Briefcase}
           label="Expedientes activos"
           value={activeCases.length}
-          tone="gold"
+          tone="cases"
           to="/casos"
         />
         <KpiCard
           icon={CalendarClock}
           label="Actividades próximas"
           value={upcomingEvents.length}
-          tone="info"
+          tone="agenda"
           to="/agenda"
         />
         {canViewFinancialMetrics && (
@@ -175,7 +179,7 @@ function Dashboard() {
           icon={FileText}
           label="Docs. sin expediente"
           value={documentsWithoutCase.length}
-          tone="success"
+          tone="documents"
           to="/documentos"
         />
       </div>
@@ -215,26 +219,35 @@ function Dashboard() {
           <p className="mt-4 text-sm text-muted-foreground">No hay trabajo pendiente.</p>
         ) : (
           <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {dashboardTasks.map((task) => (
-              <Link
-                key={task.id}
-                to={"/tareas" as never}
-                className="rounded-lg border border-border p-3 transition hover:bg-muted/30"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="line-clamp-2 text-sm font-semibold">{task.title}</span>
-                  <StatusBadge
-                    tone={normalizeTaskStatus(task.status) === "blocked" ? "danger" : "info"}
-                  >
-                    {TASK_STATUS_LABELS[normalizeTaskStatus(task.status)]}
-                  </StatusBadge>
-                </div>
-                <div className="mt-2 truncate text-xs text-muted-foreground">
-                  {task.assignee?.full_name ?? "Sin responsable"} ·{" "}
-                  {task.cases?.clients?.name ?? task.clients?.name ?? "Tarea general"}
-                </div>
-              </Link>
-            ))}
+            {dashboardTasks.map((task) => {
+              const vs = getTaskVisualState(task, profile?.id);
+              const Icon = vs.icon;
+              return (
+                <Link
+                  key={task.id}
+                  to={"/tareas" as never}
+                  className={`rounded-lg border-l-2 border border-border p-3 transition hover:shadow-sm ${vs.accentBorder} ${vs.rowBg}`}
+                  aria-label={`${task.title} — ${vs.ariaDescription}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="line-clamp-2 text-sm font-semibold">{task.title}</span>
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${vs.badgeClasses}`}
+                    >
+                      <Icon className="h-2.5 w-2.5" aria-hidden="true" />
+                      {vs.label}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <TaskPriorityBadge priority={task.priority} iconOnly />
+                    <span className="truncate text-xs text-muted-foreground">
+                      {task.assignee?.full_name ?? "Sin responsable"} ·{" "}
+                      {task.cases?.clients?.name ?? task.clients?.name ?? "Tarea general"}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -243,7 +256,7 @@ function Dashboard() {
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-base font-semibold">Requiere atencion</h3>
+              <h3 className="text-base font-semibold">Requiere atención</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">Prioridades reales del CRM</p>
             </div>
             <StatusBadge tone={todayEvents.length > 0 ? "warning" : "success"}>
@@ -468,27 +481,41 @@ function KpiCard({
   icon: typeof Users;
   label: string;
   value: number;
-  tone: "navy" | "gold" | "success" | "warning" | "info" | "danger";
+  tone:
+    | "clients"
+    | "cases"
+    | "agenda"
+    | "documents"
+    | "reports"
+    | "tasks-available"
+    | "tasks-mine"
+    | "danger";
   to: string;
 }) {
   const tones: Record<string, string> = {
-    navy: "bg-primary/10 text-primary",
-    gold: "bg-[oklch(0.96_0.05_85)] text-[oklch(0.5_0.13_75)]",
-    success: "bg-success/10 text-success-foreground",
-    warning: "bg-warning/14 text-warning-foreground",
-    info: "bg-info/10 text-info-foreground",
+    clients: "bg-[var(--kpi-clients)]/15 text-[var(--kpi-clients)]",
+    cases: "bg-[var(--kpi-cases)]/15 text-[var(--kpi-cases)]",
+    "tasks-available":
+      "bg-[var(--kpi-tasks-available)]/20 text-[var(--kpi-tasks-available-foreground)]",
+    "tasks-mine": "bg-[var(--kpi-tasks-mine)]/20 text-[var(--kpi-tasks-mine)]",
+    agenda: "bg-[var(--kpi-agenda)]/15 text-[var(--kpi-agenda)]",
+    documents: "bg-[var(--kpi-documents)]/15 text-[var(--kpi-documents)]",
+    reports: "bg-[var(--kpi-reports)]/15 text-[var(--kpi-reports)]",
     danger: "bg-destructive/10 text-destructive",
   };
   return (
-    <Link to={to as never} className="block">
-      <Card className="p-5 transition-shadow hover:shadow-md">
+    <Link to={to as never} className="block col-span-1">
+      <Card className="card-hover p-5">
         <div className="flex items-center gap-4">
-          <div className={`grid h-12 w-12 place-items-center rounded-xl ${tones[tone]}`}>
+          <div
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${tones[tone] ?? tones.clients}`}
+            aria-hidden="true"
+          >
             <Icon className="h-6 w-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-2xl font-bold tracking-tight">{value}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground truncate">{label}</div>
           </div>
         </div>
       </Card>
@@ -539,7 +566,9 @@ function WorkBucket({
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-        <Icon className="h-3.5 w-3.5 text-primary" />
+        <div className="grid h-6 w-6 place-items-center rounded-md bg-primary/10">
+          <Icon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+        </div>
         {label}
       </div>
       <div className="space-y-2">
