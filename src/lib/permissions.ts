@@ -155,10 +155,14 @@ export function resolveAgendaPermissions(role: string | null | undefined): Agend
 // ---------------------------------------------------------------------------
 
 export interface DocumentPermissions {
-  /** Puede ver documentos según RLS. */
+  /** Puede ver documentos. Administrador y Personal tienen acceso igual. */
   canViewDocuments: boolean;
-  /** Puede descargar documentos. */
+  /** Puede descargar documentos. Administrador y Personal tienen acceso igual. */
   canDownloadDocuments: boolean;
+  /** Puede subir documentos. Administrador y Personal tienen acceso igual. */
+  canUploadDocuments: boolean;
+  /** Puede organizar carpetas. Administrador y Personal tienen acceso igual. */
+  canManageFolders: boolean;
   /** Puede eliminar documentos (solo Administrador). */
   canDeleteDocuments: boolean;
 }
@@ -166,8 +170,12 @@ export interface DocumentPermissions {
 export function resolveDocumentPermissions(role: string | null | undefined): DocumentPermissions {
   const admin = isAdminRole(role);
   return {
-    canViewDocuments: true, // Todos ven sus documentos según RLS
-    canDownloadDocuments: true, // Todos pueden descargar
+    // Administrador y Personal comparten el mismo acceso operativo a documentos.
+    canViewDocuments: true,
+    canDownloadDocuments: true,
+    canUploadDocuments: true,
+    canManageFolders: true,
+    // Solo Administrador puede eliminar documentos.
     canDeleteDocuments: admin,
   };
 }
@@ -179,15 +187,18 @@ export function resolveDocumentPermissions(role: string | null | undefined): Doc
 export interface ReportPermissions {
   /** Puede ver reportes según RLS. */
   canViewReports: boolean;
-  /** Puede crear reportes (solo Administrador por ahora). */
+  /** Puede crear reportes. Administrador y Personal tienen acceso igual. */
   canCreateReports: boolean;
+  /** Puede editar reportes. Administrador y Personal tienen acceso igual. */
+  canEditReports: boolean;
 }
 
 export function resolveReportPermissions(role: string | null | undefined): ReportPermissions {
-  const admin = isAdminRole(role);
+  // Administrador y Personal tienen el mismo acceso operativo a reportes.
   return {
-    canViewReports: true, // Todos ven reportes según RLS
-    canCreateReports: admin,
+    canViewReports: true,
+    canCreateReports: true,
+    canEditReports: true,
   };
 }
 
@@ -198,9 +209,9 @@ export function resolveReportPermissions(role: string | null | undefined): Repor
 export interface ClientPermissions {
   /** Puede ver clientes. */
   canViewClients: boolean;
-  /** Puede crear clientes (solo Administrador). */
+  /** Puede crear clientes. Administrador y Personal tienen acceso igual. */
   canCreateClients: boolean;
-  /** Puede editar clientes (solo Administrador). */
+  /** Puede editar clientes. Administrador y Personal tienen acceso igual. */
   canEditClients: boolean;
   /** Puede eliminar clientes (solo Administrador). */
   canDeleteClients: boolean;
@@ -209,9 +220,11 @@ export interface ClientPermissions {
 export function resolveClientPermissions(role: string | null | undefined): ClientPermissions {
   const admin = isAdminRole(role);
   return {
-    canViewClients: true, // Todos ven clientes según RLS
-    canCreateClients: admin,
-    canEditClients: admin,
+    canViewClients: true,
+    // Administrador y Personal gestionan clientes por igual (crear y editar).
+    canCreateClients: true,
+    canEditClients: true,
+    // Solo Administrador puede eliminar registros.
     canDeleteClients: admin,
   };
 }
@@ -223,9 +236,9 @@ export function resolveClientPermissions(role: string | null | undefined): Clien
 export interface CasePermissions {
   /** Puede ver expedientes. */
   canViewCases: boolean;
-  /** Puede crear expedientes (solo Administrador). */
+  /** Puede crear expedientes. Administrador y Personal tienen acceso igual. */
   canCreateCases: boolean;
-  /** Puede editar expedientes (solo Administrador). */
+  /** Puede editar expedientes. Administrador y Personal tienen acceso igual. */
   canEditCases: boolean;
   /** Puede eliminar expedientes (solo Administrador). */
   canDeleteCases: boolean;
@@ -234,9 +247,11 @@ export interface CasePermissions {
 export function resolveCasePermissions(role: string | null | undefined): CasePermissions {
   const admin = isAdminRole(role);
   return {
-    canViewCases: true, // Todos ven expedientes según RLS
-    canCreateCases: admin,
-    canEditCases: admin,
+    canViewCases: true,
+    // Administrador y Personal gestionan expedientes por igual (crear y editar).
+    canCreateCases: true,
+    canEditCases: true,
+    // Solo Administrador puede eliminar registros.
     canDeleteCases: admin,
   };
 }
