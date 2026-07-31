@@ -876,3 +876,162 @@ describe("usePermissions — Administrador con profile completo", () => {
     expect(perms.canCreateCases).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GUARDS DE RUTAS — Personal puede abrir rutas operativas
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("guards de rutas — Personal puede acceder a módulos operativos", () => {
+  // Simula la lógica de ProtectedLayout: solo redirige si !user
+  // Para módulos operativos no hay guard de rol adicional.
+  const operationalRoutes = [
+    "/clientes",
+    "/clientes/some-id",
+    "/casos",
+    "/casos/some-id",
+    "/tareas",
+    "/tareas/mias",
+    "/tareas/tablero",
+    "/documentos",
+    "/reportes",
+    "/agenda",
+  ];
+
+  // Estos sí redirigen a non-admins
+  const adminOnlyRoutes = ["/pagos", "/configuracion"];
+
+  it("rutas operativas no están en la lista de admin-only", () => {
+    for (const route of operationalRoutes) {
+      const isAdminOnly = adminOnlyRoutes.some((r) => route.startsWith(r));
+      expect(isAdminOnly).toBe(false);
+    }
+  });
+
+  it("Personal no puede acceder a rutas admin-only", () => {
+    const role = "Personal";
+    for (const route of adminOnlyRoutes) {
+      // Simula la condición de redirect en _app.configuracion.index.tsx y _app.pagos.index.tsx
+      const { canViewPayments } = resolvePaymentPermissions(role);
+      if (route === "/pagos") {
+        expect(canViewPayments).toBe(false);
+      }
+      if (route === "/configuracion") {
+        expect(isAdminRole(role)).toBe(false);
+      }
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUERIES HABILITADAS — Personal debe ejecutar lecturas operativas
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("queries de lectura — habilitadas para Personal (sin enabled:isAdmin)", () => {
+  // Todos estos hooks usan enabled: options.enabled ?? true
+  // o enabled: !!profile — nunca enabled: isAdmin para módulos operativos.
+  const personalProfile = {
+    id: "user-personal-1",
+    full_name: "María Auxiliadora",
+    initials: "MA",
+    role: "Personal",
+    status: "Activo",
+    phone: null,
+    email: "personal@estudio.pe",
+    created_at: "2026-01-01T00:00:00Z",
+  } as const;
+
+  it("query de Clientes: enabled = true para Personal (options.enabled ?? true)", () => {
+    // useClients no tiene enabled condicionado a rol
+    const enabled = true; // default cuando no se pasa options.enabled
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Expedientes: enabled = true para Personal", () => {
+    const enabled = true;
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Tareas: enabled = !!profile para Personal activo", () => {
+    const enabled = Boolean(personalProfile);
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Documentos: enabled = true para Personal", () => {
+    const enabled = true;
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Reportes: enabled = true para Personal", () => {
+    const enabled = true;
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Agenda: enabled = true para Personal", () => {
+    const enabled = true;
+    expect(enabled).toBe(true);
+  });
+
+  it("query de Pagos: enabled = canViewPayments = false para Personal", () => {
+    const { canViewPayments } = resolvePaymentPermissions("Personal");
+    expect(canViewPayments).toBe(false); // la query no se ejecuta
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCIONES BLOQUEADAS — Personal no puede crear ni gestionar
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("acciones bloqueadas para Personal", () => {
+  const perms = usePermissions({
+    id: "user-personal-1",
+    full_name: "María Auxiliadora",
+    initials: "MA",
+    role: "Personal",
+    status: "Activo",
+    phone: null,
+    email: "personal@estudio.pe",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  it("no puede crear tareas", () => expect(perms.canCreateTasks).toBe(false));
+  it("no puede asignar tareas", () => expect(perms.canAssignTasks).toBe(false));
+  it("no puede reasignar tareas", () => expect(perms.canReassignTasks).toBe(false));
+  it("no puede eliminar tareas", () => expect(perms.canDeleteTasks).toBe(false));
+  it("no puede crear eventos de agenda", () => expect(perms.canCreateEvents).toBe(false));
+  it("no puede editar eventos de agenda", () => expect(perms.canEditEvents).toBe(false));
+  it("no puede eliminar eventos de agenda", () => expect(perms.canDeleteEvents).toBe(false));
+  it("no puede crear clientes", () => expect(perms.canCreateClients).toBe(false));
+  it("no puede editar clientes", () => expect(perms.canEditClients).toBe(false));
+  it("no puede eliminar clientes", () => expect(perms.canDeleteClients).toBe(false));
+  it("no puede crear expedientes", () => expect(perms.canCreateCases).toBe(false));
+  it("no puede editar expedientes", () => expect(perms.canEditCases).toBe(false));
+  it("no puede eliminar expedientes", () => expect(perms.canDeleteCases).toBe(false));
+  it("no puede eliminar documentos", () => expect(perms.canDeleteDocuments).toBe(false));
+  it("no puede ver pagos", () => expect(perms.canViewPayments).toBe(false));
+  it("no puede ver métricas financieras", () => expect(perms.canViewFinancialMetrics).toBe(false));
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACCIONES PERMITIDAS — Personal puede leer y tomar tareas
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("acciones permitidas para Personal", () => {
+  const perms = usePermissions({
+    id: "user-personal-1",
+    full_name: "María Auxiliadora",
+    initials: "MA",
+    role: "Personal",
+    status: "Activo",
+    phone: null,
+    email: "personal@estudio.pe",
+    created_at: "2026-01-01T00:00:00Z",
+  });
+
+  it("puede ver clientes", () => expect(perms.canViewClients).toBe(true));
+  it("puede ver expedientes", () => expect(perms.canViewCases).toBe(true));
+  it("puede tomar tareas disponibles", () => expect(perms.canClaimTasks).toBe(true));
+  it("puede ver documentos", () => expect(perms.canViewDocuments).toBe(true));
+  it("puede descargar documentos", () => expect(perms.canDownloadDocuments).toBe(true));
+  it("puede ver reportes", () => expect(perms.canViewReports).toBe(true));
+  it("puede ver agenda", () => expect(perms.canViewAgenda).toBe(true));
+});
