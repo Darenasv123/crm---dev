@@ -1,0 +1,41 @@
+advocate-nest — CRM Jurídico Estudio Arenas
+Release: 2026-08-01
+Commit: 40c43d9
+Rama: chore/virtualmin-node-release
+Build fecha: 2026-08-01
+
+Target: node-server (Nitro)
+Node.js requerido: 22.x o superior
+Framework: TanStack Start 1.168.x + Nitro 3.0.260603-beta
+
+Comando de inicio:
+  node app/.output/server/index.mjs
+
+Variables de entorno requeridas:
+  NODE_ENV=production
+  HOST=127.0.0.1
+  PORT=3000
+  SUPABASE_URL=
+  SUPABASE_SERVICE_ROLE_KEY=  (SECRETO)
+  GOOGLE_CLIENT_ID=
+  GOOGLE_CLIENT_SECRET=       (SECRETO)
+  GOOGLE_OAUTH_REDIRECT_URI=
+  GOOGLE_OAUTH_STATE_SECRET=  (SECRETO)
+  GOOGLE_TOKEN_ENCRYPTION_KEY=(SECRETO)
+  GOOGLE_CALENDAR_WEBHOOK_URL=
+  GROQ_API_KEY=               (SECRETO)
+
+Backend de datos: Supabase (externo, sin cambios)
+Base de datos en servidor: No requerida
+
+Healthcheck: GET /api/health
+Ruta del servidor: app/.output/server/index.mjs
+Assets públicos: app/.output/public/
+
+Contenido de este release:
+  app/           - Aplicación compilada (sin node_modules ni código fuente)
+  config/        - Plantilla de variables de entorno
+  docs/          - Documentación de despliegue
+  scripts/       - Scripts de validación y smoke test
+  RELEASE_INFO.txt
+  MANIFEST.sha256
