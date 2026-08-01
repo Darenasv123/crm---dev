@@ -13,6 +13,7 @@ import { Route as ResonanciaRouteImport } from './routes/resonancia'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as ApiHealthRouteImport } from './routes/api.health'
 import { Route as AppTareasIndexRouteImport } from './routes/_app.tareas.index'
 import { Route as AppRevisionIaIndexRouteImport } from './routes/_app.revision-ia.index'
 import { Route as AppReportesIndexRouteImport } from './routes/_app.reportes.index'
@@ -54,6 +55,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppTareasIndexRoute = AppTareasIndexRouteImport.update({
   id: '/tareas/',
@@ -175,6 +181,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
+  '/api/health': typeof ApiHealthRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
   '/tareas/mias': typeof AppTareasMiasRoute
@@ -201,6 +208,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
+  '/api/health': typeof ApiHealthRoute
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/resonancia': typeof ResonanciaRoute
+  '/api/health': typeof ApiHealthRoute
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
   '/_app/clientes/$id': typeof AppClientesIdRoute
@@ -260,6 +269,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/resonancia'
+    | '/api/health'
     | '/casos/$id'
     | '/clientes/$id'
     | '/tareas/mias'
@@ -286,6 +296,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/resonancia'
+    | '/api/health'
     | '/'
     | '/casos/$id'
     | '/clientes/$id'
@@ -314,6 +325,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/login'
     | '/resonancia'
+    | '/api/health'
     | '/_app/'
     | '/_app/casos/$id'
     | '/_app/clientes/$id'
@@ -343,6 +355,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   ResonanciaRoute: typeof ResonanciaRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiGoogleCalendarActionsRoute: typeof ApiGoogleCalendarActionsRoute
   ApiGoogleCalendarCallbackRoute: typeof ApiGoogleCalendarCallbackRoute
   ApiGoogleCalendarConnectRoute: typeof ApiGoogleCalendarConnectRoute
@@ -380,6 +393,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/tareas/': {
       id: '/_app/tareas/'
@@ -584,6 +604,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   ResonanciaRoute: ResonanciaRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiGoogleCalendarActionsRoute: ApiGoogleCalendarActionsRoute,
   ApiGoogleCalendarCallbackRoute: ApiGoogleCalendarCallbackRoute,
   ApiGoogleCalendarConnectRoute: ApiGoogleCalendarConnectRoute,
