@@ -1,0 +1,85 @@
+name: Validate canonical self-hosted bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-bootstrap-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-bootstrap:
+    name: Disposable Supabase / PostgreSQL 17
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_CLI_VERSION: 2.113.0
+      STACK_ROOT: ${{ runner.temp }}/crm-bootstrap-ci
+      ARTIFACT_DIR: ${{ runner.temp }}/crm-bootstrap-artifacts
+      CI_RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Display disposable runner runtime
+        run: |
+          docker version
+          docker info
+          supabase --version
+
+      - name: Validate twice from a clean Supabase stack
+        id: validation
+        continue-on-error: true
+        run: bash scripts/ci/self-hosted-bootstrap/run-validation.sh
+
+      - name: Upload sanitized validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-hosted-bootstrap-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.ARTIFACT_DIR }}/bootstrap-validation.log
+            ${{ env.ARTIFACT_DIR }}/verify-output.txt
+            ${{ env.ARTIFACT_DIR }}/runtime.txt
+            ${{ env.ARTIFACT_DIR }}/test-results.txt
+            ${{ env.ARTIFACT_DIR }}/result.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish final result
+        if: always()
+        shell: bash
+        run: |
+          result_file="$ARTIFACT_DIR/result.txt"
+          if [[ ! -f "$result_file" ]]; then
+            result="TEST_FAILED"
+          else
+            result="$(tr -d '\r\n' < "$result_file")"
+          fi
+
+          case "$result" in
+            PASS|BOOTSTRAP_FAILED|VERIFY_FAILED|TEST_FAILED|RUNTIME_MISMATCH) ;;
+            *) result="TEST_FAILED" ;;
+          esac
+
+          printf '## Canonical bootstrap validation\n\nResult: `%s`\n' "$result" >> "$GITHUB_STEP_SUMMARY"
+          echo "FINAL_RESULT=$result"
+          [[ "$result" == "PASS" ]]
