@@ -2,6 +2,9 @@ name: Validate canonical self-hosted bootstrap
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - test/self-hosted-bootstrap-ci
 
 permissions:
   contents: read

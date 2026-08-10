@@ -7,9 +7,11 @@ const preflight = readFileSync("scripts/ci/self-hosted-bootstrap/preflight.sql",
 const functional = readFileSync("scripts/ci/self-hosted-bootstrap/functional-tests.mjs", "utf8");
 
 describe("CI desechable del bootstrap self-hosted", () => {
-  it("usa runner estándar, CLI oficial fijada y disparo exclusivamente manual", () => {
-    expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).not.toMatch(/^\s+(push|pull_request|schedule):/m);
+  it("usa runner estándar, CLI oficial fijada y disparos restringidos", () => {
+    expect(workflow).toMatch(
+      /on:\r?\n {2}workflow_dispatch:\r?\n {2}push:\r?\n {4}branches:\r?\n {6}- test\/self-hosted-bootstrap-ci\r?\n\r?\npermissions:/,
+    );
+    expect(workflow).not.toMatch(/^\s+(pull_request|schedule):/m);
     expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(workflow).toContain("uses: supabase/setup-cli@v3");
     expect(workflow).toContain("SUPABASE_CLI_VERSION: 2.113.0");
