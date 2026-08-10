@@ -24,7 +24,12 @@ describe("CI desechable del bootstrap self-hosted", () => {
   });
 
   it("mantiene el proyecto fuera de las migraciones históricas", () => {
-    expect(workflow).toContain("STACK_ROOT: ${{ runner.temp }}/crm-bootstrap-ci");
+    expect(workflow).not.toContain("${{ runner.temp }}");
+    expect(workflow).toContain("- name: Configure disposable paths");
+    expect(workflow).toContain('echo "STACK_ROOT=$RUNNER_TEMP/crm-bootstrap-ci" >> "$GITHUB_ENV"');
+    expect(workflow).toContain(
+      'echo "ARTIFACT_DIR=$RUNNER_TEMP/crm-bootstrap-artifacts" >> "$GITHUB_ENV"',
+    );
     expect(runner).toContain('(cd "$STACK_ROOT" && supabase init --force)');
     expect(runner).toContain('"$REPO_ROOT"/supabase/self-hosted/000[1-7]_*.sql');
     expect(runner).not.toContain("supabase/migrations");

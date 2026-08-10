@@ -17,13 +17,17 @@ jobs:
     timeout-minutes: 60
     env:
       SUPABASE_CLI_VERSION: 2.113.0
-      STACK_ROOT: ${{ runner.temp }}/crm-bootstrap-ci
-      ARTIFACT_DIR: ${{ runner.temp }}/crm-bootstrap-artifacts
       CI_RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Configure disposable paths
+        shell: bash
+        run: |
+          echo "STACK_ROOT=$RUNNER_TEMP/crm-bootstrap-ci" >> "$GITHUB_ENV"
+          echo "ARTIFACT_DIR=$RUNNER_TEMP/crm-bootstrap-artifacts" >> "$GITHUB_ENV"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
