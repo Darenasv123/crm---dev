@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormErrorSummary } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
@@ -10,16 +10,46 @@ import { AuthShell } from "@/routes/recuperar-contrasena";
 
 export const Route = createFileRoute("/restablecer-contrasena")({ component: ResetPasswordPage });
 
+type RecoveryPhase = "validating" | "ready" | "invalid" | "submitting" | "success" | "error";
+
 function ResetPasswordPage() {
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [phase, setPhase] = useState<RecoveryPhase>("validating");
+
+  useEffect(() => {
+    let active = true;
+    let recoveryEventHandled = false;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active || event !== "PASSWORD_RECOVERY") return;
+      recoveryEventHandled = true;
+      setPhase(session ? "ready" : "invalid");
+    });
+
+    void supabase.auth
+      .getSession()
+      .then(({ data, error: sessionError }) => {
+        if (!active || recoveryEventHandled) return;
+        setPhase(!sessionError && data.session ? "ready" : "invalid");
+      })
+      .catch(() => {
+        if (active && !recoveryEventHandled) setPhase("invalid");
+      });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (phase !== "ready" && phase !== "error") return;
     setError(null);
     if (
       password.length < 12 ||
@@ -28,27 +58,76 @@ function ResetPasswordPage() {
       !/\d/.test(password)
     ) {
       setError("Usa al menos 12 caracteres e incluye mayúsculas, minúsculas y números.");
+      setPhase("error");
       return;
     }
     if (password !== confirmation) {
       setError("Las contraseñas no coinciden.");
+      setPhase("error");
       return;
     }
-    setSaving(true);
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      setSaving(false);
-      setError("El enlace venció o ya fue utilizado. Solicita uno nuevo.");
-      return;
-    }
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setSaving(false);
-    if (updateError) {
+    setPhase("submitting");
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        setError("El enlace venció o ya fue utilizado. Solicita uno nuevo.");
+        setPhase("invalid");
+        return;
+      }
+      const { data: updateData, error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError || !updateData.user) {
+        setError("No se pudo actualizar la contraseña. Solicita un enlace nuevo.");
+        setPhase("error");
+        return;
+      }
+      setPhase("success");
+      await supabase.auth.signOut({ scope: "global" });
+      await navigate({ to: "/login" });
+    } catch {
       setError("No se pudo actualizar la contraseña. Solicita un enlace nuevo.");
-      return;
+      setPhase("error");
     }
-    await supabase.auth.signOut({ scope: "global" });
-    await navigate({ to: "/login" });
+  }
+
+  if (phase === "validating") {
+    return (
+      <AuthShell
+        title="Validando enlace"
+        description="Estamos verificando tu sesión de recuperación."
+      >
+        <div className="flex items-center gap-3 rounded-lg border p-4 text-sm text-muted-foreground">
+          <LoaderCircle className="h-5 w-5 animate-spin" /> Validando enlace seguro…
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (phase === "invalid") {
+    return (
+      <AuthShell title="Enlace no válido" description="No pudimos validar esta recuperación.">
+        <div className="grid gap-4">
+          <FormErrorSummary>
+            {error ?? "El enlace venció o ya fue utilizado. Solicita uno nuevo."}
+          </FormErrorSummary>
+          <Button asChild variant="outline">
+            <Link to="/recuperar-contrasena">Solicitar un enlace nuevo</Link>
+          </Button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (phase === "success") {
+    return (
+      <AuthShell
+        title="Contraseña actualizada"
+        description="Tu contraseña se cambió correctamente."
+      >
+        <p className="rounded-lg border border-success/30 bg-success/10 p-4 text-sm">
+          Cerrando las sesiones y redirigiendo al inicio de sesión…
+        </p>
+      </AuthShell>
+    );
   }
 
   return (
@@ -77,7 +156,7 @@ function ResetPasswordPage() {
           Mínimo 12 caracteres, con mayúsculas, minúsculas y números.
         </p>
         <FormErrorSummary>{error}</FormErrorSummary>
-        <Button type="submit" loading={saving}>
+        <Button type="submit" loading={phase === "submitting"}>
           Guardar contraseña
         </Button>
       </form>

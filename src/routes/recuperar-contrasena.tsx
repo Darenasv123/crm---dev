@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Mail, Scale } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { FormErrorSummary } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
@@ -12,15 +13,26 @@ function PasswordRecoveryPage() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    setError(null);
     setSending(true);
-    await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/restablecer-contrasena`,
-    });
-    setSending(false);
-    setSent(true);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/restablecer-contrasena`,
+      });
+      if (resetError) {
+        setError("No pudimos enviar el enlace en este momento. Inténtalo nuevamente más tarde.");
+        return;
+      }
+      setSent(true);
+    } catch {
+      setError("No pudimos enviar el enlace en este momento. Inténtalo nuevamente más tarde.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -57,6 +69,7 @@ function PasswordRecoveryPage() {
           <Button type="submit" loading={sending}>
             Enviar enlace seguro
           </Button>
+          <FormErrorSummary>{error}</FormErrorSummary>
           <Button asChild variant="ghost">
             <Link to="/login">Cancelar</Link>
           </Button>
