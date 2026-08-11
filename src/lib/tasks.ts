@@ -25,6 +25,8 @@ export type TaskFormValues = {
   client_id: string;
   case_id: string;
   priority: TaskPriority;
+  scheduled_for: string;
+  due_date: string;
 };
 
 export type TaskLike = {
@@ -58,15 +60,38 @@ export function validateTaskForm(
   if (relatedCase && values.client_id && relatedCase.client_id !== values.client_id) {
     throw new Error("El expediente no corresponde al cliente seleccionado.");
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(values.scheduled_for)) {
+    throw new Error("Selecciona una fecha de trabajo válida.");
+  }
+  if (values.due_date && Number.isNaN(Date.parse(values.due_date))) {
+    throw new Error("La fecha de vencimiento no es válida.");
+  }
   return {
     title,
     description: values.description.trim() || null,
     assigned_to: null,
     case_id: values.case_id || null,
-    client_id: values.case_id ? null : values.client_id || null,
+    client_id: (relatedCase?.client_id ?? values.client_id) || null,
     status: "pending" as const,
     priority: values.priority,
+    scheduled_for: values.scheduled_for,
+    due_date: values.due_date ? new Date(values.due_date).toISOString() : null,
   };
+}
+
+export function limaToday() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+export function shiftIsoDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }
 
 const priorityOrder: Record<string, number> = {

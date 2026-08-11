@@ -48,6 +48,9 @@ export type DailyTaskFilters = {
   showCompleted?: boolean;
   withoutClient?: boolean;
   withoutCase?: boolean;
+  scheduledDate?: string;
+  scheduledBefore?: string;
+  scheduledAfter?: string;
   limit?: number;
   enabled?: boolean;
 };
@@ -96,6 +99,9 @@ export function useDailyTasks(filters: DailyTaskFilters) {
       if (filters.caseId) query = query.eq("case_id", filters.caseId);
       if (filters.withoutClient) query = query.is("client_id", null).is("case_id", null);
       if (filters.withoutCase) query = query.is("case_id", null);
+      if (filters.scheduledDate) query = query.eq("scheduled_for", filters.scheduledDate);
+      if (filters.scheduledBefore) query = query.lt("scheduled_for", filters.scheduledBefore);
+      if (filters.scheduledAfter) query = query.gt("scheduled_for", filters.scheduledAfter);
       if (filters.search?.trim()) query = query.ilike("title", `%${filters.search.trim()}%`);
       if (!filters.showCompleted && !filters.status && filters.view !== "available") {
         query = query.neq("status", "completed").neq("status", "cancelled");

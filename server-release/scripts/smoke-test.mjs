@@ -17,7 +17,7 @@
 const args = process.argv.slice(2);
 const urlArgIndex = args.indexOf("--url");
 const BASE_URL =
-  urlArgIndex !== -1 ? args[urlArgIndex + 1] : process.env.SMOKE_URL ?? "http://127.0.0.1:3000";
+  urlArgIndex !== -1 ? args[urlArgIndex + 1] : (process.env.SMOKE_URL ?? "http://127.0.0.1:3000");
 
 let passed = 0;
 let failed = 0;
@@ -95,8 +95,11 @@ await check("/login — responde 200 HTML", async () => {
 
 // CSS assets
 await check("/assets/ — CSS sirve correctamente", async () => {
-  // Find the CSS file name from the public assets
-  const stylesRes = await get("/assets/styles-ZfZVgIsh.css");
+  const homeRes = await get("/");
+  const homeHtml = await homeRes.text();
+  const stylesheetPath = homeHtml.match(/href=["'](\/assets\/styles-[^"']+\.css)["']/)?.[1];
+  assert(stylesheetPath, "No se encontró el asset CSS generado en el HTML principal");
+  const stylesRes = await get(stylesheetPath);
   const ct = stylesRes.headers.get("content-type") ?? "";
   assert(ct.includes("text/css"), `Content-Type CSS incorrecto: ${ct}`);
 });
@@ -114,10 +117,7 @@ await check("/ruta-inexistente — manejo correcto (no crash)", async () => {
     redirect: "manual",
   });
   // Should return 200 (SPA fallback) or 404, but NOT 500
-  assert(
-    res.status !== 500,
-    `Ruta inexistente retornó 500 — posible error de configuración`,
-  );
+  assert(res.status !== 500, `Ruta inexistente retornó 500 — posible error de configuración`);
 });
 
 // Summary

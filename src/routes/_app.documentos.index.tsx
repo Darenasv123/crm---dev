@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/use-documents";
+import {
+  useDocuments,
+  useUploadDocument,
+  useDeleteDocument,
+  useUpdateDocument,
+} from "@/hooks/use-documents";
 import type { DocumentWithClient } from "@/hooks/use-documents";
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
@@ -8,6 +13,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Button } from "@/components/ui/button";
 import {
   FileText,
   Folder,
@@ -19,15 +25,17 @@ import {
   Loader2,
   Trash2,
   ExternalLink,
+  Pencil,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { DOCUMENT_TYPES, normalizeDocumentType } from "@/lib/document-types";
 
 export const Route = createFileRoute("/_app/documentos/")({
   head: () => ({ meta: [{ title: "Documentos — CRM Jurídico" }] }),
   component: DocsPage,
 });
 
-const DOC_TYPES = ["Demanda", "Resolución", "Sentencia", "Poder", "Contrato", "Otros"];
+const DOC_TYPES = DOCUMENT_TYPES;
 
 /** Mapea tipo de documento a token CSS semántico */
 const typeTokenColor: Record<string, string> = {
@@ -70,7 +78,7 @@ function FileExtIcon({ name, className }: { name: string; className?: string }) 
 }
 
 function displayDocumentType(type: string) {
-  return DOC_TYPES.includes(type) ? type : "Otros";
+  return normalizeDocumentType(type);
 }
 
 function DocsPage() {
@@ -79,15 +87,26 @@ function DocsPage() {
   const [processingFilter, setProcessingFilter] = useState("");
   const [showUpload, setShowUpload] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingDocument, setEditingDocument] = useState<DocumentWithClient | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    type: "Otros",
+    clientId: "",
+    caseId: "",
+    verificationStatus: "pending",
+    documentDate: "",
+  });
+  const [editError, setEditError] = useState<string | null>(null);
 
   const { profile } = useAuth();
   const isAdmin = profile?.role === "Administrador";
 
-  const { data: docs = [], isLoading } = useDocuments(activeType);
+  const { data: docs = [], isLoading } = useDocuments();
   const { data: clients = [] } = useClients();
   const { data: cases = [] } = useCases();
   const uploadDoc = useUploadDocument();
   const deleteDoc = useDeleteDocument();
+  const updateDoc = useUpdateDocument();
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadForm, setUploadForm] = useState({ type: "Otros", clientId: "", caseId: "" });
@@ -102,7 +121,9 @@ function DocsPage() {
       (d.clients?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (d.cases?.expediente ?? "").toLowerCase().includes(search.toLowerCase());
     const matchesProcessing = !processingFilter || d.processing_status === processingFilter;
-    return matchesSearch && matchesProcessing;
+    const matchesType =
+      activeType === "all" || normalizeDocumentType(d.document_type || d.type) === activeType;
+    return matchesSearch && matchesProcessing && matchesType;
   });
 
   const selected = filtered.find((d) => d.id === selectedId) ?? filtered[0] ?? null;
@@ -112,7 +133,7 @@ function DocsPage() {
 
   // Count docs per type
   const countByType = DOC_TYPES.reduce<Record<string, number>>((acc, t) => {
-    acc[t] = docs.filter((d) => d.type === t).length;
+    acc[t] = docs.filter((d) => normalizeDocumentType(d.document_type || d.type) === t).length;
     return acc;
   }, {});
 
@@ -153,6 +174,54 @@ function DocsPage() {
       .from("documents")
       .createSignedUrl(doc.storage_path, 300);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  }
+
+  function openEdit(doc: DocumentWithClient) {
+    setEditingDocument(doc);
+    setEditError(null);
+    setEditForm({
+      name: doc.display_name || doc.name,
+      type: normalizeDocumentType(doc.document_type || doc.type),
+      clientId: doc.client_id || "",
+      caseId: doc.case_id || "",
+      verificationStatus: doc.verification_status || "pending",
+      documentDate: doc.document_date || "",
+    });
+  }
+
+  async function saveEdit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingDocument) return;
+    const relatedCase = editForm.caseId
+      ? cases.find((item) => item.id === editForm.caseId)
+      : undefined;
+    if (relatedCase && editForm.clientId && relatedCase.client_id !== editForm.clientId) {
+      setEditError("El expediente no corresponde al cliente seleccionado.");
+      return;
+    }
+    if (!editForm.name.trim()) {
+      setEditError("El nombre del documento es obligatorio.");
+      return;
+    }
+    try {
+      await updateDoc.mutateAsync({
+        id: editingDocument.id,
+        updates: {
+          name: editForm.name.trim(),
+          display_name: editForm.name.trim(),
+          type: editForm.type,
+          document_type: editForm.type,
+          client_id: relatedCase?.client_id || editForm.clientId || null,
+          case_id: editForm.caseId || null,
+          verification_status: editForm.verificationStatus,
+          document_date: editForm.documentDate || null,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      setEditingDocument(null);
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : "No se pudo editar el documento.");
+    }
   }
 
   return (
@@ -241,9 +310,9 @@ function DocsPage() {
               {search ? "No se encontraron archivos." : "Aún no hay documentos. Sube el primero."}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="max-h-[calc(100vh-19rem)] overflow-auto overscroll-contain">
               <table className="min-w-[1180px] w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-20 bg-card shadow-sm">
                   <tr className="text-left text-xs uppercase text-muted-foreground bg-muted/30">
                     <th className="py-2 pl-4">Nombre</th>
                     <th className="py-2 px-3">Tipo</th>
@@ -253,7 +322,7 @@ function DocsPage() {
                     <th className="py-2 px-3">Análisis</th>
                     <th className="py-2 px-3">Verificación</th>
                     <th className="py-2 px-3">Tamaño</th>
-                    <th className="py-2 pr-4 text-right">Acciones</th>
+                    <th className="sticky right-0 bg-card py-2 pr-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -316,8 +385,20 @@ function DocsPage() {
                         {documentVerificationLabel(d.verification_status)}
                       </td>
                       <td className="py-2.5 px-3 text-xs text-muted-foreground">{d.size}</td>
-                      <td className="py-2.5 pr-4 text-right">
+                      <td className="sticky right-0 bg-card py-2.5 pr-4 text-right">
                         <div className="inline-flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEdit(d);
+                            }}
+                            className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
+                            title="Editar metadatos"
+                            aria-label={`Editar ${d.name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -550,6 +631,159 @@ function DocsPage() {
                     </>
                   )}
                 </button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {editingDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-lg p-6 shadow-xl">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h3 className="font-semibold">Editar documento</h3>
+                <p className="text-xs text-muted-foreground">
+                  Solo se modifican metadatos; el archivo físico se conserva.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingDocument(null)}
+                className="grid h-8 w-8 place-items-center rounded hover:bg-muted"
+                aria-label="Cerrar edición"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={saveEdit} className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label htmlFor="edit-document-name" className="text-xs font-semibold">
+                  Nombre
+                </label>
+                <Input
+                  id="edit-document-name"
+                  className="mt-1.5"
+                  value={editForm.name}
+                  onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-document-type" className="text-xs font-semibold">
+                  Tipo
+                </label>
+                <NativeSelect
+                  id="edit-document-type"
+                  className="mt-1.5"
+                  value={editForm.type}
+                  onChange={(event) => setEditForm({ ...editForm, type: event.target.value })}
+                >
+                  {DOC_TYPES.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div>
+                <label htmlFor="edit-document-verification" className="text-xs font-semibold">
+                  Verificación
+                </label>
+                <NativeSelect
+                  id="edit-document-verification"
+                  className="mt-1.5"
+                  value={editForm.verificationStatus}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, verificationStatus: event.target.value })
+                  }
+                >
+                  <option value="pending">Pendiente</option>
+                  <option value="approved">Aprobado</option>
+                  <option value="edited">Editado</option>
+                  <option value="rejected">Rechazado</option>
+                  <option value="conflict">Conflicto</option>
+                </NativeSelect>
+              </div>
+              <div>
+                <label htmlFor="edit-document-client" className="text-xs font-semibold">
+                  Cliente
+                </label>
+                <NativeSelect
+                  id="edit-document-client"
+                  className="mt-1.5"
+                  value={editForm.clientId}
+                  onChange={(event) =>
+                    setEditForm({
+                      ...editForm,
+                      clientId: event.target.value,
+                      caseId: cases.some(
+                        (item) =>
+                          item.id === editForm.caseId && item.client_id === event.target.value,
+                      )
+                        ? editForm.caseId
+                        : "",
+                    })
+                  }
+                >
+                  <option value="">Sin cliente</option>
+                  {clients.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div>
+                <label htmlFor="edit-document-case" className="text-xs font-semibold">
+                  Expediente
+                </label>
+                <NativeSelect
+                  id="edit-document-case"
+                  className="mt-1.5"
+                  value={editForm.caseId}
+                  onChange={(event) => {
+                    const selectedCase = cases.find((item) => item.id === event.target.value);
+                    setEditForm({
+                      ...editForm,
+                      caseId: event.target.value,
+                      clientId: selectedCase?.client_id || editForm.clientId,
+                    });
+                  }}
+                >
+                  <option value="">Sin expediente</option>
+                  {cases
+                    .filter((item) => !editForm.clientId || item.client_id === editForm.clientId)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.case_number || item.expediente}
+                      </option>
+                    ))}
+                </NativeSelect>
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="edit-document-date" className="text-xs font-semibold">
+                  Fecha documental
+                </label>
+                <Input
+                  id="edit-document-date"
+                  className="mt-1.5"
+                  type="date"
+                  value={editForm.documentDate}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, documentDate: event.target.value })
+                  }
+                />
+              </div>
+              {editError && (
+                <p className="sm:col-span-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                  {editError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 sm:col-span-2">
+                <Button type="button" variant="outline" onClick={() => setEditingDocument(null)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" loading={updateDoc.isPending}>
+                  Guardar cambios
+                </Button>
               </div>
             </form>
           </Card>

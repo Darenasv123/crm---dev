@@ -9,7 +9,9 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RestablecerContrasenaRouteImport } from './routes/restablecer-contrasena'
 import { Route as ResonanciaRouteImport } from './routes/resonancia'
+import { Route as RecuperarContrasenaRouteImport } from './routes/recuperar-contrasena'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
@@ -36,10 +38,24 @@ import { Route as AppTareasProximasRouteImport } from './routes/_app.tareas.prox
 import { Route as AppTareasMiasRouteImport } from './routes/_app.tareas.mias'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
+import { Route as AppClientesIdTareasRouteImport } from './routes/_app.clientes.$id_.tareas'
+import { Route as AppClientesIdReportesRouteImport } from './routes/_app.clientes.$id_.reportes'
+import { Route as AppClientesIdExpedientesRouteImport } from './routes/_app.clientes.$id_.expedientes'
+import { Route as AppClientesIdDocumentosRouteImport } from './routes/_app.clientes.$id_.documentos'
 
+const RestablecerContrasenaRoute = RestablecerContrasenaRouteImport.update({
+  id: '/restablecer-contrasena',
+  path: '/restablecer-contrasena',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResonanciaRoute = ResonanciaRouteImport.update({
   id: '/resonancia',
   path: '/resonancia',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecuperarContrasenaRoute = RecuperarContrasenaRouteImport.update({
+  id: '/recuperar-contrasena',
+  path: '/recuperar-contrasena',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -176,11 +192,34 @@ const AppCasosIdRoute = AppCasosIdRouteImport.update({
   path: '/casos/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClientesIdTareasRoute = AppClientesIdTareasRouteImport.update({
+  id: '/clientes/$id_/tareas',
+  path: '/clientes/$id/tareas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientesIdReportesRoute = AppClientesIdReportesRouteImport.update({
+  id: '/clientes/$id_/reportes',
+  path: '/clientes/$id/reportes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientesIdExpedientesRoute =
+  AppClientesIdExpedientesRouteImport.update({
+    id: '/clientes/$id_/expedientes',
+    path: '/clientes/$id/expedientes',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppClientesIdDocumentosRoute = AppClientesIdDocumentosRouteImport.update({
+  id: '/clientes/$id_/documentos',
+  path: '/clientes/$id/documentos',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/recuperar-contrasena': typeof RecuperarContrasenaRoute
   '/resonancia': typeof ResonanciaRoute
+  '/restablecer-contrasena': typeof RestablecerContrasenaRoute
   '/api/health': typeof ApiHealthRoute
   '/casos/$id': typeof AppCasosIdRoute
   '/clientes/$id': typeof AppClientesIdRoute
@@ -204,10 +243,16 @@ export interface FileRoutesByFullPath {
   '/reportes/': typeof AppReportesIndexRoute
   '/revision-ia/': typeof AppRevisionIaIndexRoute
   '/tareas/': typeof AppTareasIndexRoute
+  '/clientes/$id/documentos': typeof AppClientesIdDocumentosRoute
+  '/clientes/$id/expedientes': typeof AppClientesIdExpedientesRoute
+  '/clientes/$id/reportes': typeof AppClientesIdReportesRoute
+  '/clientes/$id/tareas': typeof AppClientesIdTareasRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/recuperar-contrasena': typeof RecuperarContrasenaRoute
   '/resonancia': typeof ResonanciaRoute
+  '/restablecer-contrasena': typeof RestablecerContrasenaRoute
   '/api/health': typeof ApiHealthRoute
   '/': typeof AppIndexRoute
   '/casos/$id': typeof AppCasosIdRoute
@@ -232,12 +277,18 @@ export interface FileRoutesByTo {
   '/reportes': typeof AppReportesIndexRoute
   '/revision-ia': typeof AppRevisionIaIndexRoute
   '/tareas': typeof AppTareasIndexRoute
+  '/clientes/$id/documentos': typeof AppClientesIdDocumentosRoute
+  '/clientes/$id/expedientes': typeof AppClientesIdExpedientesRoute
+  '/clientes/$id/reportes': typeof AppClientesIdReportesRoute
+  '/clientes/$id/tareas': typeof AppClientesIdTareasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/recuperar-contrasena': typeof RecuperarContrasenaRoute
   '/resonancia': typeof ResonanciaRoute
+  '/restablecer-contrasena': typeof RestablecerContrasenaRoute
   '/api/health': typeof ApiHealthRoute
   '/_app/': typeof AppIndexRoute
   '/_app/casos/$id': typeof AppCasosIdRoute
@@ -262,13 +313,19 @@ export interface FileRoutesById {
   '/_app/reportes/': typeof AppReportesIndexRoute
   '/_app/revision-ia/': typeof AppRevisionIaIndexRoute
   '/_app/tareas/': typeof AppTareasIndexRoute
+  '/_app/clientes/$id_/documentos': typeof AppClientesIdDocumentosRoute
+  '/_app/clientes/$id_/expedientes': typeof AppClientesIdExpedientesRoute
+  '/_app/clientes/$id_/reportes': typeof AppClientesIdReportesRoute
+  '/_app/clientes/$id_/tareas': typeof AppClientesIdTareasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/recuperar-contrasena'
     | '/resonancia'
+    | '/restablecer-contrasena'
     | '/api/health'
     | '/casos/$id'
     | '/clientes/$id'
@@ -292,10 +349,16 @@ export interface FileRouteTypes {
     | '/reportes/'
     | '/revision-ia/'
     | '/tareas/'
+    | '/clientes/$id/documentos'
+    | '/clientes/$id/expedientes'
+    | '/clientes/$id/reportes'
+    | '/clientes/$id/tareas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/recuperar-contrasena'
     | '/resonancia'
+    | '/restablecer-contrasena'
     | '/api/health'
     | '/'
     | '/casos/$id'
@@ -320,11 +383,17 @@ export interface FileRouteTypes {
     | '/reportes'
     | '/revision-ia'
     | '/tareas'
+    | '/clientes/$id/documentos'
+    | '/clientes/$id/expedientes'
+    | '/clientes/$id/reportes'
+    | '/clientes/$id/tareas'
   id:
     | '__root__'
     | '/_app'
     | '/login'
+    | '/recuperar-contrasena'
     | '/resonancia'
+    | '/restablecer-contrasena'
     | '/api/health'
     | '/_app/'
     | '/_app/casos/$id'
@@ -349,12 +418,18 @@ export interface FileRouteTypes {
     | '/_app/reportes/'
     | '/_app/revision-ia/'
     | '/_app/tareas/'
+    | '/_app/clientes/$id_/documentos'
+    | '/_app/clientes/$id_/expedientes'
+    | '/_app/clientes/$id_/reportes'
+    | '/_app/clientes/$id_/tareas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  RecuperarContrasenaRoute: typeof RecuperarContrasenaRoute
   ResonanciaRoute: typeof ResonanciaRoute
+  RestablecerContrasenaRoute: typeof RestablecerContrasenaRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiGoogleCalendarActionsRoute: typeof ApiGoogleCalendarActionsRoute
   ApiGoogleCalendarCallbackRoute: typeof ApiGoogleCalendarCallbackRoute
@@ -366,11 +441,25 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/restablecer-contrasena': {
+      id: '/restablecer-contrasena'
+      path: '/restablecer-contrasena'
+      fullPath: '/restablecer-contrasena'
+      preLoaderRoute: typeof RestablecerContrasenaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/resonancia': {
       id: '/resonancia'
       path: '/resonancia'
       fullPath: '/resonancia'
       preLoaderRoute: typeof ResonanciaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recuperar-contrasena': {
+      id: '/recuperar-contrasena'
+      path: '/recuperar-contrasena'
+      fullPath: '/recuperar-contrasena'
+      preLoaderRoute: typeof RecuperarContrasenaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -555,6 +644,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCasosIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clientes/$id_/tareas': {
+      id: '/_app/clientes/$id_/tareas'
+      path: '/clientes/$id/tareas'
+      fullPath: '/clientes/$id/tareas'
+      preLoaderRoute: typeof AppClientesIdTareasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clientes/$id_/reportes': {
+      id: '/_app/clientes/$id_/reportes'
+      path: '/clientes/$id/reportes'
+      fullPath: '/clientes/$id/reportes'
+      preLoaderRoute: typeof AppClientesIdReportesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clientes/$id_/expedientes': {
+      id: '/_app/clientes/$id_/expedientes'
+      path: '/clientes/$id/expedientes'
+      fullPath: '/clientes/$id/expedientes'
+      preLoaderRoute: typeof AppClientesIdExpedientesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clientes/$id_/documentos': {
+      id: '/_app/clientes/$id_/documentos'
+      path: '/clientes/$id/documentos'
+      fullPath: '/clientes/$id/documentos'
+      preLoaderRoute: typeof AppClientesIdDocumentosRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -576,6 +693,10 @@ interface AppRouteChildren {
   AppReportesIndexRoute: typeof AppReportesIndexRoute
   AppRevisionIaIndexRoute: typeof AppRevisionIaIndexRoute
   AppTareasIndexRoute: typeof AppTareasIndexRoute
+  AppClientesIdDocumentosRoute: typeof AppClientesIdDocumentosRoute
+  AppClientesIdExpedientesRoute: typeof AppClientesIdExpedientesRoute
+  AppClientesIdReportesRoute: typeof AppClientesIdReportesRoute
+  AppClientesIdTareasRoute: typeof AppClientesIdTareasRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -596,6 +717,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportesIndexRoute: AppReportesIndexRoute,
   AppRevisionIaIndexRoute: AppRevisionIaIndexRoute,
   AppTareasIndexRoute: AppTareasIndexRoute,
+  AppClientesIdDocumentosRoute: AppClientesIdDocumentosRoute,
+  AppClientesIdExpedientesRoute: AppClientesIdExpedientesRoute,
+  AppClientesIdReportesRoute: AppClientesIdReportesRoute,
+  AppClientesIdTareasRoute: AppClientesIdTareasRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -603,7 +728,9 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  RecuperarContrasenaRoute: RecuperarContrasenaRoute,
   ResonanciaRoute: ResonanciaRoute,
+  RestablecerContrasenaRoute: RestablecerContrasenaRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiGoogleCalendarActionsRoute: ApiGoogleCalendarActionsRoute,
   ApiGoogleCalendarCallbackRoute: ApiGoogleCalendarCallbackRoute,

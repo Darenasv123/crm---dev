@@ -1,6 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   AlertCircle,
+  AlertTriangle,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   ExternalLink,
   Filter,
@@ -54,8 +58,10 @@ import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   compareTasks,
+  limaToday,
   normalizeTaskPriority,
   normalizeTaskStatus,
+  shiftIsoDate,
   type TaskFormValues,
   type TaskStatus,
 } from "@/lib/tasks";
@@ -71,6 +77,8 @@ const EMPTY_FORM: TaskFormValues = {
   client_id: "",
   case_id: "",
   priority: "Normal",
+  scheduled_for: limaToday(),
+  due_date: "",
 };
 
 export function TasksPage({ mode }: { mode: PageMode }) {
@@ -90,6 +98,8 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const [withoutClient, setWithoutClient] = useState(false);
   const [withoutCase, setWithoutCase] = useState(false);
   const [showCompleted, setShowCompleted] = useState(mode === "all");
+  const [selectedDate, setSelectedDate] = useState(limaToday());
+  const [dateScope, setDateScope] = useState<"day" | "upcoming" | "overdue">("day");
   const [showForm, setShowForm] = useState(false);
 
   // Filter panel state
@@ -123,6 +133,9 @@ export function TasksPage({ mode }: { mode: PageMode }) {
     withoutCase,
     search: search || undefined,
     showCompleted,
+    scheduledDate: dateScope === "day" ? selectedDate : undefined,
+    scheduledBefore: dateScope === "overdue" ? limaToday() : undefined,
+    scheduledAfter: dateScope === "upcoming" ? limaToday() : undefined,
     enabled: !!profile && (view !== "mine" || !!user?.id),
   });
   const { data: clients = [] } = useTaskClients();
@@ -133,6 +146,16 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const returnTask = useReturnDailyTask();
   const updateTask = useUpdateDailyTask();
   const deleteTask = useDeleteDailyTask();
+  const { data: accumulatedTasks = [] } = useDailyTasks({
+    view,
+    userId: user?.id,
+    clientId: clientId || undefined,
+    caseId: caseId || undefined,
+    assignedTo: isAdmin ? assignedTo || undefined : undefined,
+    scheduledBefore: limaToday(),
+    showCompleted: false,
+    enabled: !!profile && dateScope === "day" && selectedDate >= limaToday(),
+  });
 
   const visibleTasks = useMemo(() => {
     // Administrador y Personal ven el mismo universo de tareas.
@@ -141,15 +164,14 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   }, [tasks]);
 
   const metrics = {
-    available: visibleTasks.filter((t) => getTaskVisualState(t, user?.id).canClaim).length,
-    mine: visibleTasks.filter((task) => task.assigned_to === user?.id).length,
+    total: visibleTasks.length,
+    pending: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "pending").length,
     running: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "in_progress")
-      .length,
-    ready: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "ready_to_file")
       .length,
     blocked: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "blocked").length,
     completed: visibleTasks.filter((task) => normalizeTaskStatus(task.status) === "completed")
       .length,
+    overdue: accumulatedTasks.length,
   };
 
   // Count active filters (excluding defaults)
@@ -300,13 +322,93 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         })}
       </nav>
 
+      <Card className="mb-5 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Día anterior"
+            onClick={() => {
+              setSelectedDate((date) => shiftIsoDate(date, -1));
+              setDateScope("day");
+            }}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(event) => {
+              setSelectedDate(event.target.value);
+              setDateScope("day");
+            }}
+            className="w-auto"
+            aria-label="Fecha de trabajo"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Día siguiente"
+            onClick={() => {
+              setSelectedDate((date) => shiftIsoDate(date, 1));
+              setDateScope("day");
+            }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant={dateScope === "day" && selectedDate === limaToday() ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setSelectedDate(limaToday());
+              setDateScope("day");
+            }}
+          >
+            Hoy
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSelectedDate(shiftIsoDate(limaToday(), -1));
+              setDateScope("day");
+            }}
+          >
+            Ayer
+          </Button>
+          <Button
+            type="button"
+            variant={dateScope === "upcoming" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDateScope("upcoming")}
+          >
+            Próximas
+          </Button>
+          <Button
+            type="button"
+            variant={dateScope === "overdue" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDateScope("overdue")}
+          >
+            <AlertTriangle className="h-4 w-4" /> Atrasadas
+          </Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          La fecha de trabajo se conserva aunque la tarea se complete después.
+        </p>
+      </Card>
+
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Disponibles" value={metrics.available} />
-        <Metric label="Mis tareas activas" value={metrics.mine} />
-        <Metric label="En proceso" value={metrics.running} />
-        <Metric label="Listas para ingresar" value={metrics.ready} />
+        <Metric label="Total" value={metrics.total} />
+        <Metric label="Pendientes" value={metrics.pending} />
+        <Metric label="En desarrollo" value={metrics.running} />
+        <Metric label="Completadas" value={metrics.completed} />
         <Metric label="Bloqueadas" value={metrics.blocked} />
-        <Metric label="Terminadas" value={metrics.completed} />
+        <Metric label="Atrasadas" value={metrics.overdue} />
       </div>
 
       <div className="mb-5 flex items-center justify-between">
@@ -504,6 +606,62 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         </div>
       )}
 
+      {dateScope === "day" && accumulatedTasks.length > 0 && (
+        <section className="mb-5" aria-labelledby="accumulated-tasks-title">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <h2 id="accumulated-tasks-title" className="font-semibold">
+              Pendientes acumuladas
+            </h2>
+            <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning-foreground">
+              {accumulatedTasks.length}
+            </span>
+          </div>
+          <TaskList
+            tasks={[...accumulatedTasks].sort(compareTasks)}
+            isAdmin={isAdmin}
+            userId={user?.id}
+            profiles={profiles}
+            busyId={busyId}
+            claimedId={claimedId}
+            onClaim={handleClaim}
+            onReturn={(task) => runAction(task, () => returnTask.mutateAsync(task.id))}
+            onStatus={(task, nextStatus) =>
+              runAction(task, () =>
+                updateTask.mutateAsync({
+                  id: task.id,
+                  updates: { status: nextStatus },
+                  current: task,
+                }),
+              )
+            }
+            onAssign={(task, assignee) =>
+              runAction(task, () =>
+                updateTask.mutateAsync({
+                  id: task.id,
+                  current: task,
+                  updates: assignee
+                    ? {
+                        assigned_to: assignee,
+                        claimed_by: assignee,
+                        claimed_at: task.claimed_at ?? new Date().toISOString(),
+                        status: "in_progress",
+                      }
+                    : { assigned_to: null, claimed_by: null, claimed_at: null, status: "pending" },
+                }),
+              )
+            }
+            onDelete={(task) =>
+              runAction(task, async () => {
+                if (window.confirm(`¿Eliminar la tarea "${task.title}"?`))
+                  await deleteTask.mutateAsync(task);
+              })
+            }
+            onOpen={openTaskDetail}
+          />
+        </section>
+      )}
+
       {mode === "board" ? (
         <TaskBoard tasks={visibleTasks} userId={user?.id} />
       ) : (
@@ -647,6 +805,23 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                   ))}
                 </NativeSelect>
               </FormField>
+              <FormField id="task-scheduled-for" label="Fecha de trabajo" required>
+                <Input
+                  id="task-scheduled-for"
+                  type="date"
+                  required
+                  value={form.scheduled_for}
+                  onChange={(event) => setForm({ ...form, scheduled_for: event.target.value })}
+                />
+              </FormField>
+              <FormField id="task-due-date" label="Vencimiento" optional>
+                <Input
+                  id="task-due-date"
+                  type="datetime-local"
+                  value={form.due_date}
+                  onChange={(event) => setForm({ ...form, due_date: event.target.value })}
+                />
+              </FormField>
               <FormField
                 id="task-description"
                 label="Observaciones"
@@ -718,6 +893,15 @@ export function TasksPage({ mode }: { mode: PageMode }) {
                   label="Responsable"
                   value={selectedTask.assignee?.full_name || "Disponible"}
                   className="sm:col-span-2"
+                />
+                <DetailValue label="Fecha de trabajo" value={selectedTask.scheduled_for} />
+                <DetailValue
+                  label="Completada"
+                  value={
+                    selectedTask.completed_at
+                      ? `${new Date(selectedTask.completed_at).toLocaleString("es-PE")} · ${selectedTask.completer?.full_name || "Usuario registrado"}`
+                      : "Aún no completada"
+                  }
                 />
               </div>
 
@@ -817,6 +1001,10 @@ function TaskList({
                   {task.description}
                 </p>
               )}
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                <CalendarDays className="h-3 w-3" /> {task.scheduled_for}
+                {task.due_date && <> · vence {new Date(task.due_date).toLocaleString("es-PE")}</>}
+              </p>
             </div>
 
             {/* Cliente */}

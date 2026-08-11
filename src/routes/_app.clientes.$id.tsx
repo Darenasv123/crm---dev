@@ -188,24 +188,29 @@ function ClientDetail() {
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Activity icon={Briefcase} label="Expedientes" value={clientCases.length} href="/casos" />
+          <Activity
+            icon={Briefcase}
+            label="Expedientes"
+            value={clientCases.length}
+            href={`/clientes/${id}/expedientes`}
+          />
           <Activity
             icon={CheckSquare}
             label="Tareas activas"
             value={activeTasks.length}
-            href="/tareas"
+            href={`/clientes/${id}/tareas`}
           />
           <Activity
             icon={FileText}
             label="Documentos"
             value={clientDocuments.length}
-            href="/documentos"
+            href={`/clientes/${id}/documentos`}
           />
           <Activity
             icon={FileText}
             label="Reportes"
             value={clientReports.length}
-            href="/reportes"
+            href={`/clientes/${id}/reportes`}
           />
         </div>
       </div>

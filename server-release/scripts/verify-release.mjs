@@ -44,8 +44,14 @@ function checkExists(relPath, label) {
 
 // Patterns that indicate secrets — used to scan file contents
 const SECRET_PATTERNS = [
-  { name: "service_role JWT", regex: /eyJ[A-Za-z0-9+/=]{20,}\.[A-Za-z0-9+/=]{20,}\.[A-Za-z0-9\-_]{20,}/ },
-  { name: "SUPABASE_SERVICE_ROLE_KEY=<valor>", regex: /SUPABASE_SERVICE_ROLE_KEY\s*=\s*ey[A-Za-z0-9]/ },
+  {
+    name: "service_role JWT",
+    regex: /eyJ[A-Za-z0-9+/=]{20,}\.[A-Za-z0-9+/=]{20,}\.[A-Za-z0-9\-_]{20,}/,
+  },
+  {
+    name: "SUPABASE_SERVICE_ROLE_KEY=<valor>",
+    regex: /SUPABASE_SERVICE_ROLE_KEY\s*=\s*ey[A-Za-z0-9]/,
+  },
   { name: "GOOGLE_CLIENT_SECRET=<valor>", regex: /GOOGLE_CLIENT_SECRET\s*=\s*[A-Za-z0-9\-_]{20,}/ },
   { name: "GROQ_API_KEY=<valor>", regex: /GROQ_API_KEY\s*=\s*gsk_[A-Za-z0-9]{10,}/ },
   { name: "private key PEM", regex: /-----BEGIN (RSA |EC )?PRIVATE KEY-----/ },
@@ -182,8 +188,6 @@ if (errors === 0 && warnings === 0) {
   console.warn(`⚠ Release con ${warnings} advertencia(s). Revisar antes de distribuir.\n`);
   process.exit(0);
 } else {
-  console.error(
-    `✗ Release con ${errors} error(es) y ${warnings} advertencia(s). No distribuir.\n`,
-  );
+  console.error(`✗ Release con ${errors} error(es) y ${warnings} advertencia(s). No distribuir.\n`);
   process.exit(1);
 }

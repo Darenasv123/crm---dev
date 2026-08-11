@@ -684,7 +684,9 @@ export type Database = {
           id: string;
           is_all_day: boolean;
           priority: string;
+          scheduled_for: string;
           source: string;
+          started_at: string | null;
           status: string;
           title: string;
           updated_at: string;
@@ -706,7 +708,9 @@ export type Database = {
           id?: string;
           is_all_day?: boolean;
           priority?: string;
+          scheduled_for?: string;
           source?: string;
+          started_at?: string | null;
           status?: string;
           title: string;
           updated_at?: string;
@@ -728,7 +732,9 @@ export type Database = {
           id?: string;
           is_all_day?: boolean;
           priority?: string;
+          scheduled_for?: string;
           source?: string;
+          started_at?: string | null;
           status?: string;
           title?: string;
           updated_at?: string;

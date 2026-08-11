@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Scale, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -92,7 +92,15 @@ function LoginPage() {
             </div>
 
             <div>
-              <Label htmlFor="login-password">Contraseña</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="login-password">Contraseña</Label>
+                <Link
+                  to={"/recuperar-contrasena" as never}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
               <div className="relative mt-2">
                 <Input
                   id="login-password"

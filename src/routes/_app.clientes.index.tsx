@@ -3,6 +3,7 @@ import {
   Edit3,
   Eye,
   FileSpreadsheet,
+  Filter,
   Mail,
   MoreHorizontal,
   Phone,
@@ -14,6 +15,8 @@ import {
 import { useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { CSVImport } from "@/components/csv-import";
+import { ImportMethodSelector } from "@/components/zip-import/import-method-selector";
+import { ZipImporter } from "@/components/zip-import/zip-importer";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,9 +35,18 @@ import { EmptyState, LoadingState } from "@/components/ui/data-state";
 import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useCases } from "@/hooks/use-cases";
 import { useClients, useCreateClient, useUpdateClient } from "@/hooks/use-clients";
+import { useDailyTasks } from "@/hooks/use-daily-tasks";
 import {
   buildClientInitials,
   CLIENT_STATUS_OPTIONS,
@@ -45,6 +57,15 @@ import {
 import { usePermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_app/clientes/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" ? search.q : "",
+    estado: typeof search.estado === "string" ? search.estado : "",
+    desde: typeof search.desde === "string" ? search.desde : "",
+    hasta: typeof search.hasta === "string" ? search.hasta : "",
+    expedientes: typeof search.expedientes === "string" ? search.expedientes : "",
+    tareas: typeof search.tareas === "string" ? search.tareas : "",
+    ordenar: typeof search.ordenar === "string" ? search.ordenar : "nombre",
+  }),
   component: ClientsPage,
 });
 
@@ -58,13 +79,27 @@ const EMPTY_FORM: ClientFormValues = {
 function ClientsPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const routeSearch = Route.useSearch();
   const { data: clients = [], isLoading } = useClients();
   const { data: cases = [] } = useCases();
+  const { data: activeTasks = [] } = useDailyTasks({ view: "all", showCompleted: false });
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(routeSearch.q);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    status: routeSearch.estado,
+    from: routeSearch.desde,
+    to: routeSearch.hasta,
+    cases: routeSearch.expedientes,
+    tasks: routeSearch.tareas,
+    sort: routeSearch.ordenar,
+  });
+  const [draftFilters, setDraftFilters] = useState(filters);
   const [showForm, setShowForm] = useState(false);
+  const [showMethodSelector, setShowMethodSelector] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showZipImport, setShowZipImport] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormValues>(EMPTY_FORM);
@@ -74,6 +109,7 @@ function ClientsPage() {
   const permissions = usePermissions(profile);
   const canCreate = permissions.canCreateClients;
   const canEdit = permissions.canEditClients;
+  const canImportZip = profile?.role === "Administrador" && profile.status === "Activo";
   const editingClient = editingClientId ? clients.find((c) => c.id === editingClientId) : null;
 
   const caseCounts = useMemo(
@@ -84,16 +120,64 @@ function ClientsPage() {
       }, {}),
     [cases],
   );
+  const activeTaskCounts = useMemo(
+    () =>
+      activeTasks.reduce<Record<string, number>>((counts, task) => {
+        if (task.client_id) counts[task.client_id] = (counts[task.client_id] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [activeTasks],
+  );
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter(
+    const rows = clients.filter(
       (client) =>
-        client.name.toLowerCase().includes(term) ||
-        (client.phone ?? "").includes(term) ||
-        (client.email ?? "").toLowerCase().includes(term),
+        (!term ||
+          client.name.toLowerCase().includes(term) ||
+          (client.phone ?? "").includes(term) ||
+          (client.email ?? "").toLowerCase().includes(term)) &&
+        (!filters.status || client.status === filters.status) &&
+        (!filters.from || client.registered_at >= filters.from) &&
+        (!filters.to || client.registered_at <= filters.to) &&
+        (!filters.cases ||
+          (filters.cases === "with"
+            ? (caseCounts[client.id] ?? 0) > 0
+            : (caseCounts[client.id] ?? 0) === 0)) &&
+        (!filters.tasks ||
+          (filters.tasks === "with"
+            ? (activeTaskCounts[client.id] ?? 0) > 0
+            : (activeTaskCounts[client.id] ?? 0) === 0)),
     );
-  }, [clients, search]);
+    return rows.sort((a, b) => {
+      if (filters.sort === "recent") return b.registered_at.localeCompare(a.registered_at);
+      if (filters.sort === "oldest") return a.registered_at.localeCompare(b.registered_at);
+      return a.name.localeCompare(b.name, "es");
+    });
+  }, [activeTaskCounts, caseCounts, clients, filters, search]);
+  const activeFilterCount = [
+    filters.status,
+    filters.from,
+    filters.to,
+    filters.cases,
+    filters.tasks,
+    filters.sort !== "nombre",
+  ].filter(Boolean).length;
+
+  function persistSearch(nextFilters = filters, nextSearch = search) {
+    void navigate({
+      to: "/clientes" as never,
+      search: {
+        q: nextSearch || undefined,
+        estado: nextFilters.status || undefined,
+        desde: nextFilters.from || undefined,
+        hasta: nextFilters.to || undefined,
+        expedientes: nextFilters.cases || undefined,
+        tareas: nextFilters.tasks || undefined,
+        ordenar: nextFilters.sort === "nombre" ? undefined : nextFilters.sort,
+      } as never,
+      replace: true,
+    });
+  }
   const duplicateMatches = showForm ? findClientDuplicates(form, clients) : [];
   const editDuplicates =
     showEditDialog && editingClient
@@ -187,7 +271,7 @@ function ClientsPage() {
       actions={
         canCreate ? (
           <>
-            <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
+            <Button type="button" variant="outline" onClick={() => setShowMethodSelector(true)}>
               <FileSpreadsheet className="h-4 w-4" /> Importar
             </Button>
             <Button type="button" onClick={() => setShowForm(true)}>
@@ -197,17 +281,162 @@ function ClientsPage() {
         ) : undefined
       }
     >
-      <Card className="mb-5 p-4">
-        <label className="relative block max-w-xl">
+      <Card className="mb-5 flex flex-col gap-3 p-4 sm:flex-row">
+        <label className="relative block flex-1">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              persistSearch(filters, event.target.value);
+            }}
             placeholder="Buscar por nombre, teléfono o correo"
             className="pl-9"
             aria-label="Buscar clientes"
           />
         </label>
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDraftFilters(filters);
+              setFiltersOpen(true);
+            }}
+          >
+            <Filter className="h-4 w-4" /> Filtros
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Filtros de clientes</SheetTitle>
+              <SheetDescription>
+                Los filtros se conservan en la URL al volver de una ficha.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6 grid gap-4">
+              <div>
+                <Label htmlFor="client-filter-status">Estado</Label>
+                <NativeSelect
+                  id="client-filter-status"
+                  className="mt-2"
+                  value={draftFilters.status}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, status: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  {CLIENT_STATUS_OPTIONS.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="client-filter-from">Registrado desde</Label>
+                  <Input
+                    id="client-filter-from"
+                    className="mt-2"
+                    type="date"
+                    value={draftFilters.from}
+                    onChange={(event) =>
+                      setDraftFilters({ ...draftFilters, from: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="client-filter-to">Hasta</Label>
+                  <Input
+                    id="client-filter-to"
+                    className="mt-2"
+                    type="date"
+                    value={draftFilters.to}
+                    onChange={(event) =>
+                      setDraftFilters({ ...draftFilters, to: event.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="client-filter-cases">Expedientes</Label>
+                <NativeSelect
+                  id="client-filter-cases"
+                  className="mt-2"
+                  value={draftFilters.cases}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, cases: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  <option value="with">Con expedientes</option>
+                  <option value="without">Sin expedientes</option>
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="client-filter-tasks">Tareas activas</Label>
+                <NativeSelect
+                  id="client-filter-tasks"
+                  className="mt-2"
+                  value={draftFilters.tasks}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, tasks: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  <option value="with">Con tareas activas</option>
+                  <option value="without">Sin tareas activas</option>
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="client-filter-sort">Ordenar</Label>
+                <NativeSelect
+                  id="client-filter-sort"
+                  className="mt-2"
+                  value={draftFilters.sort}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, sort: event.target.value })
+                  }
+                >
+                  <option value="nombre">Nombre</option>
+                  <option value="recent">Más recientes</option>
+                  <option value="oldest">Más antiguos</option>
+                </NativeSelect>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setDraftFilters({
+                      status: "",
+                      from: "",
+                      to: "",
+                      cases: "",
+                      tasks: "",
+                      sort: "nombre",
+                    })
+                  }
+                >
+                  Limpiar filtros
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setFilters(draftFilters);
+                    persistSearch(draftFilters);
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Aplicar filtros
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </Card>
 
       <Card className="overflow-hidden">
@@ -495,6 +724,34 @@ function ClientsPage() {
             setShowImport(false);
             window.location.reload();
           }}
+        />
+      )}
+
+      {/* Selector de método de importación */}
+      <ImportMethodSelector
+        open={showMethodSelector}
+        zipAllowed={canImportZip}
+        onClose={() => setShowMethodSelector(false)}
+        onSelect={(method) => {
+          setShowMethodSelector(false);
+          if (method === "csv") {
+            setShowImport(true);
+          } else if (canImportZip) {
+            setShowZipImport(true);
+          }
+        }}
+      />
+
+      {/* Importador ZIP — solo visible para Administrador */}
+      {canImportZip && (
+        <ZipImporter
+          open={showZipImport}
+          onClose={() => setShowZipImport(false)}
+          onSuccess={() => {
+            setShowZipImport(false);
+            window.location.reload();
+          }}
+          existingClients={clients.map((c) => ({ id: c.id, name: c.name }))}
         />
       )}
     </AppLayout>

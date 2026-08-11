@@ -31,6 +31,8 @@ describe("cola voluntaria de tareas", () => {
           client_id: "client-1",
           case_id: "",
           priority: "Alta",
+          scheduled_for: "2026-08-06",
+          due_date: "",
         },
         [],
       ),
@@ -42,6 +44,8 @@ describe("cola voluntaria de tareas", () => {
       client_id: "client-1",
       status: "pending",
       priority: "Alta",
+      scheduled_for: "2026-08-06",
+      due_date: null,
     });
   });
 

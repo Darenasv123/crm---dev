@@ -1,5 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Briefcase, Edit3, Eye, FolderPlus, MoreHorizontal, Plus, Search } from "lucide-react";
+import {
+  Briefcase,
+  Edit3,
+  Eye,
+  Filter,
+  FolderPlus,
+  MoreHorizontal,
+  Plus,
+  Search,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
@@ -21,9 +30,19 @@ import { FormActions, FormErrorSummary, FormField, FormSection } from "@/compone
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { useCases, useCreateCase, useUpdateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
+import { useDocuments } from "@/hooks/use-documents";
+import { useCaseTasks } from "@/hooks/legal/use-case-management";
 import {
   CASE_STATUS_OPTIONS,
   MATERIA_OPTIONS,
@@ -53,6 +72,17 @@ function caseStatusTone(
 }
 
 export const Route = createFileRoute("/_app/casos/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" ? search.q : "",
+    estado: typeof search.estado === "string" ? search.estado : "",
+    materia: typeof search.materia === "string" ? search.materia : "",
+    cliente: typeof search.cliente === "string" ? search.cliente : "",
+    desde: typeof search.desde === "string" ? search.desde : "",
+    hasta: typeof search.hasta === "string" ? search.hasta : "",
+    tareas: typeof search.tareas === "string" ? search.tareas : "",
+    documentos: typeof search.documentos === "string" ? search.documentos : "",
+    ordenar: typeof search.ordenar === "string" ? search.ordenar : "recent",
+  }),
   component: CasesPage,
 });
 
@@ -68,11 +98,26 @@ const EMPTY_FORM: CaseFormValues = {
 function CasesPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const routeSearch = Route.useSearch();
   const { data: cases = [], isLoading } = useCases();
   const { data: clients = [] } = useClients();
+  const { data: documents = [] } = useDocuments();
+  const { data: tasks = [] } = useCaseTasks();
   const createCase = useCreateCase();
   const updateCase = useUpdateCase();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(routeSearch.q);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    status: routeSearch.estado,
+    matter: routeSearch.materia,
+    client: routeSearch.cliente,
+    from: routeSearch.desde,
+    to: routeSearch.hasta,
+    tasks: routeSearch.tareas,
+    documents: routeSearch.documentos,
+    sort: routeSearch.ordenar,
+  });
+  const [draftFilters, setDraftFilters] = useState(filters);
   const [showForm, setShowForm] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
@@ -86,16 +131,71 @@ function CasesPage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return cases;
-    return cases.filter(
+    const rows = cases.filter(
       (item) =>
-        item.expediente.toLowerCase().includes(term) ||
-        (item.case_number ?? "").toLowerCase().includes(term) ||
-        item.process_type.toLowerCase().includes(term) ||
-        (item.materia ?? "").toLowerCase().includes(term) ||
-        (item.clients?.name ?? "").toLowerCase().includes(term),
+        (!term ||
+          item.expediente.toLowerCase().includes(term) ||
+          (item.case_number ?? "").toLowerCase().includes(term) ||
+          item.process_type.toLowerCase().includes(term) ||
+          (item.materia ?? "").toLowerCase().includes(term) ||
+          (item.clients?.name ?? "").toLowerCase().includes(term)) &&
+        (!filters.status || item.status === filters.status) &&
+        (!filters.matter || item.materia === filters.matter) &&
+        (!filters.client || item.client_id === filters.client) &&
+        (!filters.from || item.created_at.slice(0, 10) >= filters.from) &&
+        (!filters.to || item.created_at.slice(0, 10) <= filters.to) &&
+        (!filters.tasks ||
+          (filters.tasks === "with"
+            ? tasks.some(
+                (task) =>
+                  task.case_id === item.id && !["completed", "cancelled"].includes(task.status),
+              )
+            : !tasks.some(
+                (task) =>
+                  task.case_id === item.id && !["completed", "cancelled"].includes(task.status),
+              ))) &&
+        (!filters.documents ||
+          (filters.documents === "with"
+            ? documents.some((doc) => doc.case_id === item.id)
+            : !documents.some((doc) => doc.case_id === item.id))),
     );
-  }, [cases, search]);
+    return rows.sort((a, b) => {
+      if (filters.sort === "client")
+        return (a.clients?.name ?? "").localeCompare(b.clients?.name ?? "", "es");
+      if (filters.sort === "number")
+        return (a.case_number || a.expediente).localeCompare(b.case_number || b.expediente, "es");
+      if (filters.sort === "oldest") return a.created_at.localeCompare(b.created_at);
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }, [cases, documents, filters, search, tasks]);
+  const activeFilterCount = [
+    filters.status,
+    filters.matter,
+    filters.client,
+    filters.from,
+    filters.to,
+    filters.tasks,
+    filters.documents,
+    filters.sort !== "recent",
+  ].filter(Boolean).length;
+
+  function persistSearch(nextFilters = filters, nextSearch = search) {
+    void navigate({
+      to: "/casos" as never,
+      search: {
+        q: nextSearch || undefined,
+        estado: nextFilters.status || undefined,
+        materia: nextFilters.matter || undefined,
+        cliente: nextFilters.client || undefined,
+        desde: nextFilters.from || undefined,
+        hasta: nextFilters.to || undefined,
+        tareas: nextFilters.tasks || undefined,
+        documentos: nextFilters.documents || undefined,
+        ordenar: nextFilters.sort === "recent" ? undefined : nextFilters.sort,
+      } as never,
+      replace: true,
+    });
+  }
 
   function openEdit(caseId: string) {
     const caseItem = cases.find((c) => c.id === caseId);
@@ -177,17 +277,197 @@ function CasesPage() {
         ) : undefined
       }
     >
-      <Card className="mb-5 p-4">
-        <label className="relative block max-w-xl">
+      <Card className="mb-5 flex flex-col gap-3 p-4 sm:flex-row">
+        <label className="relative block flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              persistSearch(filters, event.target.value);
+            }}
             placeholder="Buscar por expediente, cliente, materia o proceso"
             className="pl-9"
             aria-label="Buscar expedientes"
           />
         </label>
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDraftFilters(filters);
+              setFiltersOpen(true);
+            }}
+          >
+            <Filter className="h-4 w-4" /> Filtros
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            )}
+          </Button>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle>Filtros de expedientes</SheetTitle>
+              <SheetDescription>Los criterios se conservan en la URL.</SheetDescription>
+            </SheetHeader>
+            <div className="mt-6 grid gap-4">
+              <div>
+                <Label htmlFor="case-filter-status">Estado</Label>
+                <NativeSelect
+                  id="case-filter-status"
+                  className="mt-2"
+                  value={draftFilters.status}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, status: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  {CASE_STATUS_OPTIONS.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="case-filter-matter">Materia</Label>
+                <NativeSelect
+                  id="case-filter-matter"
+                  className="mt-2"
+                  value={draftFilters.matter}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, matter: event.target.value })
+                  }
+                >
+                  <option value="">Todas</option>
+                  {MATERIA_OPTIONS.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="case-filter-client">Cliente</Label>
+                <NativeSelect
+                  id="case-filter-client"
+                  className="mt-2"
+                  value={draftFilters.client}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, client: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  {clients.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="case-filter-from">Creado desde</Label>
+                  <Input
+                    id="case-filter-from"
+                    className="mt-2"
+                    type="date"
+                    value={draftFilters.from}
+                    onChange={(event) =>
+                      setDraftFilters({ ...draftFilters, from: event.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="case-filter-to">Hasta</Label>
+                  <Input
+                    id="case-filter-to"
+                    className="mt-2"
+                    type="date"
+                    value={draftFilters.to}
+                    onChange={(event) =>
+                      setDraftFilters({ ...draftFilters, to: event.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="case-filter-tasks">Tareas pendientes</Label>
+                <NativeSelect
+                  id="case-filter-tasks"
+                  className="mt-2"
+                  value={draftFilters.tasks}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, tasks: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  <option value="with">Con tareas pendientes</option>
+                  <option value="without">Sin tareas pendientes</option>
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="case-filter-documents">Documentos</Label>
+                <NativeSelect
+                  id="case-filter-documents"
+                  className="mt-2"
+                  value={draftFilters.documents}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, documents: event.target.value })
+                  }
+                >
+                  <option value="">Todos</option>
+                  <option value="with">Con documentos</option>
+                  <option value="without">Sin documentos</option>
+                </NativeSelect>
+              </div>
+              <div>
+                <Label htmlFor="case-filter-sort">Ordenar</Label>
+                <NativeSelect
+                  id="case-filter-sort"
+                  className="mt-2"
+                  value={draftFilters.sort}
+                  onChange={(event) =>
+                    setDraftFilters({ ...draftFilters, sort: event.target.value })
+                  }
+                >
+                  <option value="recent">Más recientes</option>
+                  <option value="oldest">Más antiguos</option>
+                  <option value="client">Cliente</option>
+                  <option value="number">Número de expediente</option>
+                </NativeSelect>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setDraftFilters({
+                      status: "",
+                      matter: "",
+                      client: "",
+                      from: "",
+                      to: "",
+                      tasks: "",
+                      documents: "",
+                      sort: "recent",
+                    })
+                  }
+                >
+                  Limpiar filtros
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setFilters(draftFilters);
+                    persistSearch(draftFilters);
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Aplicar filtros
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </Card>
 
       <Card className="overflow-hidden">
