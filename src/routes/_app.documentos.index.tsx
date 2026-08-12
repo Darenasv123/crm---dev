@@ -29,8 +29,17 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { DOCUMENT_TYPES, normalizeDocumentType } from "@/lib/document-types";
+import {
+  downloadDocument,
+  previewDocument,
+  releaseDocumentPreview,
+  type DocumentPreview,
+} from "@/lib/document-actions";
 
 export const Route = createFileRoute("/_app/documentos/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    documento: typeof search.documento === "string" ? search.documento : undefined,
+  }),
   head: () => ({ meta: [{ title: "Documentos — CRM Jurídico" }] }),
   component: DocsPage,
 });
@@ -82,6 +91,7 @@ function displayDocumentType(type: string) {
 }
 
 function DocsPage() {
+  const { documento: requestedDocumentId } = Route.useSearch();
   const [activeType, setActiveType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [processingFilter, setProcessingFilter] = useState("");
@@ -113,6 +123,12 @@ function DocsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [documentActionError, setDocumentActionError] = useState<string | null>(null);
+  const [activePreview, setActivePreview] = useState<DocumentPreview | null>(null);
+  const [activePreviewDocument, setActivePreviewDocument] = useState<DocumentWithClient | null>(
+    null,
+  );
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
 
   const filtered = docs.filter((d) => {
     const matchesSearch =
@@ -126,7 +142,8 @@ function DocsPage() {
     return matchesSearch && matchesProcessing && matchesType;
   });
 
-  const selected = filtered.find((d) => d.id === selectedId) ?? filtered[0] ?? null;
+  const selected =
+    filtered.find((d) => d.id === (selectedId ?? requestedDocumentId)) ?? filtered[0] ?? null;
   const uploadCases = uploadForm.clientId
     ? cases.filter((item) => item.client_id === uploadForm.clientId)
     : cases;
@@ -160,21 +177,43 @@ function DocsPage() {
   }
 
   async function handleDownload(doc: (typeof filtered)[0]) {
-    const { data } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 60);
-    if (data?.signedUrl) {
-      const a = document.createElement("a");
-      a.href = data.signedUrl;
-      a.download = doc.name;
-      a.click();
+    setDocumentActionError(null);
+    try {
+      await downloadDocument(doc);
+    } catch (cause) {
+      setDocumentActionError(
+        cause instanceof Error ? cause.message : "No se pudo descargar el documento.",
+      );
     }
   }
 
-  async function handleOpen(doc: (typeof filtered)[0]) {
-    const { data } = await supabase.storage
-      .from("documents")
-      .createSignedUrl(doc.storage_path, 300);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  async function handlePreview(doc: (typeof filtered)[0]) {
+    setDocumentActionError(null);
+    setPreviewingId(doc.id);
+    try {
+      const preview = await previewDocument(doc);
+      setActivePreviewDocument(doc);
+      setActivePreview(preview);
+    } catch (cause) {
+      setDocumentActionError(
+        cause instanceof Error ? cause.message : "No se pudo visualizar el documento.",
+      );
+    } finally {
+      setPreviewingId(null);
+    }
   }
+
+  function closePreview() {
+    setActivePreview(null);
+    setActivePreviewDocument(null);
+  }
+
+  useEffect(
+    () => () => {
+      releaseDocumentPreview(activePreview);
+    },
+    [activePreview],
+  );
 
   function openEdit(doc: DocumentWithClient) {
     setEditingDocument(doc);
@@ -403,13 +442,18 @@ function DocsPage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleOpen(d);
+                              handlePreview(d);
                             }}
+                            disabled={previewingId === d.id}
                             className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
-                            title="Abrir"
-                            aria-label={`Abrir ${d.name}`}
+                            title="Visualizar"
+                            aria-label={`Visualizar ${d.name}`}
                           >
-                            <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                            {previewingId === d.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
                           </button>
                           <button
                             type="button"
@@ -459,9 +503,23 @@ function DocsPage() {
           )}
         </Card>
 
+        {documentActionError && (
+          <div className="lg:col-span-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {documentActionError}
+          </div>
+        )}
+
         {/* Preview panel */}
-        <PreviewPanel selected={selected} onOpen={handleOpen} onDownload={handleDownload} />
+        <PreviewPanel selected={selected} onPreview={handlePreview} onDownload={handleDownload} />
       </div>
+
+      {activePreview && (
+        <DocumentPreviewDialog
+          preview={activePreview}
+          onClose={closePreview}
+          onDownload={() => activePreviewDocument && handleDownload(activePreviewDocument)}
+        />
+      )}
 
       {/* Upload Modal */}
       {showUpload && (
@@ -823,17 +881,84 @@ function documentVerificationLabel(status: string) {
   );
 }
 
+function DocumentPreviewDialog({
+  preview,
+  onClose,
+  onDownload,
+}: {
+  preview: DocumentPreview;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Vista previa de ${preview.name}`}
+    >
+      <Card className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden shadow-2xl">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">{preview.name}</h2>
+            <p className="text-xs text-muted-foreground">Vista previa segura del documento</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={onDownload}>
+            <Download className="h-4 w-4" /> Descargar
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label="Cerrar visor"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 bg-muted/20 p-3">
+          {preview.kind === "image" ? (
+            <img src={preview.url} alt={preview.name} className="h-full w-full object-contain" />
+          ) : preview.kind === "pdf" || preview.kind === "text" ? (
+            <iframe
+              src={preview.url}
+              title={`Vista previa de ${preview.name}`}
+              className="h-full w-full rounded border border-border bg-white"
+            />
+          ) : preview.kind === "docx" ? (
+            <iframe
+              srcDoc={preview.html}
+              sandbox=""
+              title={`Vista previa de ${preview.name}`}
+              className="h-full w-full rounded border border-border bg-white"
+            />
+          ) : (
+            <div className="grid h-full place-items-center px-6 text-center">
+              <div className="max-w-md space-y-3">
+                <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+                <p className="font-medium">Vista previa no disponible</p>
+                <p className="text-sm text-muted-foreground">{preview.message}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 // ── PreviewPanel ────────────────────────────────────────────────────────────
 // Shows a real signed-URL preview for images; for other file types shows
 // metadata + open/download buttons. Falls back gracefully if the URL can't
 // be fetched.
 function PreviewPanel({
   selected,
-  onOpen,
+  onPreview,
   onDownload,
 }: {
   selected: DocumentWithClient | null;
-  onOpen: (doc: DocumentWithClient) => void;
+  onPreview: (doc: DocumentWithClient) => void;
   onDownload: (doc: DocumentWithClient) => void;
 }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -907,10 +1032,10 @@ function PreviewPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onOpen(selected)}
+                  onClick={() => onPreview(selected)}
                   className="mt-1 h-8 px-4 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 inline-flex items-center gap-1.5"
                 >
-                  <ExternalLink className="h-3 w-3" /> Abrir archivo
+                  <ExternalLink className="h-3 w-3" /> Visualizar archivo
                 </button>
               </div>
             )}
@@ -948,10 +1073,10 @@ function PreviewPanel({
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              onClick={() => onOpen(selected)}
+              onClick={() => onPreview(selected)}
               className="flex-1 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 inline-flex items-center justify-center gap-1"
             >
-              <Eye className="h-3 w-3" /> Abrir
+              <Eye className="h-3 w-3" /> Visualizar
             </button>
             <button
               type="button"

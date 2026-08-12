@@ -37,10 +37,10 @@ import {
 import { buildFolderTree, buildBreadcrumbs } from "@/lib/folder-utils";
 import type { DocumentFolder } from "@/lib/folder-utils";
 import type { Database } from "@/lib/database.types";
+import { downloadDocument } from "@/lib/document-actions";
 import { FolderCreateModal } from "./folder-create-modal";
 import { FolderRenameModal } from "./folder-rename-modal";
 import { FolderMoveModal } from "./folder-move-modal";
-import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
@@ -329,12 +329,11 @@ export function DocumentFolderBrowser({ clientId, isAdmin, onUploadInFolder }: P
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
   const handleDownload = useCallback(async (doc: Document) => {
-    const { data } = await supabase.storage.from("documents").createSignedUrl(doc.storage_path, 60);
-    if (data?.signedUrl) {
-      const a = document.createElement("a");
-      a.href = data.signedUrl;
-      a.download = doc.original_name ?? doc.name;
-      a.click();
+    setDeleteError(null);
+    try {
+      await downloadDocument(doc);
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : "No se pudo descargar el documento.");
     }
   }, []);
 
