@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildRegisterPaymentRpcArgs,
   executeRegisterPaymentAtomic,
+  outstandingBalanceMessage,
+  paymentRegistrationErrorMessage,
+  validateRegisterPaymentAmount,
   type AtomicPaymentResult,
 } from "../src/hooks/use-payments";
 
@@ -33,6 +36,46 @@ const successfulResult = {
 } satisfies AtomicPaymentResult;
 
 describe("atomic payment registration", () => {
+  it("permite pagar exactamente el saldo pendiente", () => {
+    expect(() => validateRegisterPaymentAmount(700, 700)).not.toThrow();
+  });
+
+  it("rechaza S/ 701 cuando el saldo es S/ 700 sin alterar el importe", () => {
+    expect(() => validateRegisterPaymentAmount(701, 700)).toThrow(
+      "El monto supera el saldo pendiente de S/ 700.00.",
+    );
+  });
+
+  it.each([0, -1, Number.NaN])("rechaza importes no positivos o inválidos: %s", (amount) => {
+    expect(() => validateRegisterPaymentAmount(amount, 700)).toThrow(
+      "El monto debe ser mayor a 0.",
+    );
+  });
+
+  it("normaliza el error de sobrepago de la RPC sin exponer detalles internos", () => {
+    expect(
+      paymentRegistrationErrorMessage(
+        new Error("Payment amount exceeds the outstanding balance"),
+        700,
+      ),
+    ).toBe(outstandingBalanceMessage(700));
+  });
+
+  it("no llama la RPC cuando la defensa frontend detecta el sobrepago", async () => {
+    const rpc = vi.fn();
+    await expect(
+      executeRegisterPaymentAtomic(
+        { rpc },
+        {
+          paymentId: "payment-1",
+          remaining: 700,
+          record: { amount: 701, method: "Transferencia" },
+        },
+      ),
+    ).rejects.toThrow("S/ 700.00");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("builds RPC arguments without client-computed totals or status", () => {
     expect(
       buildRegisterPaymentRpcArgs({
@@ -118,6 +161,30 @@ describe("atomic payment registration", () => {
       ),
     ).rejects.toThrow("no confirmó");
   });
+
+  it("la UI no recorta el importe y solo cierra después de una confirmación", () => {
+    const route = readFileSync(resolve(process.cwd(), "src/routes/_app.pagos.index.tsx"), "utf8");
+    const submitStart = route.indexOf("async function handleRegisterPayment");
+    const submit = route.slice(submitStart, route.indexOf("  return (", submitStart));
+
+    expect(route).not.toContain("String(max)");
+    expect(route).not.toContain("Clamp to max");
+    expect(submit.indexOf("await registerPayment.mutateAsync")).toBeLessThan(
+      submit.indexOf("setModal(null)"),
+    );
+    expect(submit).toContain("setFormError(paymentRegistrationErrorMessage(err, remaining))");
+  });
+
+  it("no aplica paid/status de forma optimista y refresca pagos y registros tras éxito", () => {
+    const hook = readFileSync(resolve(process.cwd(), "src/hooks/use-payments.ts"), "utf8");
+    const registerHook = hook.slice(hook.indexOf("export function useRegisterPayment"));
+
+    expect(registerHook).not.toMatch(/onMutate|setQueryData/);
+    expect(registerHook).toContain('invalidateQueries({ queryKey: ["payments"] })');
+    expect(registerHook).toContain(
+      'invalidateQueries({ queryKey: ["payment_records", paymentId] })',
+    );
+  });
 });
 
 describe("atomic payment migration contract", () => {
@@ -140,6 +207,18 @@ describe("atomic payment migration contract", () => {
     expect(migration).toContain("status = 'activo'");
     expect(migration).toContain("p_amount <= 0");
     expect(migration).toContain("v_new_paid > v_payment.fees");
+  });
+
+  it("rechaza el sobrepago antes de crear payment_records", () => {
+    expect(migration.indexOf("v_new_paid > v_payment.fees")).toBeLessThan(
+      migration.indexOf("insert into public.payment_records"),
+    );
+  });
+
+  it("el backend calcula Pagado para cancelación exacta y Parcial para abonos", () => {
+    expect(migration).toContain("when v_new_paid = v_payment.fees then 'pagado'");
+    expect(migration).toContain("else 'parcial'");
+    expect(migration).toContain("paid = v_new_paid");
   });
 
   it("only grants execution to authenticated users", () => {

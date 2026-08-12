@@ -13,6 +13,7 @@ type RegisterPaymentRpcArgs =
 
 export interface RegisterPaymentInput {
   paymentId: string;
+  remaining?: number;
   record: Omit<PaymentRecordInsert, "payment_id">;
 }
 
@@ -33,12 +34,11 @@ interface PaymentRpcClient {
 
 export function buildRegisterPaymentRpcArgs({
   paymentId,
+  remaining,
   record,
 }: RegisterPaymentInput): RegisterPaymentRpcArgs {
   if (!paymentId) throw new Error("El plan de pago es obligatorio");
-  if (!Number.isFinite(record.amount) || record.amount <= 0) {
-    throw new Error("El monto debe ser mayor a cero");
-  }
+  validateRegisterPaymentAmount(record.amount, remaining);
   if (!record.method?.trim()) {
     throw new Error("El método de pago es obligatorio");
   }
@@ -51,6 +51,28 @@ export function buildRegisterPaymentRpcArgs({
     p_notes: record.notes ?? null,
     p_payment_date: record.payment_date ?? null,
   };
+}
+
+export function outstandingBalanceMessage(remaining: number) {
+  return `El monto supera el saldo pendiente de S/ ${remaining.toFixed(2)}.`;
+}
+
+export function validateRegisterPaymentAmount(amount: number, remaining?: number) {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("El monto debe ser mayor a 0.");
+  }
+  if (remaining !== undefined) {
+    if (!Number.isFinite(remaining) || remaining < 0) {
+      throw new Error("No se pudo determinar el saldo pendiente.");
+    }
+    if (amount > remaining) throw new Error(outstandingBalanceMessage(remaining));
+  }
+}
+
+export function paymentRegistrationErrorMessage(error: unknown, remaining: number) {
+  const message = error instanceof Error ? error.message : "";
+  if (/saldo|exceed|supera/i.test(message)) return outstandingBalanceMessage(remaining);
+  return message || "No se pudo registrar el pago.";
 }
 
 export async function executeRegisterPaymentAtomic(
@@ -156,11 +178,16 @@ export function useRegisterPayment() {
       const db = await getAuthClient();
       return executeRegisterPaymentAtomic(db as unknown as PaymentRpcClient, input);
     },
-    onSuccess: (result, { paymentId }) =>
+    onSuccess: async (result, { paymentId }) => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["payments"] }),
+        qc.invalidateQueries({ queryKey: ["payment_records", paymentId] }),
+      ]);
       invalidateCrmQueries(qc, {
-        paymentId,
+        includeCore: false,
         clientId: result.payment.client_id,
         caseId: result.payment.case_id,
-      }),
+      });
+    },
   });
 }

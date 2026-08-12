@@ -5,6 +5,8 @@ import {
   useCreatePayment,
   useRegisterPayment,
   usePaymentRecords,
+  paymentRegistrationErrorMessage,
+  validateRegisterPaymentAmount,
 } from "@/hooks/use-payments";
 import { useClients } from "@/hooks/use-clients";
 import { useAuth } from "@/hooks/use-auth";
@@ -138,24 +140,17 @@ function PaymentsContent() {
     e.preventDefault();
     if (!selectedPayment) return;
     setFormError(null);
-    setSaving(true);
 
     const amount = parseFloat(regForm.amount);
     const remaining = Number(selectedPayment.fees) - Number(selectedPayment.paid);
 
-    // Hard cap: cannot pay more than the outstanding balance
-    if (amount <= 0) {
-      setFormError("El monto debe ser mayor a 0.");
-      setSaving(false);
+    try {
+      validateRegisterPaymentAmount(amount, remaining);
+    } catch (error) {
+      setFormError(paymentRegistrationErrorMessage(error, remaining));
       return;
     }
-    if (amount > remaining) {
-      setFormError(
-        `El monto excede el saldo pendiente (${currency(remaining)}). El máximo permitido es el 100% del saldo.`,
-      );
-      setSaving(false);
-      return;
-    }
+    setSaving(true);
 
     // Upload voucher file if provided
     let voucherPath: string | null = null;
@@ -176,6 +171,7 @@ function PaymentsContent() {
     try {
       await registerPayment.mutateAsync({
         paymentId: selectedPayment.id,
+        remaining,
         record: {
           amount,
           method: regForm.method,
@@ -190,7 +186,7 @@ function PaymentsContent() {
       if (voucherPath) {
         await supabase.storage.from("documents").remove([voucherPath]);
       }
-      setFormError(err instanceof Error ? err.message : "Error al registrar.");
+      setFormError(paymentRegistrationErrorMessage(err, remaining));
     } finally {
       setSaving(false);
     }
@@ -460,17 +456,7 @@ function PaymentsContent() {
                 value={regForm.amount}
                 min="0.01"
                 step="0.01"
-                max={Number(selectedPayment.fees) - Number(selectedPayment.paid)}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  const max = Number(selectedPayment.fees) - Number(selectedPayment.paid);
-                  // Clamp to max in real-time so the field never exceeds the balance
-                  if (!isNaN(val) && val > max) {
-                    setRegForm((f) => ({ ...f, amount: String(max) }));
-                  } else {
-                    setRegForm((f) => ({ ...f, amount: e.target.value }));
-                  }
-                }}
+                onChange={(e) => setRegForm((f) => ({ ...f, amount: e.target.value }))}
                 required
                 className="mt-1.5"
               />
