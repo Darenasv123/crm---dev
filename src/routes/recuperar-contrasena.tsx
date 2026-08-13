@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { FormErrorSummary } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isPasswordRecoveryEnabled } from "@/lib/feature-flags";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/recuperar-contrasena")({ component: PasswordRecoveryPage });
 
 function PasswordRecoveryPage() {
+  const recoveryEnabled = isPasswordRecoveryEnabled();
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -17,6 +19,9 @@ function PasswordRecoveryPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    // Fail-closed guard: even if this handler were reached while the
+    // feature is disabled, never call resetPasswordForEmail.
+    if (!recoveryEnabled) return;
     setError(null);
     setSending(true);
     try {
@@ -33,6 +38,25 @@ function PasswordRecoveryPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  if (!recoveryEnabled) {
+    return (
+      <AuthShell
+        title="Función no disponible"
+        description="La recuperación de contraseña está deshabilitada temporalmente."
+      >
+        <div className="grid gap-4">
+          <p className="rounded-lg border border-border bg-muted p-4 text-sm text-muted-foreground">
+            Esta función no está disponible en este momento. Contacta al administrador del estudio
+            para restablecer tu contraseña.
+          </p>
+          <Button asChild variant="outline">
+            <Link to="/login">Volver al inicio de sesión</Link>
+          </Button>
+        </div>
+      </AuthShell>
+    );
   }
 
   return (

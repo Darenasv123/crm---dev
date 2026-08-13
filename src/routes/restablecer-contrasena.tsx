@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FormErrorSummary } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isPasswordRecoveryEnabled } from "@/lib/feature-flags";
 import { supabase } from "@/lib/supabase";
 import { AuthShell } from "@/routes/recuperar-contrasena";
 
@@ -14,13 +15,17 @@ type RecoveryPhase = "validating" | "ready" | "invalid" | "submitting" | "succes
 
 function ResetPasswordPage() {
   const navigate = useNavigate();
+  const recoveryEnabled = isPasswordRecoveryEnabled();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<RecoveryPhase>("validating");
+  const [phase, setPhase] = useState<RecoveryPhase>(recoveryEnabled ? "validating" : "invalid");
 
   useEffect(() => {
+    // Fail-closed: while disabled, never register the PASSWORD_RECOVERY
+    // listener nor call getSession as part of the recovery flow.
+    if (!recoveryEnabled) return;
     let active = true;
     let recoveryEventHandled = false;
     const {
@@ -45,10 +50,12 @@ function ResetPasswordPage() {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [recoveryEnabled]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    // Fail-closed guard: never call updateUser for recovery while disabled.
+    if (!recoveryEnabled) return;
     if (phase !== "ready" && phase !== "error") return;
     setError(null);
     if (
@@ -107,10 +114,17 @@ function ResetPasswordPage() {
       <AuthShell title="Enlace no válido" description="No pudimos validar esta recuperación.">
         <div className="grid gap-4">
           <FormErrorSummary>
-            {error ?? "El enlace venció o ya fue utilizado. Solicita uno nuevo."}
+            {error ??
+              (recoveryEnabled
+                ? "El enlace venció o ya fue utilizado. Solicita uno nuevo."
+                : "La recuperación de contraseña está deshabilitada temporalmente. Contacta al administrador del estudio.")}
           </FormErrorSummary>
           <Button asChild variant="outline">
-            <Link to="/recuperar-contrasena">Solicitar un enlace nuevo</Link>
+            {recoveryEnabled ? (
+              <Link to="/recuperar-contrasena">Solicitar un enlace nuevo</Link>
+            ) : (
+              <Link to="/login">Volver al inicio de sesión</Link>
+            )}
           </Button>
         </div>
       </AuthShell>

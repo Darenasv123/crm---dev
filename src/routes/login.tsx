@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FormErrorSummary } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isPasswordRecoveryEnabled } from "@/lib/feature-flags";
 
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Iniciar sesión — CRM Jurídico" }] }),
@@ -94,12 +95,14 @@ function LoginPage() {
             <div>
               <div className="flex items-center justify-between">
                 <Label htmlFor="login-password">Contraseña</Label>
-                <Link
-                  to={"/recuperar-contrasena" as never}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  ¿Olvidaste tu contraseña?
-                </Link>
+                {isPasswordRecoveryEnabled() ? (
+                  <Link
+                    to={"/recuperar-contrasena" as never}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                ) : null}
               </div>
               <div className="relative mt-2">
                 <Input
