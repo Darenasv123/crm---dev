@@ -375,8 +375,19 @@ create table public.import_jobs (
   updated_at timestamptz not null default now(),
   error_message text,
   configuration jsonb not null default '{}'::jsonb,
+  -- Matches the cloud contract (20260721090000_legal_case_foundation.sql)
+  -- and what src/lib/zip-import/import-engine.server.ts actually writes.
+  -- Correction 2026-08-15: this constraint previously listed
+  -- ('draft', 'analyzing', 'reviewing', 'importing', 'completed', 'failed',
+  -- 'cancelled') — wizard-phase names from the never-implemented
+  -- src/lib/imports/folder-import-engine.ts, copied in by mistake. See
+  -- supabase/migrations/20260815120000_fix_import_jobs_status_check_constraint.sql
+  -- for the hotfix applied to already-bootstrapped self-hosted instances.
   constraint import_jobs_status_check
-    check (status in ('draft', 'analyzing', 'reviewing', 'importing', 'completed', 'failed', 'cancelled')),
+    check (status in (
+      'draft', 'inventory', 'processing', 'consolidating', 'review_required',
+      'completed', 'partially_completed', 'failed', 'cancelled'
+    )),
   constraint import_jobs_progress_check
     check (progress_percentage between 0 and 100)
 );

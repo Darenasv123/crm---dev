@@ -25,10 +25,12 @@ import { ZipPreviewTable } from "./zip-preview-table";
 import { ZipDryRunPanel } from "./zip-dry-run-panel";
 import { ZipImportProgress } from "./zip-import-progress";
 import { ZipImportResult } from "./zip-import-result";
+import { ZipImportErrorBoundary } from "./zip-import-error-boundary";
 import { readZipFile } from "@/lib/zip-import/zip-reader";
 import { analyzeZipEntries } from "@/lib/zip-import/analyzer";
 import { findClientMatch } from "@/lib/zip-import/client-normalizer";
 import { executeZipImportFn } from "@/lib/zip-import/import-engine.server";
+import { describeCaughtError } from "@/lib/zip-import/describe-caught-error";
 import { supabase } from "@/lib/supabase";
 import type {
   ZipAnalysisSummary,
@@ -154,7 +156,7 @@ export function ZipImporter({ open, onClose, onSuccess, existingClients }: Props
         setAnalysis(summary);
         setStage("preview");
       } catch (err) {
-        setFatalError(err instanceof Error ? err.message : "Error al analizar el ZIP.");
+        setFatalError(describeCaughtError(err, "Error al analizar el ZIP."));
         setStage("error");
       }
     },
@@ -194,7 +196,7 @@ export function ZipImporter({ open, onClose, onSuccess, existingClients }: Props
         // Actualizar analysis con las decisiones del usuario
         setAnalysis({ ...analysis, clients: updatedClients });
       } catch (err) {
-        setFatalError(err instanceof Error ? err.message : "Error en el dry-run.");
+        setFatalError(describeCaughtError(err, "Error en el dry-run."));
         setStage("error");
       }
     },
@@ -232,7 +234,7 @@ export function ZipImporter({ open, onClose, onSuccess, existingClients }: Props
       setStage("result");
       onSuccess();
     } catch (err) {
-      setFatalError(err instanceof Error ? err.message : "Error durante la importación.");
+      setFatalError(describeCaughtError(err, "Error durante la importación."));
       setStage("error");
     }
   }, [selectedFile, analysis, onSuccess]);
@@ -263,75 +265,83 @@ export function ZipImporter({ open, onClose, onSuccess, existingClients }: Props
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Error fatal ── */}
-        {stage === "error" && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
-              <div>
-                <p className="font-semibold text-red-700 text-sm">No se puede continuar</p>
-                <pre className="mt-2 text-xs text-red-600 whitespace-pre-wrap break-words">
-                  {fatalError}
-                </pre>
+        {/*
+         * Boundary local: si el render de cualquier etapa revienta (p.ej. un
+         * valor inesperado en la respuesta del servidor), esto evita que el
+         * error suba hasta el boundary global de la app (src/routes/__root.tsx)
+         * y reemplace toda la pantalla. Ver zip-import-error-boundary.tsx.
+         */}
+        <ZipImportErrorBoundary onReset={handleClose}>
+          {/* ── Error fatal (controlado, capturado por try/catch) ── */}
+          {stage === "error" && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-red-700 text-sm">No se puede continuar</p>
+                  <pre className="mt-2 text-xs text-red-600 whitespace-pre-wrap break-words">
+                    {fatalError}
+                  </pre>
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <Button variant="outline" onClick={handleClose}>
+                  <X className="h-4 w-4 mr-1" />
+                  Cerrar
+                </Button>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
-              <Button variant="outline" onClick={handleClose}>
-                <X className="h-4 w-4 mr-1" />
-                Cerrar
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* ── Etapa 2: Selección archivo ── */}
-        {stage === "pick" && (
-          <ZipFilePicker onFileSelected={handleFileSelected} onCancel={handleClose} />
-        )}
+          {/* ── Etapa 2: Selección archivo ── */}
+          {stage === "pick" && (
+            <ZipFilePicker onFileSelected={handleFileSelected} onCancel={handleClose} />
+          )}
 
-        {/* ── Etapa 3: Análisis en progreso ── */}
-        {stage === "analyzing" && (
-          <ZipAnalysisProgress message={analysisProgress} fileName={selectedFile?.name ?? ""} />
-        )}
+          {/* ── Etapa 3: Análisis en progreso ── */}
+          {stage === "analyzing" && (
+            <ZipAnalysisProgress message={analysisProgress} fileName={selectedFile?.name ?? ""} />
+          )}
 
-        {/* ── Etapa 4: Vista previa ── */}
-        {stage === "preview" && analysis && (
-          <ZipPreviewTable
-            summary={analysis}
-            existingClients={existingClients}
-            onUpdateAction={updateClientAction}
-            onRunDryRun={handleRunDryRun}
-            onCancel={handleClose}
-          />
-        )}
+          {/* ── Etapa 4: Vista previa ── */}
+          {stage === "preview" && analysis && (
+            <ZipPreviewTable
+              summary={analysis}
+              existingClients={existingClients}
+              onUpdateAction={updateClientAction}
+              onRunDryRun={handleRunDryRun}
+              onCancel={handleClose}
+            />
+          )}
 
-        {/* ── Etapa 5: Dry-run resultado ── */}
-        {stage === "dryrun" && dryRunResult && analysis && (
-          <ZipDryRunPanel
-            dryRunResult={dryRunResult}
-            onConfirm={() => setStage("confirming")}
-            onBack={() => setStage("preview")}
-            onCancel={handleClose}
-          />
-        )}
+          {/* ── Etapa 5: Dry-run resultado ── */}
+          {stage === "dryrun" && dryRunResult && analysis && (
+            <ZipDryRunPanel
+              dryRunResult={dryRunResult}
+              onConfirm={() => setStage("confirming")}
+              onBack={() => setStage("preview")}
+              onCancel={handleClose}
+            />
+          )}
 
-        {/* ── Etapa 5.5: Confirmación explícita ── */}
-        {stage === "confirming" && dryRunResult && (
-          <ConfirmationPanel
-            dryRunResult={dryRunResult}
-            onConfirm={handleConfirmImport}
-            onBack={() => setStage("dryrun")}
-            onCancel={handleClose}
-          />
-        )}
+          {/* ── Etapa 5.5: Confirmación explícita ── */}
+          {stage === "confirming" && dryRunResult && (
+            <ConfirmationPanel
+              dryRunResult={dryRunResult}
+              onConfirm={handleConfirmImport}
+              onBack={() => setStage("dryrun")}
+              onCancel={handleClose}
+            />
+          )}
 
-        {/* ── Etapa 6: Progreso de importación ── */}
-        {stage === "importing" && <ZipImportProgress />}
+          {/* ── Etapa 6: Progreso de importación ── */}
+          {stage === "importing" && <ZipImportProgress />}
 
-        {/* ── Etapa 7: Resultado final ── */}
-        {stage === "result" && importResult && (
-          <ZipImportResult result={importResult} onClose={handleClose} />
-        )}
+          {/* ── Etapa 7: Resultado final ── */}
+          {stage === "result" && importResult && (
+            <ZipImportResult result={importResult} onClose={handleClose} />
+          )}
+        </ZipImportErrorBoundary>
       </DialogContent>
     </Dialog>
   );

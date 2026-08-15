@@ -26,6 +26,39 @@ const sql = {
 const allSql = Object.values(sql).join("\n");
 const occurrences = (text: string, pattern: RegExp) => text.match(pattern)?.length ?? 0;
 
+// Elimina comentarios de línea "-- ..." y de bloque "/* ... */" antes de
+// comprobaciones sintácticas, para que un regex no matchee texto que
+// aparece únicamente dentro de un comentario (p.ej. un comentario que cita
+// literalmente la sintaxis inválida "ADD CONSTRAINT IF NOT EXISTS" para
+// explicar por qué NO se usa). Nunca se usa para leer literales de CHECK
+// (esos no tienen comentarios dentro de sus paréntesis).
+const stripSqlComments = (text: string) =>
+  text.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+// ─── Contrato import_jobs.status (bug QA-IMPORT-TEST-20260815) ────────────────
+//
+// El importador ZIP inserta el import_job con status='processing' y lo
+// finaliza con 'completed' | 'partially_completed' | 'failed'. El
+// constraint import_jobs_status_check del bootstrap self-hosted debía
+// aceptar exactamente esos valores (más los reservados del contrato cloud)
+// y NO los nombres de fase del wizard nunca implementado
+// (analyzing/reviewing/importing) — ver
+// supabase/migrations/20260815120000_fix_import_jobs_status_check_constraint.sql.
+
+const importEngineSource = readFileSync("src/lib/zip-import/import-engine.server.ts", "utf8");
+const hotfixMigration = readFileSync(
+  "supabase/migrations/20260815120000_fix_import_jobs_status_check_constraint.sql",
+  "utf8",
+);
+
+const extractCheckValues = (text: string, constraintName: string): string[] => {
+  const block = text.match(
+    new RegExp(`constraint ${constraintName}[\\s\\S]*?\\)\\s*\\)[,;]`, "i"),
+  )?.[0];
+  if (!block) return [];
+  return [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+};
+
 describe("bootstrap canónico self-hosted", () => {
   it("fija PostgreSQL 17 y no depende de extensiones externas ni sintaxis PG18", () => {
     expect(sql.base).toContain("170000");
@@ -171,5 +204,110 @@ describe("integridad documental, tareas, pagos y Storage", () => {
     expect(sql.verify).toContain("begin transaction read only;");
     expect(sql.verify).not.toMatch(/^\s*(insert|update|delete|create|alter|drop|truncate)\b/gim);
     expect(sql.verify.trim().endsWith("commit;")).toBe(true);
+  });
+});
+
+describe("contrato import_jobs.status (bug QA-IMPORT-TEST-20260815)", () => {
+  const bootstrapValues = extractCheckValues(sql.tables, "import_jobs_status_check");
+  // Versión sin comentarios del hotfix, para las comprobaciones sintácticas
+  // de abajo (idempotencia, ausencia de DROP TABLE/DELETE, etc.). El SQL
+  // ejecutable es idéntico; solo se descarta el texto de los comentarios.
+  const hotfixSql = stripSqlComments(hotfixMigration);
+  const hotfixValues = extractCheckValues(hotfixSql, "import_jobs_status_check");
+
+  // Valores literales que src/lib/zip-import/import-engine.server.ts escribe
+  // realmente en import_jobs.status, extraídos de los dos sitios de
+  // escritura (creación del job y actualización final), no de un grep
+  // genérico de "status:" (que también matchearía analysis_status,
+  // processing_status, verification_status y el status del cliente).
+  const creationBlock = importEngineSource.match(
+    /\.from\("import_jobs"\)\s*\.insert\(\{[\s\S]*?\}\)/,
+  )?.[0];
+  const finalStatusBlock = importEngineSource.match(/const finalStatus =[\s\S]*?;/)?.[0];
+
+  it("localiza los dos bloques de escritura en import-engine.server.ts", () => {
+    // Si esto falla, el código se movió/renombró y la extracción de abajo
+    // ya no está mirando el sitio real — hay que actualizar los regex, no
+    // ignorar el fallo.
+    expect(creationBlock).toBeTruthy();
+    expect(finalStatusBlock).toBeTruthy();
+  });
+
+  const creationStatus = creationBlock?.match(/status:\s*"([^"]+)"/)?.[1];
+  const finalStatusValues = [...(finalStatusBlock?.matchAll(/"([^"]+)"/g) ?? [])].map((m) => m[1]);
+  const codeWritesValues = [creationStatus, ...finalStatusValues].filter(
+    (v): v is string => typeof v === "string",
+  );
+
+  it("el job se crea con status='processing' (según .kiro spec e import-engine)", () => {
+    expect(creationStatus).toBe("processing");
+  });
+
+  it("el estado final es completed | partially_completed | failed", () => {
+    expect(finalStatusValues.sort()).toEqual(["completed", "failed", "partially_completed"].sort());
+  });
+
+  it("el bootstrap self-hosted acepta TODOS los valores que el código escribe", () => {
+    for (const value of codeWritesValues) {
+      expect(bootstrapValues).toContain(value);
+    }
+  });
+
+  it("el bootstrap self-hosted ya NO contiene las fases del wizard nunca implementado", () => {
+    // 'analyzing' / 'reviewing' / 'importing' son nombres de paso de
+    // src/lib/imports/folder-import-engine.ts (spec .kiro, líneas 237-241),
+    // un motor que nunca se construyó — no son valores de import_jobs.status.
+    for (const retired of ["analyzing", "reviewing", "importing"]) {
+      expect(bootstrapValues).not.toContain(retired);
+    }
+  });
+
+  it("el bootstrap self-hosted coincide exactamente con el contrato cloud (legal_case_foundation)", () => {
+    const cloudValues = [
+      "draft",
+      "inventory",
+      "processing",
+      "consolidating",
+      "review_required",
+      "completed",
+      "partially_completed",
+      "failed",
+      "cancelled",
+    ];
+    expect([...bootstrapValues].sort()).toEqual([...cloudValues].sort());
+  });
+
+  it("el hotfix de supabase/migrations/ acepta el mismo conjunto que el bootstrap corregido", () => {
+    expect([...hotfixValues].sort()).toEqual([...bootstrapValues].sort());
+  });
+
+  it("el hotfix es seguro para una base con datos: no recrea la tabla ni borra filas", () => {
+    expect(hotfixSql).not.toMatch(/^\s*drop\s+table\b/gim);
+    expect(hotfixSql).not.toMatch(/^\s*truncate\b/gim);
+    expect(hotfixSql).not.toMatch(/^\s*delete\s+from\s+public\.import_jobs\b/gim);
+    expect(hotfixSql).toContain("drop constraint if exists import_jobs_status_check");
+    expect(hotfixMigration.trim().startsWith("begin;") || hotfixMigration).toContain("begin;");
+    expect(hotfixMigration.trim().endsWith("commit;")).toBe(true);
+  });
+
+  it("el hotfix no toca ningún otro CHECK de la tabla", () => {
+    expect(hotfixSql).not.toContain("import_jobs_progress_check");
+  });
+
+  it("el hotfix es idempotente: aplicarlo dos veces converge al mismo constraint", () => {
+    // drop-if-exists + backfill (solo afecta filas con valores retirados,
+    // cero filas en la segunda pasada) + add constraint de nombre fijo:
+    // reejecutar produce exactamente el mismo estado final. Se comprueba
+    // sobre hotfixSql (sin comentarios) para que un comentario que cita la
+    // sintaxis inválida "ADD CONSTRAINT IF NOT EXISTS" —para explicar que
+    // no existe en Postgres y por eso no se usa— no produzca un falso match.
+    const dropCount = occurrences(
+      hotfixSql,
+      /drop constraint if exists import_jobs_status_check/gi,
+    );
+    const addCount = occurrences(hotfixSql, /add constraint import_jobs_status_check/gi);
+    expect(dropCount).toBe(1);
+    expect(addCount).toBe(1);
+    expect(hotfixSql).not.toMatch(/add constraint[^;]+if not exists/i);
   });
 });

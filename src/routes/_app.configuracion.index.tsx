@@ -6,6 +6,7 @@ import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
 import { useAgendaEvents } from "@/hooks/use-agenda";
 import { useImportJobsFilter } from "@/hooks/use-ai-findings";
+import { importJobStatusTone } from "@/lib/import-jobs-status";
 import {
   exportFullBackup,
   exportClientsExcel,
@@ -1058,14 +1059,6 @@ function AdministrativeImportToolsPanel() {
   const { data: importJobs = [], isLoading } = useImportJobsFilter();
   const latestJobs = importJobs.slice(0, 8);
 
-  function statusTone(status: string): "default" | "success" | "warning" | "danger" | "info" {
-    const value = status.toLowerCase();
-    if (["completed", "success", "done"].includes(value)) return "success";
-    if (["failed", "error"].includes(value)) return "danger";
-    if (["processing", "running", "pending"].includes(value)) return "warning";
-    return "default";
-  }
-
   return (
     <div className="space-y-4">
       <Card className="p-6">
@@ -1117,7 +1110,7 @@ function AdministrativeImportToolsPanel() {
                       </div>
                     </td>
                     <td className="py-3 px-3">
-                      <StatusBadge tone={statusTone(job.status)}>{job.status}</StatusBadge>
+                      <StatusBadge tone={importJobStatusTone(job.status)}>{job.status}</StatusBadge>
                     </td>
                     <td className="py-3 px-3 text-xs text-muted-foreground">
                       {job.processed_documents}/{job.total_documents} procesados
