@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
-import { readServerEnv } from "./env-server";
+import { requireServerEnv } from "./env-server";
 import { requireUser } from "./auth-server";
 
 /**
@@ -11,14 +11,8 @@ import { requireUser } from "./auth-server";
  * confirmation emails — safe because it only runs server-side.
  */
 function getAdminClient() {
-  const url = readServerEnv("SUPABASE_URL") || "https://pnqdgwpxcxngeueosmnh.supabase.co";
-  const serviceKey = readServerEnv("SUPABASE_SERVICE_ROLE_KEY");
-
-  if (!serviceKey) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY no configurada. Agrégala en .env y como Wrangler secret.",
-    );
-  }
+  const url = requireServerEnv("SUPABASE_URL");
+  const serviceKey = requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
 
   return createClient<Database>(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },

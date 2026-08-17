@@ -24,7 +24,7 @@ import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
 import type { Database } from "../database.types";
 import { inferDocumentType } from "../document-types";
-import { readServerEnv } from "../env-server";
+import { requireServerEnv } from "../env-server";
 import { requireUser } from "../auth-server";
 import { analyzeZipEntries } from "./analyzer";
 import { findClientMatch } from "./client-normalizer";
@@ -43,11 +43,8 @@ import type { ImportJobResult, DryRunResult, DryRunClientResult } from "./types"
 // ─── Admin client ─────────────────────────────────────────────────────────────
 
 function getAdminClient() {
-  const url = readServerEnv("SUPABASE_URL") || "https://pnqdgwpxcxngeueosmnh.supabase.co";
-  const serviceKey = readServerEnv("SUPABASE_SERVICE_ROLE_KEY");
-  if (!serviceKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY no configurada.");
-  }
+  const url = requireServerEnv("SUPABASE_URL");
+  const serviceKey = requireServerEnv("SUPABASE_SERVICE_ROLE_KEY");
   return createClient<Database>(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });

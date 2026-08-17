@@ -14,6 +14,10 @@
 
 const REQUIRED = [
   { name: "SUPABASE_URL", description: "URL del proyecto Supabase (ej: https://xxx.supabase.co)" },
+  {
+    name: "SUPABASE_ANON_KEY",
+    description: "Clave anon/publishable de Supabase para validar sesiones",
+  },
   { name: "SUPABASE_SERVICE_ROLE_KEY", description: "Clave service_role de Supabase (secreta)" },
   { name: "GOOGLE_CLIENT_ID", description: "Client ID de Google OAuth 2.0" },
   { name: "GOOGLE_CLIENT_SECRET", description: "Client Secret de Google OAuth 2.0 (secreto)" },

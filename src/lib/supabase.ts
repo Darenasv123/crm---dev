@@ -1,11 +1,25 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
 
+const isTestEnvironment = import.meta.env.MODE === "test";
+
 const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ?? "https://pnqdgwpxcxngeueosmnh.supabase.co";
+  import.meta.env.VITE_SUPABASE_URL?.trim() || (isTestEnvironment ? "http://127.0.0.1:54321" : "");
+
 const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ??
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBucWRnd3B4Y3huZ2V1ZW9zbW5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NDEwMTMsImV4cCI6MjA5ODMxNzAxM30._IQph5gAHaCwdOEDlG-uGmjiciZ1aJQxxCsQAk9GZiY";
+  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || (isTestEnvironment ? "test-anon-key" : "");
+
+if (!SUPABASE_URL) {
+  throw new Error(
+    "VITE_SUPABASE_URL no configurada. El build requiere un endpoint Supabase explícito.",
+  );
+}
+
+if (!SUPABASE_ANON_KEY) {
+  throw new Error(
+    "VITE_SUPABASE_ANON_KEY no configurada. El build requiere una clave anon/publishable explícita.",
+  );
+}
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
