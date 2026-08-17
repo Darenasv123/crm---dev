@@ -1,11 +1,6 @@
-﻿export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5";
-  };
   public: {
     Tables: {
       agenda_events: {
@@ -13,9 +8,9 @@ export type Database = {
           case_id: string | null;
           client_id: string | null;
           created_at: string;
+          deleted_at: string | null;
           event_date: string;
           event_time: string;
-          gcal_event_id: string | null;
           google_calendar_id: string | null;
           google_etag: string | null;
           google_event_id: string | null;
@@ -24,7 +19,6 @@ export type Database = {
           id: string;
           last_synced_at: string | null;
           location: string | null;
-          deleted_at: string | null;
           sync_error: string | null;
           sync_origin: string;
           sync_status: string;
@@ -36,9 +30,9 @@ export type Database = {
           case_id?: string | null;
           client_id?: string | null;
           created_at?: string;
+          deleted_at?: string | null;
           event_date: string;
           event_time: string;
-          gcal_event_id?: string | null;
           google_calendar_id?: string | null;
           google_etag?: string | null;
           google_event_id?: string | null;
@@ -47,7 +41,6 @@ export type Database = {
           id?: string;
           last_synced_at?: string | null;
           location?: string | null;
-          deleted_at?: string | null;
           sync_error?: string | null;
           sync_origin?: string;
           sync_status?: string;
@@ -59,9 +52,9 @@ export type Database = {
           case_id?: string | null;
           client_id?: string | null;
           created_at?: string;
+          deleted_at?: string | null;
           event_date?: string;
           event_time?: string;
-          gcal_event_id?: string | null;
           google_calendar_id?: string | null;
           google_etag?: string | null;
           google_event_id?: string | null;
@@ -70,7 +63,6 @@ export type Database = {
           id?: string;
           last_synced_at?: string | null;
           location?: string | null;
-          deleted_at?: string | null;
           sync_error?: string | null;
           sync_origin?: string;
           sync_status?: string;
@@ -94,216 +86,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-      google_calendar_connections: {
-        Row: {
-          access_token_expires_at: string | null;
-          calendar_id: string;
-          calendar_name: string | null;
-          connected_by: string;
-          created_at: string;
-          encrypted_refresh_token: string;
-          google_account_email: string | null;
-          id: string;
-          last_error: string | null;
-          last_synced_at: string | null;
-          status: string;
-          sync_token: string | null;
-          updated_at: string;
-        };
-        Insert: {
-          access_token_expires_at?: string | null;
-          calendar_id: string;
-          calendar_name?: string | null;
-          connected_by: string;
-          created_at?: string;
-          encrypted_refresh_token: string;
-          google_account_email?: string | null;
-          id?: string;
-          last_error?: string | null;
-          last_synced_at?: string | null;
-          status?: string;
-          sync_token?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          access_token_expires_at?: string | null;
-          calendar_id?: string;
-          calendar_name?: string | null;
-          connected_by?: string;
-          created_at?: string;
-          encrypted_refresh_token?: string;
-          google_account_email?: string | null;
-          id?: string;
-          last_error?: string | null;
-          last_synced_at?: string | null;
-          status?: string;
-          sync_token?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "google_calendar_connections_connected_by_fkey";
-            columns: ["connected_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      google_calendar_channels: {
-        Row: {
-          channel_id: string;
-          channel_token_hash: string;
-          connection_id: string;
-          created_at: string;
-          expires_at: string;
-          id: string;
-          last_message_number: number | null;
-          resource_id: string;
-          stopped_at: string | null;
-          updated_at: string;
-        };
-        Insert: {
-          channel_id: string;
-          channel_token_hash: string;
-          connection_id: string;
-          created_at?: string;
-          expires_at: string;
-          id?: string;
-          last_message_number?: number | null;
-          resource_id: string;
-          stopped_at?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          channel_id?: string;
-          channel_token_hash?: string;
-          connection_id?: string;
-          created_at?: string;
-          expires_at?: string;
-          id?: string;
-          last_message_number?: number | null;
-          resource_id?: string;
-          stopped_at?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "google_calendar_channels_connection_id_fkey";
-            columns: ["connection_id"];
-            isOneToOne: false;
-            referencedRelation: "google_calendar_connections";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      google_calendar_oauth_states: {
-        Row: {
-          calendar_id: string;
-          code_verifier: string;
-          created_at: string;
-          expires_at: string;
-          requested_by: string;
-          state_hash: string;
-        };
-        Insert: {
-          calendar_id: string;
-          code_verifier: string;
-          created_at?: string;
-          expires_at: string;
-          requested_by: string;
-          state_hash: string;
-        };
-        Update: {
-          calendar_id?: string;
-          code_verifier?: string;
-          created_at?: string;
-          expires_at?: string;
-          requested_by?: string;
-          state_hash?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "google_calendar_oauth_states_requested_by_fkey";
-            columns: ["requested_by"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      google_calendar_sync_log: {
-        Row: {
-          agenda_event_id: string | null;
-          connection_id: string | null;
-          created_at: string;
-          direction: string;
-          error_code: string | null;
-          error_message: string | null;
-          google_event_id: string | null;
-          id: number;
-          operation: string;
-          status: string;
-        };
-        Insert: {
-          agenda_event_id?: string | null;
-          connection_id?: string | null;
-          created_at?: string;
-          direction: string;
-          error_code?: string | null;
-          error_message?: string | null;
-          google_event_id?: string | null;
-          id?: never;
-          operation: string;
-          status: string;
-        };
-        Update: {
-          agenda_event_id?: string | null;
-          connection_id?: string | null;
-          created_at?: string;
-          direction?: string;
-          error_code?: string | null;
-          error_message?: string | null;
-          google_event_id?: string | null;
-          id?: never;
-          operation?: string;
-          status?: string;
-        };
-        Relationships: [];
-      };
-      google_calendar_sync_requests: {
-        Row: {
-          channel_id: string | null;
-          connection_id: string;
-          created_at: string;
-          error_message: string | null;
-          id: number;
-          message_number: number | null;
-          processed_at: string | null;
-          status: string;
-        };
-        Insert: {
-          channel_id?: string | null;
-          connection_id: string;
-          created_at?: string;
-          error_message?: string | null;
-          id?: never;
-          message_number?: number | null;
-          processed_at?: string | null;
-          status?: string;
-        };
-        Update: {
-          channel_id?: string | null;
-          connection_id?: string;
-          created_at?: string;
-          error_message?: string | null;
-          id?: never;
-          message_number?: number | null;
-          processed_at?: string | null;
-          status?: string;
-        };
-        Relationships: [];
       };
       ai_analysis_runs: {
         Row: {
@@ -667,6 +449,57 @@ export type Database = {
           },
         ];
       };
+      case_task_history: {
+        Row: {
+          changed_at: string;
+          changed_by: string | null;
+          changes: Json;
+          id: string;
+          new_scheduled_for: string | null;
+          new_status: string | null;
+          old_scheduled_for: string | null;
+          old_status: string | null;
+          task_id: string;
+        };
+        Insert: {
+          changed_at?: string;
+          changed_by?: string | null;
+          changes?: Json;
+          id?: string;
+          new_scheduled_for?: string | null;
+          new_status?: string | null;
+          old_scheduled_for?: string | null;
+          old_status?: string | null;
+          task_id: string;
+        };
+        Update: {
+          changed_at?: string;
+          changed_by?: string | null;
+          changes?: Json;
+          id?: string;
+          new_scheduled_for?: string | null;
+          new_status?: string | null;
+          old_scheduled_for?: string | null;
+          old_status?: string | null;
+          task_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_task_history_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "case_task_history_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "case_tasks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       case_tasks: {
         Row: {
           assigned_to: string | null;
@@ -770,15 +603,15 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "case_tasks_created_by_fkey";
-            columns: ["created_by"];
+            foreignKeyName: "case_tasks_completed_by_fkey";
+            columns: ["completed_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "case_tasks_completed_by_fkey";
-            columns: ["completed_by"];
+            foreignKeyName: "case_tasks_created_by_fkey";
+            columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -970,7 +803,6 @@ export type Database = {
           id: string;
           initials: string;
           name: string;
-          /** Nullable after migration 20260724000000 — bulk import leaves this NULL */
           phone: string | null;
           registered_at: string;
           status: string;
@@ -984,7 +816,6 @@ export type Database = {
           id?: string;
           initials: string;
           name: string;
-          /** Nullable after migration 20260724000000 */
           phone?: string | null;
           registered_at?: string;
           status?: string;
@@ -1009,6 +840,45 @@ export type Database = {
             columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      document_change_history: {
+        Row: {
+          changed_at: string;
+          changed_by: string | null;
+          changes: Json;
+          document_id: string;
+          id: string;
+        };
+        Insert: {
+          changed_at?: string;
+          changed_by?: string | null;
+          changes: Json;
+          document_id: string;
+          id?: string;
+        };
+        Update: {
+          changed_at?: string;
+          changed_by?: string | null;
+          changes?: Json;
+          document_id?: string;
+          id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "document_change_history_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "document_change_history_document_id_fkey";
+            columns: ["document_id"];
+            isOneToOne: false;
+            referencedRelation: "documents";
             referencedColumns: ["id"];
           },
         ];
@@ -1074,33 +944,33 @@ export type Database = {
       };
       document_folders: {
         Row: {
-          id: string;
           client_id: string;
-          parent_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          id: string;
           name: string;
           normalized_name: string;
-          created_by: string | null;
-          created_at: string;
+          parent_id: string | null;
           updated_at: string;
         };
         Insert: {
-          id?: string;
           client_id: string;
-          parent_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
           name: string;
           normalized_name: string;
-          created_by?: string | null;
-          created_at?: string;
+          parent_id?: string | null;
           updated_at?: string;
         };
         Update: {
-          id?: string;
           client_id?: string;
-          parent_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
           name?: string;
           normalized_name?: string;
-          created_by?: string | null;
-          created_at?: string;
+          parent_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -1112,17 +982,17 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "document_folders_parent_id_fkey";
-            columns: ["parent_id"];
-            isOneToOne: false;
-            referencedRelation: "document_folders";
-            referencedColumns: ["id"];
-          },
-          {
             foreignKeyName: "document_folders_created_by_fkey";
             columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "document_folders_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "document_folders";
             referencedColumns: ["id"];
           },
         ];
@@ -1132,6 +1002,7 @@ export type Database = {
           case_id: string | null;
           checksum: string | null;
           client_id: string | null;
+          content_hash: string | null;
           created_at: string;
           created_by: string | null;
           display_name: string | null;
@@ -1141,12 +1012,14 @@ export type Database = {
           external_folder_id: string | null;
           external_url: string | null;
           file_size: number | null;
+          folder_id: string | null;
           id: string;
           is_confidential: boolean;
           mime_type: string | null;
           name: string;
           original_name: string | null;
           processing_status: string;
+          relative_path: string | null;
           size: string;
           source_provider: string | null;
           source_type: string;
@@ -1155,17 +1028,12 @@ export type Database = {
           updated_at: string;
           uploaded_at: string;
           verification_status: string;
-          /** Path relative to the client folder, e.g. "Resoluciones/res01.pdf". Added by migration 20260724000000. */
-          relative_path: string | null;
-          /** SHA-256 hex of file content. Added by migration 20260724000000. */
-          content_hash: string | null;
-          /** Logical folder assignment. Added by migration 20260725120000. */
-          folder_id: string | null;
         };
         Insert: {
           case_id?: string | null;
           checksum?: string | null;
           client_id?: string | null;
+          content_hash?: string | null;
           created_at?: string;
           created_by?: string | null;
           display_name?: string | null;
@@ -1175,12 +1043,14 @@ export type Database = {
           external_folder_id?: string | null;
           external_url?: string | null;
           file_size?: number | null;
+          folder_id?: string | null;
           id?: string;
           is_confidential?: boolean;
           mime_type?: string | null;
           name: string;
           original_name?: string | null;
           processing_status?: string;
+          relative_path?: string | null;
           size: string;
           source_provider?: string | null;
           source_type?: string;
@@ -1189,14 +1059,12 @@ export type Database = {
           updated_at?: string;
           uploaded_at?: string;
           verification_status?: string;
-          relative_path?: string | null;
-          content_hash?: string | null;
-          folder_id?: string | null;
         };
         Update: {
           case_id?: string | null;
           checksum?: string | null;
           client_id?: string | null;
+          content_hash?: string | null;
           created_at?: string;
           created_by?: string | null;
           display_name?: string | null;
@@ -1206,12 +1074,14 @@ export type Database = {
           external_folder_id?: string | null;
           external_url?: string | null;
           file_size?: number | null;
+          folder_id?: string | null;
           id?: string;
           is_confidential?: boolean;
           mime_type?: string | null;
           name?: string;
           original_name?: string | null;
           processing_status?: string;
+          relative_path?: string | null;
           size?: string;
           source_provider?: string | null;
           source_type?: string;
@@ -1220,9 +1090,6 @@ export type Database = {
           updated_at?: string;
           uploaded_at?: string;
           verification_status?: string;
-          relative_path?: string | null;
-          content_hash?: string | null;
-          folder_id?: string | null;
         };
         Relationships: [
           {
@@ -1244,6 +1111,246 @@ export type Database = {
             columns: ["created_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documents_folder_id_fkey";
+            columns: ["folder_id"];
+            isOneToOne: false;
+            referencedRelation: "document_folders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_channels: {
+        Row: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          last_message_number: number | null;
+          resource_id: string;
+          stopped_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          channel_id?: string;
+          channel_token_hash?: string;
+          connection_id?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id?: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_channels_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_calendar_connections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_connections: {
+        Row: {
+          access_token_expires_at: string | null;
+          calendar_id: string;
+          calendar_name: string | null;
+          connected_by: string;
+          created_at: string;
+          encrypted_refresh_token: string;
+          google_account_email: string | null;
+          id: string;
+          last_error: string | null;
+          last_synced_at: string | null;
+          status: string;
+          sync_token: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          access_token_expires_at?: string | null;
+          calendar_id: string;
+          calendar_name?: string | null;
+          connected_by: string;
+          created_at?: string;
+          encrypted_refresh_token: string;
+          google_account_email?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          status?: string;
+          sync_token?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          access_token_expires_at?: string | null;
+          calendar_id?: string;
+          calendar_name?: string | null;
+          connected_by?: string;
+          created_at?: string;
+          encrypted_refresh_token?: string;
+          google_account_email?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          status?: string;
+          sync_token?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connections_connected_by_fkey";
+            columns: ["connected_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_oauth_states: {
+        Row: {
+          calendar_id: string;
+          code_verifier: string;
+          created_at: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Insert: {
+          calendar_id: string;
+          code_verifier: string;
+          created_at?: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Update: {
+          calendar_id?: string;
+          code_verifier?: string;
+          created_at?: string;
+          expires_at?: string;
+          requested_by?: string;
+          state_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_oauth_states_requested_by_fkey";
+            columns: ["requested_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_sync_log: {
+        Row: {
+          agenda_event_id: string | null;
+          connection_id: string | null;
+          created_at: string;
+          direction: string;
+          error_code: string | null;
+          error_message: string | null;
+          google_event_id: string | null;
+          id: number;
+          operation: string;
+          status: string;
+        };
+        Insert: {
+          agenda_event_id?: string | null;
+          connection_id?: string | null;
+          created_at?: string;
+          direction: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          google_event_id?: string | null;
+          id?: never;
+          operation: string;
+          status: string;
+        };
+        Update: {
+          agenda_event_id?: string | null;
+          connection_id?: string | null;
+          created_at?: string;
+          direction?: string;
+          error_code?: string | null;
+          error_message?: string | null;
+          google_event_id?: string | null;
+          id?: never;
+          operation?: string;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_sync_log_agenda_event_id_fkey";
+            columns: ["agenda_event_id"];
+            isOneToOne: false;
+            referencedRelation: "agenda_events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_calendar_sync_log_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_calendar_connections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_sync_requests: {
+        Row: {
+          channel_id: string | null;
+          connection_id: string;
+          created_at: string;
+          error_message: string | null;
+          id: number;
+          message_number: number | null;
+          processed_at: string | null;
+          status: string;
+        };
+        Insert: {
+          channel_id?: string | null;
+          connection_id: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: never;
+          message_number?: number | null;
+          processed_at?: string | null;
+          status?: string;
+        };
+        Update: {
+          channel_id?: string | null;
+          connection_id?: string;
+          created_at?: string;
+          error_message?: string | null;
+          id?: never;
+          message_number?: number | null;
+          processed_at?: string | null;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_sync_requests_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_calendar_connections";
             referencedColumns: ["id"];
           },
         ];
@@ -1584,24 +1691,94 @@ export type Database = {
     Functions: {
       claim_case_task: {
         Args: { p_task_id: string };
-        Returns: Database["public"]["Tables"]["case_tasks"]["Row"][];
+        Returns: {
+          assigned_to: string | null;
+          case_id: string | null;
+          claimed_at: string | null;
+          claimed_by: string | null;
+          client_id: string | null;
+          completed_at: string | null;
+          completed_by: string | null;
+          created_at: string;
+          created_by: string | null;
+          created_by_ai: boolean;
+          description: string | null;
+          due_date: string | null;
+          id: string;
+          is_all_day: boolean;
+          priority: string;
+          scheduled_for: string;
+          source: string;
+          started_at: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+          verification_status: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "case_tasks";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
       };
+      crm_is_active_admin: { Args: never; Returns: boolean };
+      crm_is_active_staff: { Args: never; Returns: boolean };
       is_admin: { Args: never; Returns: boolean };
       is_staff: { Args: never; Returns: boolean };
+      normalize_document_types: {
+        Args: { p_apply?: boolean };
+        Returns: {
+          canonical_value: string;
+          document_id: string;
+          is_known: boolean;
+          previous_value: string;
+          was_applied: boolean;
+        }[];
+      };
       register_payment_record_atomic: {
         Args: {
           p_amount: number;
           p_method: string;
-          p_notes?: string | null;
-          p_payment_date?: string | null;
+          p_notes?: string;
+          p_payment_date?: string;
           p_payment_id: string;
-          p_receipt?: string | null;
+          p_receipt?: string;
         };
         Returns: Json;
       };
       return_case_task: {
         Args: { p_task_id: string };
-        Returns: Database["public"]["Tables"]["case_tasks"]["Row"][];
+        Returns: {
+          assigned_to: string | null;
+          case_id: string | null;
+          claimed_at: string | null;
+          claimed_by: string | null;
+          client_id: string | null;
+          completed_at: string | null;
+          completed_by: string | null;
+          created_at: string;
+          created_by: string | null;
+          created_by_ai: boolean;
+          description: string | null;
+          due_date: string | null;
+          id: string;
+          is_all_day: boolean;
+          priority: string;
+          scheduled_for: string;
+          source: string;
+          started_at: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+          verification_status: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "case_tasks";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
       };
     };
     Enums: {

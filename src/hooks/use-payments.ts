@@ -8,8 +8,22 @@ type PaymentInsert = Database["public"]["Tables"]["payments"]["Insert"];
 type PaymentRecord = Database["public"]["Tables"]["payment_records"]["Row"];
 type PaymentRecordInsert = Database["public"]["Tables"]["payment_records"]["Insert"];
 type QueryOptions = { enabled?: boolean };
-type RegisterPaymentRpcArgs =
-  Database["public"]["Functions"]["register_payment_record_atomic"]["Args"];
+// El regenerado desde self-hosted (Supabase CLI 2.114.0) tipa p_receipt,
+// p_notes y p_payment_date como opcionales pero sin `| null`. La función SQL
+// real (supabase/self-hosted/0004_functions_and_rpc.sql:525-531) los declara
+// `text default null` / `date default current_date`: Postgres acepta NULL
+// explícito para esos tres parámetros igual que si se omitieran (no es un
+// NOT NULL). Es una narrowing del generador de tipos, no un cambio real de
+// contrato — se amplía aquí en vez de tocar el archivo generado, para no
+// alterar el envío explícito de `null` que ya cubre tests/payments-atomic.test.ts.
+type RegisterPaymentRpcArgs = Omit<
+  Database["public"]["Functions"]["register_payment_record_atomic"]["Args"],
+  "p_receipt" | "p_notes" | "p_payment_date"
+> & {
+  p_receipt?: string | null;
+  p_notes?: string | null;
+  p_payment_date?: string | null;
+};
 
 export interface RegisterPaymentInput {
   paymentId: string;
