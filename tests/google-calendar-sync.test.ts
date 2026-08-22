@@ -237,19 +237,22 @@ describe("cola de sincronización: reclamo de jobs abandonados (claimed_at, no c
 
   it(
     "caso de upgrade: filas 'processing' preexistentes se backfillean una sola vez con " +
-      "created_at, para no quedar irrecuperables — sin reintroducir created_at como regla general",
+      "now(), para no quedar irrecuperables — sin reintroducir created_at como regla general",
     () => {
       const claimMigration = read(
         "supabase/migrations/20260822090000_google_calendar_sync_queue_claim.sql",
       );
       expect(claimMigration).toContain(
-        "update public.google_calendar_sync_requests\n   set claimed_at = created_at\n" +
+        "update public.google_calendar_sync_requests\n   set claimed_at = now()\n" +
           " where status = 'processing'\n   and claimed_at is null;",
       );
+      // El backfill NUNCA debe usar created_at (ver el escenario de riesgo
+      // confirmado en la Fase 3D, cubierto abajo).
+      expect(claimMigration).not.toContain("set claimed_at = created_at");
       // El backfill ocurre ANTES de crear el índice de reclamo, y el ADD
       // COLUMN ocurre antes del backfill (orden correcto de la migración).
       const addColumnIdx = claimMigration.indexOf("add column if not exists claimed_at");
-      const backfillIdx = claimMigration.indexOf("set claimed_at = created_at");
+      const backfillIdx = claimMigration.indexOf("set claimed_at = now()");
       const indexIdx = claimMigration.indexOf("google_calendar_sync_requests_processing_idx");
       expect(addColumnIdx).toBeGreaterThan(-1);
       expect(backfillIdx).toBeGreaterThan(addColumnIdx);
@@ -260,6 +263,58 @@ describe("cola de sincronización: reclamo de jobs abandonados (claimed_at, no c
       expect(server).not.toMatch(/isStaleProcessing\([^)]*created_at/);
     },
   );
+
+  // ── Fase 3D: corrección de seguridad del backfill de upgrade ─────────────
+  //
+  // Riesgo confirmado tras revisión posterior al commit anterior: la primera
+  // versión del backfill usaba `claimed_at = created_at`. Una fila puede
+  // estar 'processing' porque un worker la reclamó legítimamente hace
+  // segundos, mientras que su created_at (llegada del webhook, no el claim)
+  // puede ser de 30+ minutos atrás si esperó en 'pending'. Backfillear con
+  // ese created_at antiguo la marcaría abandonada de inmediato — doble
+  // procesamiento real durante un despliegue con un worker todavía activo.
+  describe("Fase 3D — backfill de upgrade seguro ante concurrencia", () => {
+    it("[A] job legacy ACTIVO: created_at de hace 30+ min no debe volverlo stale de inmediato", () => {
+      // Reproduce exactamente la semántica del backfill corregido: la
+      // migración fija claimed_at = now() (el instante del upgrade), nunca
+      // created_at, sin importar cuán antiguo sea created_at.
+      const createdAt = new Date("2026-09-01T11:30:00Z"); // hace 30 min
+      const migrationInstant = new Date("2026-09-01T12:00:00Z"); // ahora
+      const claimedAtViaBackfill = migrationInstant.toISOString(); // now(), no created_at
+      expect(isStaleProcessing(claimedAtViaBackfill, migrationInstant)).toBe(false);
+      // Demuestra el bug que se corrigió: si el backfill hubiera usado
+      // created_at (comportamiento anterior, ya no presente en el código),
+      // la misma fila SÍ se habría marcado stale de inmediato.
+      expect(isStaleProcessing(createdAt.toISOString(), migrationInstant)).toBe(true);
+    });
+
+    it("[B] job legacy REALMENTE abandonado: tras superar el umbral desde el nuevo claimed_at, se recupera", () => {
+      const migrationInstant = new Date("2026-09-01T12:00:00Z");
+      const claimedAtViaBackfill = migrationInstant.toISOString();
+      const muchLater = new Date(migrationInstant.getTime() + STALE_PROCESSING_MS + 60_000);
+      expect(isStaleProcessing(claimedAtViaBackfill, muchLater)).toBe(true);
+    });
+
+    it("[C] el código runtime no usa created_at para isStaleProcessing (confirmación repetida)", () => {
+      expect(server).not.toMatch(/isStaleProcessing\([^)]*created_at/);
+      expect(server).toContain('.eq("status", "processing")\n    .lt("claimed_at", staleCutoff);');
+    });
+
+    it("[D] claim normal pending→processing sigue fijando claimed_at en el mismo UPDATE (sin cambios)", () => {
+      expect(server).toContain(
+        '.update({ status: "processing", claimed_at: new Date().toISOString() })',
+      );
+    });
+
+    it("el retraso deliberado en la recuperación de jobs legacy abandonados está documentado", () => {
+      expect(claimMigrationSource()).toContain("retraso");
+      expect(claimMigrationSource()).toContain("deliberado");
+    });
+
+    function claimMigrationSource() {
+      return read("supabase/migrations/20260822090000_google_calendar_sync_queue_claim.sql");
+    }
+  });
 
   it("el reclamo de abandonados filtra por claimed_at, nunca por created_at", () => {
     expect(server).toContain('.eq("status", "processing")\n    .lt("claimed_at", staleCutoff);');
