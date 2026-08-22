@@ -35,6 +35,9 @@ import {
   releaseDocumentPreview,
   type DocumentPreview,
 } from "@/lib/document-actions";
+import { usePermissions } from "@/lib/permissions";
+import { FileExtIcon } from "@/components/documents/file-icon";
+import { DocumentViewerDialog } from "@/components/documents/document-viewer-dialog";
 
 export const Route = createFileRoute("/_app/documentos/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -61,31 +64,6 @@ function docTypeColor(type: string): string {
   return typeTokenColor[type] ?? typeTokenColor.Otros;
 }
 
-/** Icono por extensión de archivo */
-function FileExtIcon({ name, className }: { name: string; className?: string }) {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  const colorMap: Record<string, string> = {
-    pdf: "text-red-500",
-    doc: "text-blue-600",
-    docx: "text-blue-600",
-    xls: "text-green-600",
-    xlsx: "text-green-600",
-    jpg: "text-amber-500",
-    jpeg: "text-amber-500",
-    png: "text-amber-500",
-    gif: "text-amber-500",
-  };
-  const colorClass = colorMap[ext] ?? "text-muted-foreground";
-  return (
-    <div
-      className={`grid h-8 w-8 place-items-center rounded-lg bg-muted/50 shrink-0 ${className ?? ""}`}
-      aria-hidden="true"
-    >
-      <FileText className={`h-4 w-4 ${colorClass}`} />
-    </div>
-  );
-}
-
 function displayDocumentType(type: string) {
   return normalizeDocumentType(type);
 }
@@ -109,7 +87,7 @@ function DocsPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const { profile } = useAuth();
-  const isAdmin = profile?.role === "Administrador";
+  const permissions = usePermissions(profile);
 
   const { data: docs = [], isLoading } = useDocuments();
   const { data: clients = [] } = useClients();
@@ -280,9 +258,34 @@ function DocsPage() {
         </button>
       }
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_280px] gap-4">
-        {/* Categories panel */}
-        <Card className="p-3 h-fit">
+      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-[220px_minmax(0,1fr)_320px]">
+        {/* Categories: compact horizontal scroller on laptop/medium screens */}
+        <Card className="flex gap-1.5 overflow-x-auto p-2 2xl:hidden">
+          <button
+            type="button"
+            onClick={() => setActiveType("all")}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${activeType === "all" ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
+          >
+            <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            Todos
+            <span className="text-muted-foreground">{docs.length}</span>
+          </button>
+          {DOC_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setActiveType(t)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${activeType === t ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted/50"}`}
+            >
+              <Folder className="h-3.5 w-3.5 shrink-0" style={{ color: docTypeColor(t) }} />
+              {t}
+              <span className="text-muted-foreground">{countByType[t] ?? 0}</span>
+            </button>
+          ))}
+        </Card>
+
+        {/* Categories: full sidebar on wide desktop */}
+        <Card className="hidden h-fit p-3 2xl:block">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
             Categorías
           </div>
@@ -350,7 +353,7 @@ function DocsPage() {
             </div>
           ) : (
             <div className="max-h-[calc(100vh-19rem)] overflow-auto overscroll-contain">
-              <table className="min-w-[1180px] w-full text-sm">
+              <table className="min-w-[1040px] w-full text-sm">
                 <thead className="sticky top-0 z-20 bg-card shadow-sm">
                   <tr className="text-left text-xs uppercase text-muted-foreground bg-muted/30">
                     <th className="py-2 pl-4">Nombre</th>
@@ -383,7 +386,10 @@ function DocsPage() {
                         <div className="flex items-center gap-2.5">
                           <FileExtIcon name={d.name} />
                           <div className="min-w-0">
-                            <div className="text-sm font-medium truncate max-w-[200px]">
+                            <div
+                              className="text-sm font-medium truncate max-w-[240px]"
+                              title={d.name}
+                            >
                               {d.name}
                             </div>
                             <div className="text-[10px] text-muted-foreground">
@@ -467,7 +473,7 @@ function DocsPage() {
                           >
                             <Download className="h-3.5 w-3.5 text-muted-foreground" />
                           </button>
-                          {isAdmin && (
+                          {permissions.canDeleteDocuments && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -504,17 +510,21 @@ function DocsPage() {
         </Card>
 
         {documentActionError && (
-          <div className="lg:col-span-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="2xl:col-span-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {documentActionError}
           </div>
         )}
 
-        {/* Preview panel */}
-        <PreviewPanel selected={selected} onPreview={handlePreview} onDownload={handleDownload} />
+        {/* Preview panel: only alongside the list when there's room for a third column.
+            Below that, the per-row Ver/Descargar/Eliminar actions and the full-screen
+            visor cover the same functionality without cramping the list. */}
+        <div className="hidden 2xl:block">
+          <PreviewPanel selected={selected} onPreview={handlePreview} onDownload={handleDownload} />
+        </div>
       </div>
 
       {activePreview && (
-        <DocumentPreviewDialog
+        <DocumentViewerDialog
           preview={activePreview}
           onClose={closePreview}
           onDownload={() => activePreviewDocument && handleDownload(activePreviewDocument)}
@@ -878,73 +888,6 @@ function documentVerificationLabel(status: string) {
       rejected: "Rechazado",
       conflict: "Conflicto",
     }[status] ?? status
-  );
-}
-
-function DocumentPreviewDialog({
-  preview,
-  onClose,
-  onDownload,
-}: {
-  preview: DocumentPreview;
-  onClose: () => void;
-  onDownload: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Vista previa de ${preview.name}`}
-    >
-      <Card className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden shadow-2xl">
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-sm font-semibold">{preview.name}</h2>
-            <p className="text-xs text-muted-foreground">Vista previa segura del documento</p>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={onDownload}>
-            <Download className="h-4 w-4" /> Descargar
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Cerrar visor"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="min-h-0 flex-1 bg-muted/20 p-3">
-          {preview.kind === "image" ? (
-            <img src={preview.url} alt={preview.name} className="h-full w-full object-contain" />
-          ) : preview.kind === "pdf" || preview.kind === "text" ? (
-            <iframe
-              src={preview.url}
-              title={`Vista previa de ${preview.name}`}
-              className="h-full w-full rounded border border-border bg-white"
-            />
-          ) : preview.kind === "docx" ? (
-            <iframe
-              srcDoc={preview.html}
-              sandbox=""
-              title={`Vista previa de ${preview.name}`}
-              className="h-full w-full rounded border border-border bg-white"
-            />
-          ) : (
-            <div className="grid h-full place-items-center px-6 text-center">
-              <div className="max-w-md space-y-3">
-                <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="font-medium">Vista previa no disponible</p>
-                <p className="text-sm text-muted-foreground">{preview.message}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
-    </div>
   );
 }
 

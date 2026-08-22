@@ -29,6 +29,7 @@ import { useDocuments } from "@/hooks/use-documents";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
 import { useCases } from "@/hooks/use-cases";
 import { useClient, useClients, useUpdateClient } from "@/hooks/use-clients";
+import { filterDocumentsByClient } from "@/lib/document-actions";
 import {
   buildClientInitials,
   CLIENT_STATUS_OPTIONS,
@@ -101,9 +102,7 @@ function ClientDetail() {
 
   const clientCases = cases.filter((item) => item.client_id === id);
   const caseIds = new Set(clientCases.map((item) => item.id));
-  const clientDocuments = documents.filter(
-    (item) => item.client_id === id || (item.case_id ? caseIds.has(item.case_id) : false),
-  );
+  const clientDocuments = filterDocumentsByClient(documents, id, caseIds);
   const clientReports = reports.filter((item) => item.client_id === id);
   const activeTasks = tasks.filter((task) => !["completed", "cancelled"].includes(task.status));
   const duplicates = editing ? findClientDuplicates(form, allClients, id) : [];
@@ -183,7 +182,7 @@ function ClientDetail() {
           </div>
           <dl className="mt-6 space-y-4 border-t pt-4">
             <Contact icon={Phone} label="Teléfono" value={client.phone || "Sin teléfono"} />
-            {client.email && <Contact icon={Mail} label="Correo" value={client.email} />}
+            <Contact icon={Mail} label="Correo" value={client.email || "Sin correo"} />
           </dl>
         </Card>
 

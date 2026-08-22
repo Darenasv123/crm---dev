@@ -83,6 +83,28 @@ export function releaseDocumentPreview(preview: DocumentPreview | null) {
   if (preview && "url" in preview) URL.revokeObjectURL(preview.url);
 }
 
+/**
+ * Filtra documentos relacionados con un cliente: los asignados directamente
+ * al cliente y los asignados a cualquiera de sus expedientes.
+ * Centraliza una lógica que antes estaba duplicada en varias pantallas.
+ */
+export function filterDocumentsByClient<
+  T extends { client_id: string | null; case_id: string | null },
+>(documents: T[], clientId: string, clientCaseIds: Iterable<string>): T[] {
+  const caseIdSet = clientCaseIds instanceof Set ? clientCaseIds : new Set(clientCaseIds);
+  return documents.filter(
+    (item) => item.client_id === clientId || (item.case_id ? caseIdSet.has(item.case_id) : false),
+  );
+}
+
+/** Filtra documentos relacionados con un expediente específico. */
+export function filterDocumentsByCase<T extends { case_id: string | null }>(
+  documents: T[],
+  caseId: string,
+): T[] {
+  return documents.filter((item) => item.case_id === caseId);
+}
+
 export async function downloadDocument(document: StoredDocument): Promise<void> {
   const blob = await downloadStoredDocument(document);
   const url = URL.createObjectURL(blob);

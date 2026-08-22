@@ -440,113 +440,120 @@ function ClientsPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] items-center gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-          <span>Cliente</span>
-          <span>Teléfono</span>
-          <span>Correo</span>
-          <span>Expedientes</span>
-          <span>Estado</span>
-          <span>Registro</span>
-          <span className="sr-only">Acciones</span>
-        </div>
-        {isLoading ? (
-          <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title={search ? "No encontramos clientes" : "Todavía no hay clientes"}
-            description={
-              search
-                ? "Prueba con otro nombre, teléfono o correo."
-                : "Crea el primer registro para comenzar a organizar el directorio."
-            }
-            action={
-              !search && canCreate ? (
-                <Button type="button" onClick={() => setShowForm(true)}>
-                  <UserPlus /> Nuevo cliente
-                </Button>
-              ) : undefined
-            }
-            className="rounded-none border-0 shadow-none"
-          />
-        ) : (
-          filtered.map((client) => (
-            <div
-              key={client.id}
-              className={[
-                "border-b border-l-2 p-4 transition-colors last:border-b-0",
-                "md:grid md:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(180px,1.4fr)_100px_110px_120px_48px] md:items-center md:gap-4 md:px-5",
-                "hover:bg-primary/5",
-                client.status === "Activo" ? "border-l-primary" : "border-l-transparent",
-              ].join(" ")}
-            >
-              <Link
-                to={"/clientes/$id" as never}
-                params={{ id: client.id } as never}
-                className="flex min-w-0 items-center gap-3 font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
-              >
-                <span
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white ring-2 ring-white/20"
-                  style={{ background: client.color }}
-                  aria-hidden="true"
-                >
-                  {client.initials}
-                </span>
-                <span className="truncate">{client.name}</span>
-              </Link>
-              <div className="mt-3 flex items-center gap-2 text-sm md:mt-0">
-                <Phone className="h-4 w-4 text-info-foreground md:hidden" aria-hidden="true" />
-                {client.phone || <span className="text-muted-foreground">Sin teléfono</span>}
-              </div>
-              <div className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground md:mt-0">
-                <Mail
-                  className="h-4 w-4 shrink-0 text-success-foreground md:hidden"
-                  aria-hidden="true"
-                />
-                <span className="truncate" title={client.email ?? undefined}>
-                  {client.email || <span className="text-muted-foreground">Sin correo</span>}
-                </span>
-              </div>
-              <div className="mt-3 text-sm md:mt-0">{caseCounts[client.id] ?? 0}</div>
-              <div className="mt-3 md:mt-0">
-                <StatusBadge tone={client.status === "Activo" ? "success" : "default"}>
-                  {client.status}
-                </StatusBadge>
-              </div>
-              <div className="mt-3 text-xs text-muted-foreground md:mt-0">
-                {new Date(client.registered_at).toLocaleDateString("es-PE")}
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 h-9 w-9 p-0 md:mt-0 hover:bg-primary/10"
-                    aria-label={`Abrir acciones para ${client.name}`}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
+        <div className="overflow-x-auto">
+          <div className="hidden min-w-[880px] grid-cols-[minmax(190px,1.8fr)_95px_minmax(150px,1.4fr)_85px_95px_85px_44px] items-center gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:grid">
+            <span>Cliente</span>
+            <span>Teléfono</span>
+            <span>Correo</span>
+            <span>Expedientes</span>
+            <span>Estado</span>
+            <span>Registro</span>
+            <span className="sr-only">Acciones</span>
+          </div>
+          {isLoading ? (
+            <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={search ? "No encontramos clientes" : "Todavía no hay clientes"}
+              description={
+                search
+                  ? "Prueba con otro nombre, teléfono o correo."
+                  : "Crea el primer registro para comenzar a organizar el directorio."
+              }
+              action={
+                !search && canCreate ? (
+                  <Button type="button" onClick={() => setShowForm(true)}>
+                    <UserPlus /> Nuevo cliente
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem
-                    onClick={() =>
-                      navigate({ to: "/clientes/$id" as never, params: { id: client.id } as never })
-                    }
+                ) : undefined
+              }
+              className="rounded-none border-0 shadow-none"
+            />
+          ) : (
+            filtered.map((client) => (
+              <div
+                key={client.id}
+                className={[
+                  "border-b border-l-2 p-4 transition-colors last:border-b-0",
+                  "lg:grid lg:min-w-[880px] lg:grid-cols-[minmax(190px,1.8fr)_95px_minmax(150px,1.4fr)_85px_95px_85px_44px] lg:items-center lg:gap-4 lg:px-5",
+                  "hover:bg-primary/5",
+                  client.status === "Activo" ? "border-l-primary" : "border-l-transparent",
+                ].join(" ")}
+              >
+                <Link
+                  to={"/clientes/$id" as never}
+                  params={{ id: client.id } as never}
+                  className="flex min-w-0 items-center gap-3 font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+                >
+                  <span
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white ring-2 ring-white/20"
+                    style={{ background: client.color }}
+                    aria-hidden="true"
                   >
-                    <Eye className="h-4 w-4" />
-                    Ver ficha
-                  </DropdownMenuItem>
-                  {canEdit && (
-                    <DropdownMenuItem onClick={() => openEdit(client.id)}>
-                      <Edit3 className="h-4 w-4" />
-                      Editar
+                    {client.initials}
+                  </span>
+                  <span className="truncate" title={client.name}>
+                    {client.name}
+                  </span>
+                </Link>
+                <div className="mt-3 flex items-center gap-2 text-sm lg:mt-0">
+                  <Phone className="h-4 w-4 text-info-foreground lg:hidden" aria-hidden="true" />
+                  {client.phone || <span className="text-muted-foreground">Sin teléfono</span>}
+                </div>
+                <div className="mt-2 flex min-w-0 items-center gap-2 text-sm text-muted-foreground lg:mt-0">
+                  <Mail
+                    className="h-4 w-4 shrink-0 text-success-foreground lg:hidden"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate" title={client.email ?? undefined}>
+                    {client.email || <span className="text-muted-foreground">Sin correo</span>}
+                  </span>
+                </div>
+                <div className="mt-3 text-sm lg:mt-0">{caseCounts[client.id] ?? 0}</div>
+                <div className="mt-3 lg:mt-0">
+                  <StatusBadge tone={client.status === "Activo" ? "success" : "default"}>
+                    {client.status}
+                  </StatusBadge>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground lg:mt-0">
+                  {new Date(client.registered_at).toLocaleDateString("es-PE")}
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3 h-9 w-9 p-0 lg:mt-0 hover:bg-primary/10"
+                      aria-label={`Abrir acciones para ${client.name}`}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem
+                      onClick={() =>
+                        navigate({
+                          to: "/clientes/$id" as never,
+                          params: { id: client.id } as never,
+                        })
+                      }
+                    >
+                      <Eye className="h-4 w-4" />
+                      Ver ficha
                     </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ))
-        )}
+                    {canEdit && (
+                      <DropdownMenuItem onClick={() => openEdit(client.id)}>
+                        <Edit3 className="h-4 w-4" />
+                        Editar
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))
+          )}
+        </div>
       </Card>
 
       <Dialog open={showForm} onOpenChange={(open) => !open && closeForm()}>

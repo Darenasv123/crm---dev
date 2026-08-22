@@ -39,7 +39,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
-import { useCases, useCreateCase, useUpdateCase } from "@/hooks/use-cases";
+import { useCases, useCreateCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseTasks } from "@/hooks/legal/use-case-management";
@@ -50,6 +50,7 @@ import {
   type CaseFormValues,
 } from "@/lib/case-validation";
 import { usePermissions } from "@/lib/permissions";
+import { CaseEditDialog } from "@/components/cases/case-edit-dialog";
 
 /** Devuelve la clase de borde lateral izquierdo según el estado del expediente */
 function caseBorderClass(status: string): string {
@@ -104,7 +105,6 @@ function CasesPage() {
   const { data: documents = [] } = useDocuments();
   const { data: tasks = [] } = useCaseTasks();
   const createCase = useCreateCase();
-  const updateCase = useUpdateCase();
   const [search, setSearch] = useState(routeSearch.q);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({
@@ -127,7 +127,7 @@ function CasesPage() {
   const permissions = usePermissions(profile);
   const canCreate = permissions.canCreateCases;
   const canEdit = permissions.canEditCases;
-  const editingCase = editingCaseId ? cases.find((c) => c.id === editingCaseId) : null;
+  const editingCase = editingCaseId ? (cases.find((c) => c.id === editingCaseId) ?? null) : null;
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -198,27 +198,8 @@ function CasesPage() {
   }
 
   function openEdit(caseId: string) {
-    const caseItem = cases.find((c) => c.id === caseId);
-    if (!caseItem) return;
-
     setEditingCaseId(caseId);
-    setForm({
-      client_id: caseItem.client_id,
-      expediente: caseItem.expediente,
-      materia: caseItem.materia || "Familia",
-      process_type: caseItem.process_type,
-      status: caseItem.status,
-      next_action: caseItem.next_action || "",
-    });
-    setError(null);
     setShowEditDialog(true);
-  }
-
-  function closeEdit() {
-    setShowEditDialog(false);
-    setEditingCaseId(null);
-    setForm(EMPTY_FORM);
-    setError(null);
   }
 
   async function submit(event: React.FormEvent) {
@@ -238,30 +219,6 @@ function CasesPage() {
       setShowForm(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo crear el expediente.");
-    }
-  }
-
-  async function saveEdit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!editingCaseId) return;
-
-    setError(null);
-    try {
-      const values = validateCaseForm(form);
-      await updateCase.mutateAsync({
-        id: editingCaseId,
-        updates: {
-          client_id: values.client_id,
-          expediente: values.expediente || "Sin número",
-          materia: values.materia,
-          process_type: values.process_type,
-          status: values.status,
-          next_action: values.next_action || null,
-        },
-      });
-      closeEdit();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo actualizar el expediente.");
     }
   }
 
@@ -471,96 +428,107 @@ function CasesPage() {
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="hidden grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid">
-          <span>Expediente</span>
-          <span>Cliente</span>
-          <span>Materia</span>
-          <span>Estado</span>
-          <span>Próxima acción</span>
-          <span className="sr-only">Acciones</span>
-        </div>
-        {isLoading ? (
-          <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={Briefcase}
-            title={search ? "No encontramos expedientes" : "Todavía no hay expedientes"}
-            description={
-              search
-                ? "Prueba con otro número, cliente, materia o tipo de proceso."
-                : "Crea el primer expediente para comenzar el seguimiento jurídico."
-            }
-            action={
-              !search && canCreate ? (
-                <Button type="button" onClick={() => setShowForm(true)}>
-                  <FolderPlus /> Nuevo expediente
-                </Button>
-              ) : undefined
-            }
-            className="rounded-none border-0 shadow-none"
-          />
-        ) : (
-          filtered.map((item) => (
-            <div
-              key={item.id}
-              className={[
-                "border-b border-l-2 p-4 transition-colors last:border-b-0 hover:bg-primary/5",
-                "md:grid md:grid-cols-[minmax(180px,1.4fr)_minmax(190px,1.4fr)_minmax(130px,1fr)_130px_minmax(180px,1.2fr)_48px] md:items-center md:gap-4 md:px-5",
-                caseBorderClass(item.status),
-              ].join(" ")}
-            >
-              <Link
-                to={"/casos/$id" as never}
-                params={{ id: item.id } as never}
-                className="text-sm font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
-              >
-                <span className="font-mono text-xs text-muted-foreground">
-                  {item.case_number || item.expediente}
-                </span>
-              </Link>
-              <p className="mt-2 truncate text-sm md:mt-0">{item.clients?.name || "Sin cliente"}</p>
-              <p className="mt-2 text-sm text-muted-foreground md:mt-0">
-                {item.materia || item.process_type}
-              </p>
-              <div className="mt-3 md:mt-0">
-                <StatusBadge tone={caseStatusTone(item.status)}>{item.status}</StatusBadge>
-              </div>
-              <p className="mt-3 truncate text-sm text-muted-foreground md:mt-0">
-                {item.next_action || (
-                  <span className="text-muted-foreground/60 italic">Sin acción registrada</span>
-                )}
-              </p>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3 h-9 w-9 p-0 md:mt-0"
-                    aria-label={`Abrir acciones para ${item.expediente}`}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
+        <div className="overflow-x-auto">
+          <div className="hidden min-w-[820px] grid-cols-[130px_170px_110px_120px_minmax(180px,1fr)_44px] gap-4 border-b bg-primary/5 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:grid">
+            <span>Expediente</span>
+            <span>Cliente</span>
+            <span>Materia</span>
+            <span>Estado</span>
+            <span>Próxima acción</span>
+            <span className="sr-only">Acciones</span>
+          </div>
+          {isLoading ? (
+            <LoadingState rows={5} className="rounded-none border-0 shadow-none" />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={Briefcase}
+              title={search ? "No encontramos expedientes" : "Todavía no hay expedientes"}
+              description={
+                search
+                  ? "Prueba con otro número, cliente, materia o tipo de proceso."
+                  : "Crea el primer expediente para comenzar el seguimiento jurídico."
+              }
+              action={
+                !search && canCreate ? (
+                  <Button type="button" onClick={() => setShowForm(true)}>
+                    <FolderPlus /> Nuevo expediente
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuItem
-                    onClick={() =>
-                      navigate({ to: "/casos/$id" as never, params: { id: item.id } as never })
-                    }
-                  >
-                    <Eye className="h-4 w-4" />
-                    Ver ficha
-                  </DropdownMenuItem>
-                  {canEdit && (
-                    <DropdownMenuItem onClick={() => openEdit(item.id)}>
-                      <Edit3 className="h-4 w-4" />
-                      Editar
-                    </DropdownMenuItem>
+                ) : undefined
+              }
+              className="rounded-none border-0 shadow-none"
+            />
+          ) : (
+            filtered.map((item) => (
+              <div
+                key={item.id}
+                className={[
+                  "border-b border-l-2 p-4 transition-colors last:border-b-0 hover:bg-primary/5",
+                  "lg:grid lg:min-w-[820px] lg:grid-cols-[130px_170px_110px_120px_minmax(180px,1fr)_44px] lg:items-center lg:gap-4 lg:px-5",
+                  caseBorderClass(item.status),
+                ].join(" ")}
+              >
+                <Link
+                  to={"/casos/$id" as never}
+                  params={{ id: item.id } as never}
+                  className="text-sm font-semibold hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+                  title={item.case_number || item.expediente}
+                >
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {item.case_number || item.expediente}
+                  </span>
+                </Link>
+                <p
+                  className="mt-2 truncate text-sm lg:mt-0"
+                  title={item.clients?.name || undefined}
+                >
+                  {item.clients?.name || "Sin cliente"}
+                </p>
+                <p className="mt-2 truncate text-sm text-muted-foreground lg:mt-0">
+                  {item.materia || item.process_type}
+                </p>
+                <div className="mt-3 lg:mt-0">
+                  <StatusBadge tone={caseStatusTone(item.status)}>{item.status}</StatusBadge>
+                </div>
+                <p
+                  className="mt-3 truncate text-sm text-muted-foreground lg:mt-0"
+                  title={item.next_action || undefined}
+                >
+                  {item.next_action || (
+                    <span className="text-muted-foreground/60 italic">Sin acción registrada</span>
                   )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          ))
-        )}
+                </p>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3 h-9 w-9 p-0 lg:mt-0"
+                      aria-label={`Abrir acciones para ${item.expediente}`}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem
+                      onClick={() =>
+                        navigate({ to: "/casos/$id" as never, params: { id: item.id } as never })
+                      }
+                    >
+                      <Eye className="h-4 w-4" />
+                      Ver ficha
+                    </DropdownMenuItem>
+                    {canEdit && (
+                      <DropdownMenuItem onClick={() => openEdit(item.id)}>
+                        <Edit3 className="h-4 w-4" />
+                        Editar
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))
+          )}
+        </div>
       </Card>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -655,97 +623,15 @@ function CasesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showEditDialog} onOpenChange={(open) => !open && closeEdit()}>
-        <DialogContent size="lg">
-          <DialogHeader>
-            <div className="mb-1 grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
-              <Edit3 className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <DialogTitle>Editar expediente</DialogTitle>
-            <DialogDescription>
-              Actualiza la información operativa del expediente.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={saveEdit} className="grid gap-5">
-            <FormSection title="Información principal">
-              <FormField id="edit-case-client" label="Cliente" className="sm:col-span-2">
-                <NativeSelect
-                  id="edit-case-client"
-                  required
-                  autoFocus
-                  value={form.client_id}
-                  onChange={(event) => setForm({ ...form, client_id: event.target.value })}
-                >
-                  <option value="">Selecciona un cliente</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </FormField>
-              <FormField id="edit-case-number" label="Número de expediente">
-                <Input
-                  id="edit-case-number"
-                  value={form.expediente}
-                  onChange={(event) => setForm({ ...form, expediente: event.target.value })}
-                />
-              </FormField>
-              <FormField id="edit-case-matter" label="Materia">
-                <NativeSelect
-                  id="edit-case-matter"
-                  value={form.materia}
-                  onChange={(event) => setForm({ ...form, materia: event.target.value })}
-                >
-                  {MATERIA_OPTIONS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </NativeSelect>
-              </FormField>
-              <FormField id="edit-case-process" label="Tipo de proceso">
-                <Input
-                  id="edit-case-process"
-                  required
-                  value={form.process_type}
-                  onChange={(event) => setForm({ ...form, process_type: event.target.value })}
-                />
-              </FormField>
-              <FormField id="edit-case-status" label="Estado">
-                <NativeSelect
-                  id="edit-case-status"
-                  value={form.status}
-                  onChange={(event) => setForm({ ...form, status: event.target.value })}
-                >
-                  {CASE_STATUS_OPTIONS.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </NativeSelect>
-              </FormField>
-              <FormField
-                id="edit-case-next-action"
-                label="Próxima acción"
-                optional
-                className="sm:col-span-2"
-              >
-                <Textarea
-                  id="edit-case-next-action"
-                  value={form.next_action}
-                  onChange={(event) => setForm({ ...form, next_action: event.target.value })}
-                />
-              </FormField>
-            </FormSection>
-            <FormErrorSummary>{error}</FormErrorSummary>
-            <FormActions>
-              <Button type="button" variant="outline" onClick={closeEdit}>
-                Cancelar
-              </Button>
-              <Button type="submit" loading={updateCase.isPending}>
-                Guardar cambios
-              </Button>
-            </FormActions>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <CaseEditDialog
+        open={showEditDialog}
+        onOpenChange={(open) => {
+          setShowEditDialog(open);
+          if (!open) setEditingCaseId(null);
+        }}
+        caseItem={editingCase}
+        clients={clients}
+      />
     </AppLayout>
   );
 }

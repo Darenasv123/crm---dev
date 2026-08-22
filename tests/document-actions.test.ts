@@ -26,6 +26,8 @@ import {
   documentFileName,
   documentPreviewKind,
   downloadDocument,
+  filterDocumentsByCase,
+  filterDocumentsByClient,
   previewDocument,
   releaseDocumentPreview,
 } from "@/lib/document-actions";
@@ -170,12 +172,33 @@ describe("acciones canónicas de documentos", () => {
     expect(route).toContain("onDownload={handleDownload}");
   });
 
-  it("la ficha de cliente dirige al mismo módulo global de documentos", () => {
+  it("la ficha de cliente y la ficha de expediente reutilizan el mismo núcleo documental", () => {
     const clientPage = source("src/components/clients/client-related-page.tsx");
+    const caseDetail = source("src/routes/_app.casos.$id.tsx");
+    const related = source("src/components/documents/related-documents.tsx");
+    expect(clientPage).toContain(
+      'import { RelatedDocuments } from "@/components/documents/related-documents"',
+    );
+    expect(caseDetail).toContain(
+      'import { RelatedDocuments } from "@/components/documents/related-documents"',
+    );
+    // El componente compartido reutiliza las mismas acciones de storage y el
+    // mismo visor que el explorador general, en vez de duplicar el gestor.
+    expect(related).toContain('from "@/lib/document-actions"');
+    expect(related).toContain(
+      'import { DocumentViewerDialog } from "@/components/documents/document-viewer-dialog"',
+    );
+    expect(related).toContain("usePermissions");
+  });
+
+  it("el visor compartido se usa tanto en el explorador general como en los contextos relacionados", () => {
     const route = source("src/routes/_app.documentos.index.tsx");
-    expect(clientPage).toContain("href: `/documentos?documento=${item.id}`");
-    expect(route).toContain("const { documento: requestedDocumentId } = Route.useSearch()");
-    expect(route).toContain("selectedId ?? requestedDocumentId");
+    const related = source("src/components/documents/related-documents.tsx");
+    expect(route).toContain(
+      'import { DocumentViewerDialog } from "@/components/documents/document-viewer-dialog"',
+    );
+    expect(route).not.toContain("function DocumentPreviewDialog");
+    expect(related).toContain("<DocumentViewerDialog");
   });
 
   it("el navegador de carpetas reutiliza la descarga canónica", () => {
@@ -194,5 +217,36 @@ describe("acciones canónicas de documentos", () => {
   it("prefiere original_name y conserva un fallback estable", () => {
     expect(documentFileName(documentRecord)).toBe("Doc1 original.docx");
     expect(documentFileName({ name: "archivo.pdf", original_name: null })).toBe("archivo.pdf");
+  });
+});
+
+describe("filtrado de documentos por contexto (Cliente / Expediente)", () => {
+  const docs = [
+    { id: "1", client_id: "client-a", case_id: null },
+    { id: "2", client_id: null, case_id: "case-a" },
+    { id: "3", client_id: "client-b", case_id: null },
+    { id: "4", client_id: null, case_id: "case-b" },
+    { id: "5", client_id: null, case_id: null },
+  ];
+
+  it("filterDocumentsByClient incluye documentos del cliente directo y de sus expedientes", () => {
+    const result = filterDocumentsByClient(docs, "client-a", ["case-a"]);
+    expect(result.map((d) => d.id)).toEqual(["1", "2"]);
+  });
+
+  it("filterDocumentsByClient acepta un Set además de un array iterable", () => {
+    const result = filterDocumentsByClient(docs, "client-a", new Set(["case-a"]));
+    expect(result.map((d) => d.id)).toEqual(["1", "2"]);
+  });
+
+  it("filterDocumentsByClient no incluye documentos de expedientes ajenos ni sin relación", () => {
+    const result = filterDocumentsByClient(docs, "client-b", []);
+    expect(result.map((d) => d.id)).toEqual(["3"]);
+  });
+
+  it("filterDocumentsByCase solo incluye documentos de ese expediente exacto", () => {
+    expect(filterDocumentsByCase(docs, "case-a").map((d) => d.id)).toEqual(["2"]);
+    expect(filterDocumentsByCase(docs, "case-b").map((d) => d.id)).toEqual(["4"]);
+    expect(filterDocumentsByCase(docs, "case-inexistente")).toEqual([]);
   });
 });

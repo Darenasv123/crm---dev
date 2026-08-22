@@ -3,11 +3,13 @@ import { ArrowLeft, Briefcase, CheckSquare, FileText } from "lucide-react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState } from "@/components/ui/data-state";
+import { RelatedDocuments } from "@/components/documents/related-documents";
 import { useCases } from "@/hooks/use-cases";
 import { useClient } from "@/hooks/use-clients";
 import { useDocuments } from "@/hooks/use-documents";
 import { useDailyTasks } from "@/hooks/use-daily-tasks";
 import { useClientReports } from "@/hooks/use-reports";
+import { filterDocumentsByClient } from "@/lib/document-actions";
 import { normalizeTaskStatus, TASK_STATUS_LABELS } from "@/lib/tasks";
 
 export type ClientRelatedKind = "documentos" | "tareas" | "reportes" | "expedientes";
@@ -38,9 +40,7 @@ export function ClientRelatedPage({
 
   const clientCases = cases.filter((item) => item.client_id === clientId);
   const caseIds = new Set(clientCases.map((item) => item.id));
-  const clientDocuments = documents.filter(
-    (item) => item.client_id === clientId || (!!item.case_id && caseIds.has(item.case_id)),
-  );
+  const clientDocuments = filterDocumentsByClient(documents, clientId, caseIds);
   const clientReports = reports.filter((item) => item.client_id === clientId);
   const activeTasks = tasks.filter((item) => !["completed", "cancelled"].includes(item.status));
   const historyTasks = tasks.filter((item) => ["completed", "cancelled"].includes(item.status));
@@ -80,15 +80,10 @@ export function ClientRelatedPage({
           }))}
         />
       ) : kind === "documentos" ? (
-        <RelatedList
-          icon={FileText}
-          empty="Este cliente aún no tiene documentos."
-          rows={clientDocuments.map((item) => ({
-            id: item.id,
-            title: item.display_name || item.name,
-            detail: `${item.document_type || item.type} · ${new Date(item.uploaded_at).toLocaleDateString("es-PE")}`,
-            href: `/documentos?documento=${item.id}`,
-          }))}
+        <RelatedDocuments
+          documents={clientDocuments}
+          emptyTitle="Este cliente aún no tiene documentos."
+          emptyDescription="Los documentos que subas desde Documentos, vinculados a este cliente o a sus expedientes, aparecerán aquí."
         />
       ) : kind === "reportes" ? (
         <RelatedList

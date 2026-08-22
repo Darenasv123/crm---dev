@@ -1,11 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, CalendarClock, CheckSquare, FileText, UserRound } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckSquare, Edit3, FileText, UserRound } from "lucide-react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState } from "@/components/ui/data-state";
+import { RelatedDocuments } from "@/components/documents/related-documents";
+import { CaseEditDialog } from "@/components/cases/case-edit-dialog";
+import { TaskPriorityBadge } from "@/components/tasks/TaskPriorityBadge";
+import { useAuth } from "@/hooks/use-auth";
 import { useCase } from "@/hooks/use-cases";
+import { useClients } from "@/hooks/use-clients";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
+import { filterDocumentsByCase } from "@/lib/document-actions";
+import { normalizeTaskStatus, TASK_STATUS_LABELS } from "@/lib/tasks";
+import { usePermissions } from "@/lib/permissions";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_app/casos/$id")({
   component: CaseDetail,
@@ -13,10 +22,14 @@ export const Route = createFileRoute("/_app/casos/$id")({
 
 function CaseDetail() {
   const { id } = Route.useParams();
+  const { profile } = useAuth();
+  const permissions = usePermissions(profile);
   const { data: caseItem, isLoading, error: caseError } = useCase(id);
+  const { data: clients = [] } = useClients();
   const { data: documents = [] } = useDocuments();
   const { data: tasks = [] } = useCaseTasks({ caseId: id });
   const { data: events = [] } = useCaseEvents([id]);
+  const [showEdit, setShowEdit] = useState(false);
 
   if (isLoading) {
     return (
@@ -60,7 +73,7 @@ function CaseDetail() {
     );
   }
 
-  const caseDocuments = documents.filter((item) => item.case_id === id);
+  const caseDocuments = filterDocumentsByCase(documents, id);
   const activeTasks = tasks.filter((item) => !["completed", "cancelled"].includes(item.status));
 
   return (
@@ -68,11 +81,18 @@ function CaseDetail() {
       title={caseItem.case_number || caseItem.expediente}
       subtitle={`${caseItem.materia || caseItem.process_type} · ${caseItem.clients?.name || "Sin cliente"}`}
       actions={
-        <Button asChild variant="outline">
-          <Link to={"/casos" as never}>
-            <ArrowLeft className="h-4 w-4" /> Volver
-          </Link>
-        </Button>
+        <>
+          <Button asChild variant="outline">
+            <Link to={"/casos" as never}>
+              <ArrowLeft className="h-4 w-4" /> Volver
+            </Link>
+          </Button>
+          {permissions.canEditCases && (
+            <Button type="button" onClick={() => setShowEdit(true)}>
+              <Edit3 className="h-4 w-4" /> Editar
+            </Button>
+          )}
+        </>
       }
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
@@ -140,22 +160,41 @@ function CaseDetail() {
           {tasks.length === 0 ? (
             <p className="p-5 text-sm text-muted-foreground">No hay tareas relacionadas.</p>
           ) : (
-            tasks.slice(0, 8).map((task) => (
-              <div
-                key={task.id}
-                className="flex items-center justify-between gap-3 border-b p-4 last:border-b-0"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{task.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {task.profiles?.full_name || "Disponible"}
-                  </p>
+            <>
+              {tasks.slice(0, 8).map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-center justify-between gap-3 border-b p-4 last:border-b-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{task.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {task.profiles?.full_name || "Disponible"} · Fecha de trabajo:{" "}
+                      {task.scheduled_for}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <TaskPriorityBadge priority={task.priority} iconOnly />
+                    <StatusBadge
+                      tone={
+                        normalizeTaskStatus(task.status) === "completed"
+                          ? "success"
+                          : normalizeTaskStatus(task.status) === "blocked"
+                            ? "danger"
+                            : "info"
+                      }
+                    >
+                      {TASK_STATUS_LABELS[normalizeTaskStatus(task.status)]}
+                    </StatusBadge>
+                  </div>
                 </div>
-                <StatusBadge tone={task.status === "completed" ? "success" : "info"}>
-                  {task.status}
-                </StatusBadge>
+              ))}
+              <div className="border-t p-3 text-center">
+                <Button asChild variant="outline" size="sm">
+                  <Link to={"/tareas/todas" as never}>Abrir tareas</Link>
+                </Button>
               </div>
-            ))
+            </>
           )}
         </Card>
 
@@ -183,6 +222,27 @@ function CaseDetail() {
           )}
         </Card>
       </div>
+
+      <Card className="mt-5 overflow-hidden border-t-4 border-t-info">
+        <div className="border-b bg-info/5 p-5 flex items-center gap-2">
+          <FileText className="h-5 w-5 text-info" />
+          <h2 className="font-bold">Documentos del expediente</h2>
+        </div>
+        <div className="p-4">
+          <RelatedDocuments
+            documents={caseDocuments}
+            emptyTitle="Este expediente aún no tiene documentos."
+            emptyDescription="Los documentos vinculados a este expediente desde Documentos aparecerán aquí."
+          />
+        </div>
+      </Card>
+
+      <CaseEditDialog
+        open={showEdit}
+        onOpenChange={setShowEdit}
+        caseItem={caseItem}
+        clients={clients}
+      />
     </AppLayout>
   );
 }
