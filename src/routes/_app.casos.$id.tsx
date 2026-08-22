@@ -1,5 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, CalendarClock, CheckSquare, Edit3, FileText, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CheckSquare,
+  Edit3,
+  FileText,
+  MessageSquareText,
+  UserRound,
+} from "lucide-react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingState } from "@/components/ui/data-state";
@@ -11,6 +19,7 @@ import { useCase } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
 import { useDocuments } from "@/hooks/use-documents";
 import { useCaseEvents, useCaseTasks } from "@/hooks/legal/use-case-management";
+import { useClientReports, reportCategoryLabel, type ReportCategory } from "@/hooks/use-reports";
 import { filterDocumentsByCase } from "@/lib/document-actions";
 import { normalizeTaskStatus, TASK_STATUS_LABELS } from "@/lib/tasks";
 import { usePermissions } from "@/lib/permissions";
@@ -29,6 +38,7 @@ function CaseDetail() {
   const { data: documents = [] } = useDocuments();
   const { data: tasks = [] } = useCaseTasks({ caseId: id });
   const { data: events = [] } = useCaseEvents([id]);
+  const { data: reports = [] } = useClientReports();
   const [showEdit, setShowEdit] = useState(false);
 
   if (isLoading) {
@@ -74,6 +84,7 @@ function CaseDetail() {
   }
 
   const caseDocuments = filterDocumentsByCase(documents, id);
+  const caseReports = reports.filter((item) => item.case_id === id);
   const activeTasks = tasks.filter((item) => !["completed", "cancelled"].includes(item.status));
 
   return (
@@ -148,6 +159,12 @@ function CaseDetail() {
           />
           <Metric icon={FileText} label="Documentos" value={caseDocuments.length} color="info" />
           <Metric icon={CalendarClock} label="Movimientos" value={events.length} color="success" />
+          <Metric
+            icon={MessageSquareText}
+            label="Reportes"
+            value={caseReports.length}
+            color="primary"
+          />
         </div>
       </div>
 
@@ -237,6 +254,41 @@ function CaseDetail() {
             emptyDescription="Los documentos vinculados a este expediente desde Documentos aparecerán aquí."
           />
         </div>
+      </Card>
+
+      <Card className="mt-5 overflow-hidden border-t-4 border-t-primary">
+        <div className="border-b bg-primary/5 p-5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageSquareText className="h-5 w-5 text-primary" />
+            <h2 className="font-bold">Reportes del expediente</h2>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link to={"/reportes" as never}>Ver todos los reportes</Link>
+          </Button>
+        </div>
+        {caseReports.length === 0 ? (
+          <p className="p-5 text-sm text-muted-foreground">
+            Este expediente aún no tiene reportes registrados.
+          </p>
+        ) : (
+          caseReports.map((report) => (
+            <div
+              key={report.id}
+              className="flex items-start justify-between gap-3 border-b p-4 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{report.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(report.created_at).toLocaleDateString("es-PE")} ·{" "}
+                  {report.profiles?.full_name || "Usuario del estudio"}
+                </p>
+              </div>
+              <StatusBadge tone="info">
+                {reportCategoryLabel(report.category as ReportCategory)}
+              </StatusBadge>
+            </div>
+          ))
+        )}
       </Card>
 
       <CaseEditDialog

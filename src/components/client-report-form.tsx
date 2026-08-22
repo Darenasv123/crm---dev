@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
-import { Send, Loader2, Copy, MessageCircle, Check } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Send, Loader2, Copy, Check, Search, X, FileText, Briefcase } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { Card } from "@/components/app-layout";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -7,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Database } from "@/lib/database.types";
 import {
   buildClientReportMessage,
-  buildWhatsAppUrl,
+  casesForClient,
+  isCaseOwnedByClient,
+  searchClients,
   type ClientReportData,
 } from "@/lib/client-reports";
 import type { ReportMateria } from "@/hooks/use-reports";
@@ -27,9 +30,21 @@ export interface ClientReportFormData {
   reminder_days: number;
 }
 
+const EMPTY_FORM = (today: string): ClientReportFormData => ({
+  client_id: "",
+  case_id: "",
+  materia: "",
+  status_date: today,
+  current_status: "",
+  informative_message: "",
+  reminder_days: 25,
+});
+
 interface ClientReportFormProps {
   clients: ClientRow[];
   cases: CaseWithMateria[];
+  clientsLoading?: boolean;
+  casesLoading?: boolean;
   onSubmit: (data: ClientReportFormData, finalText: string) => Promise<void>;
   saving?: boolean;
   error?: string | null;
@@ -38,40 +53,40 @@ interface ClientReportFormProps {
 export function ClientReportForm({
   clients,
   cases,
+  clientsLoading = false,
+  casesLoading = false,
   onSubmit,
   saving = false,
   error = null,
 }: ClientReportFormProps) {
   const today = new Date().toISOString().split("T")[0];
 
-  const [formData, setFormData] = useState<ClientReportFormData>({
-    client_id: "",
-    case_id: "",
-    materia: "",
-    status_date: today,
-    current_status: "",
-    informative_message: "",
-    reminder_days: 25,
-  });
-
-  const [clientSearch, setClientSearch] = useState("");
+  const [formData, setFormData] = useState<ClientReportFormData>(() => EMPTY_FORM(today));
   const [copied, setCopied] = useState(false);
-  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [caseMismatchError, setCaseMismatchError] = useState<string | null>(null);
 
-  const filteredClients = useMemo(() => {
-    const term = clientSearch.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(term) ||
-        (c.phone ?? "").includes(term) ||
-        (c.email ?? "").toLowerCase().includes(term),
-    );
-  }, [clients, clientSearch]);
-
-  const selectedClient = clients.find((c) => c.id === formData.client_id);
-  const clientCases = cases.filter((c) => c.client_id === formData.client_id);
+  const selectedClient = clients.find((c) => c.id === formData.client_id) ?? null;
+  const clientCases = useMemo(
+    () => casesForClient(cases, formData.client_id),
+    [cases, formData.client_id],
+  );
   const selectedCase = clientCases.find((c) => c.id === formData.case_id);
+
+  function selectClient(client: ClientRow) {
+    setFormData((prev) => ({
+      ...prev,
+      client_id: client.id,
+      case_id: "",
+      materia: "",
+    }));
+    setCaseMismatchError(null);
+  }
+
+  function changeClient() {
+    setFormData((prev) => ({ ...prev, client_id: "", case_id: "", materia: "" }));
+    setCaseMismatchError(null);
+  }
 
   // Autocompletar materia desde expediente
   useEffect(() => {
@@ -107,13 +122,14 @@ export function ClientReportForm({
     return buildClientReportMessage(data);
   }, [selectedClient, formData]);
 
-  const canSubmit =
+  const canSubmit = Boolean(
     selectedClient &&
     formData.materia &&
     formData.status_date &&
     formData.current_status.trim() &&
     formData.informative_message.trim() &&
-    !saving;
+    !saving,
+  );
 
   async function handleCopyReport() {
     if (!reportPreview) return;
@@ -128,34 +144,27 @@ export function ClientReportForm({
     }
   }
 
-  function handleOpenWhatsApp() {
-    setWhatsappError(null);
-
-    if (!selectedClient?.phone) {
-      setWhatsappError("El cliente no tiene un teléfono registrado.");
-      return;
-    }
-
-    if (!reportPreview) {
-      setWhatsappError("Completa todos los campos obligatorios antes de enviar.");
-      return;
-    }
-
-    const url = buildWhatsAppUrl(selectedClient.phone, reportPreview);
-
-    if (!url) {
-      setWhatsappError("El teléfono del cliente no es válido.");
-      return;
-    }
-
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !reportPreview) return;
 
-    await onSubmit(formData, reportPreview);
+    if (!isCaseOwnedByClient(clientCases, formData.case_id, formData.client_id)) {
+      setCaseMismatchError(
+        "El expediente seleccionado no pertenece a este cliente. Selecciónalo de nuevo.",
+      );
+      setFormData((prev) => ({ ...prev, case_id: "" }));
+      return;
+    }
+    setCaseMismatchError(null);
+
+    try {
+      await onSubmit(formData, reportPreview);
+      setFormData(EMPTY_FORM(today));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 4000);
+    } catch {
+      // El error real de la mutation se muestra vía la prop `error` del padre.
+    }
   }
 
   return (
@@ -164,70 +173,27 @@ export function ClientReportForm({
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
           <Send className="h-4 w-4" />
         </div>
-        <h3 className="text-sm font-semibold">Crear reporte para el cliente</h3>
+        <h3 className="text-sm font-semibold">Crear reporte</h3>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Cliente */}
+        {/* Cliente — única fuente de verdad de selección */}
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Cliente *
           </label>
-          {clients.length > 10 ? (
-            <>
-              <Input
-                value={clientSearch}
-                onChange={(e) => setClientSearch(e.target.value)}
-                placeholder="Buscar por nombre, teléfono o correo..."
-                className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
-              />
-              <NativeSelect
-                value={formData.client_id}
-                onChange={(e) => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    client_id: e.target.value,
-                    case_id: "",
-                    materia: "",
-                  }));
-                  setClientSearch("");
-                }}
-                required
-                className="mt-2 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
-              >
-                <option value="">Selecciona un cliente</option>
-                {filteredClients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </>
+          {selectedClient ? (
+            <SelectedClientSummary
+              client={selectedClient}
+              caseCount={clientCases.length}
+              onChange={changeClient}
+            />
           ) : (
-            <NativeSelect
-              value={formData.client_id}
-              onChange={(e) => {
-                setFormData((prev) => ({
-                  ...prev,
-                  client_id: e.target.value,
-                  case_id: "",
-                  materia: "",
-                }));
-              }}
-              required
-              className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15"
-            >
-              <option value="">Selecciona un cliente</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </NativeSelect>
+            <ClientCombobox clients={clients} loading={clientsLoading} onSelect={selectClient} />
           )}
         </div>
 
-        {/* Expediente */}
+        {/* Expediente — acotado estrictamente al cliente seleccionado */}
         <div>
           <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Expediente (opcional)
@@ -236,8 +202,10 @@ export function ClientReportForm({
             value={formData.case_id}
             onChange={(e) => {
               setFormData((prev) => ({ ...prev, case_id: e.target.value }));
+              setCaseMismatchError(null);
             }}
-            disabled={!formData.client_id}
+            disabled={!formData.client_id || casesLoading}
+            aria-label="Seleccionar expediente"
             className="mt-1.5 w-full h-10 px-3 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
           >
             <option value="">Sin expediente específico</option>
@@ -247,6 +215,12 @@ export function ClientReportForm({
               </option>
             ))}
           </NativeSelect>
+          {formData.client_id && !casesLoading && clientCases.length === 0 && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Este cliente no tiene expedientes registrados.
+            </p>
+          )}
+          {caseMismatchError && <p className="mt-1.5 text-xs text-red-600">{caseMismatchError}</p>}
         </div>
 
         {/* Materia */}
@@ -326,7 +300,7 @@ export function ClientReportForm({
             }
             required
             rows={6}
-            placeholder="Escribe el mensaje detallado para el cliente. Puedes usar saltos de línea, asteriscos de WhatsApp (*negrita*), y formatear libremente..."
+            placeholder="Escribe el mensaje detallado para el cliente. Puedes usar saltos de línea, asteriscos (*negrita*), y formatear libremente..."
             className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/15 resize-y"
           />
         </div>
@@ -345,14 +319,22 @@ export function ClientReportForm({
 
         {/* Errores */}
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <p
+            role="alert"
+            className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+          >
             {error}
           </p>
         )}
 
-        {whatsappError && (
-          <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {whatsappError}
+        {/* Confirmación de guardado */}
+        {saved && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2"
+          >
+            <Check className="h-4 w-4" />
+            Reporte guardado correctamente.
           </p>
         )}
 
@@ -364,7 +346,7 @@ export function ClientReportForm({
             className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Guardar reporte
+            {saving ? "Guardando..." : "Guardar reporte"}
           </button>
 
           <button
@@ -381,34 +363,179 @@ export function ClientReportForm({
             ) : (
               <>
                 <Copy className="h-4 w-4" />
-                Copiar reporte
+                Copiar
               </>
             )}
           </button>
-
-          <button
-            type="button"
-            onClick={handleOpenWhatsApp}
-            disabled={!reportPreview || !selectedClient?.phone}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-green-600 bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={
-              !selectedClient?.phone
-                ? "El cliente no tiene un teléfono registrado"
-                : "Abrir WhatsApp con el reporte"
-            }
-          >
-            <MessageCircle className="h-4 w-4" />
-            Enviar al cliente
-          </button>
         </div>
-
-        {!selectedClient?.phone && formData.client_id && (
-          <p className="text-xs text-muted-foreground">
-            ⚠️ El cliente no tiene un teléfono registrado. Actualiza sus datos para poder enviar por
-            WhatsApp.
-          </p>
-        )}
       </form>
     </Card>
+  );
+}
+
+function SelectedClientSummary({
+  client,
+  caseCount,
+  onChange,
+}: {
+  client: ClientRow;
+  caseCount: number;
+  onChange: () => void;
+}) {
+  return (
+    <div className="mt-1.5 flex items-start justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold truncate">{client.name}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {client.phone || "Sin teléfono"} · {client.email || "Sin correo"} · {caseCount}{" "}
+          {caseCount === 1 ? "expediente" : "expedientes"}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link
+            to={"/clientes/$id/documentos" as never}
+            params={{ id: client.id } as never}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+          >
+            <FileText className="h-3 w-3" />
+            Abrir documentos
+          </Link>
+          <Link
+            to={"/clientes/$id/expedientes" as never}
+            params={{ id: client.id } as never}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+          >
+            <Briefcase className="h-3 w-3" />
+            Ver expedientes
+          </Link>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onChange}
+        className="inline-flex shrink-0 items-center gap-1 h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold hover:bg-muted/50"
+      >
+        <X className="h-3 w-3" />
+        Cambiar
+      </button>
+    </div>
+  );
+}
+
+function ClientCombobox({
+  clients,
+  loading,
+  onSelect,
+}: {
+  clients: ClientRow[];
+  loading: boolean;
+  onSelect: (client: ClientRow) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const inputId = useId();
+  const listboxId = useId();
+
+  const results = useMemo(() => searchClients(clients, query), [clients, query]);
+
+  function handleSelect(client: ClientRow) {
+    onSelect(client);
+    setQuery("");
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      if (activeIndex >= 0 && results[activeIndex]) {
+        e.preventDefault();
+        handleSelect(results[activeIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setQuery("");
+      setOpen(false);
+      setActiveIndex(-1);
+    }
+  }
+
+  const activeOptionId =
+    activeIndex >= 0 && results[activeIndex]
+      ? `${listboxId}-opt-${results[activeIndex].id}`
+      : undefined;
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          id={inputId}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeOptionId}
+          aria-label="Buscar cliente por nombre, teléfono o correo"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveIndex(-1);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onKeyDown={handleKeyDown}
+          placeholder="Buscar por nombre, teléfono o correo"
+          className="mt-1.5 pl-9"
+        />
+      </div>
+      {open && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label="Resultados de clientes"
+          className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
+        >
+          {loading ? (
+            <li className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Cargando clientes...
+            </li>
+          ) : results.length === 0 ? (
+            <li className="px-3 py-3 text-sm text-muted-foreground">No se encontraron clientes.</li>
+          ) : (
+            results.map((client, index) => (
+              <li
+                key={client.id}
+                id={`${listboxId}-opt-${client.id}`}
+                role="option"
+                aria-selected={index === activeIndex}
+              >
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSelect(client)}
+                  className={[
+                    "flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left",
+                    index === activeIndex ? "bg-primary/10" : "hover:bg-muted/50",
+                  ].join(" ")}
+                >
+                  <span className="text-sm font-semibold truncate">{client.name}</span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {client.phone || client.email || "Sin contacto registrado"}
+                  </span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
   );
 }

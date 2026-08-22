@@ -1,9 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useAgendaEvents } from "@/hooks/use-agenda";
+import { useAuth } from "@/hooks/use-auth";
 import { useCases } from "@/hooks/use-cases";
 import { useClients } from "@/hooks/use-clients";
-import { useDocuments } from "@/hooks/use-documents";
 import {
   REPORT_CATEGORIES,
   reportCategoryLabel,
@@ -12,27 +11,12 @@ import {
   type ClientReportWithRelations,
   type ReportCategory,
 } from "@/hooks/use-reports";
-import {
-  AlertTriangle,
-  Briefcase,
-  CalendarDays,
-  ChevronRight,
-  Download,
-  Eye,
-  FileText,
-  Loader2,
-  Mail,
-  MessageSquareText,
-  Phone,
-  Search,
-  type LucideIcon,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+import { Download, Eye, Loader2, MessageSquareText, type LucideIcon } from "lucide-react";
+import { useState } from "react";
 import type { Database } from "@/lib/database.types";
 import { formatPeruDate, formatPeruDateTime, formatPeruTime } from "@/lib/peru-time";
+import { usePermissions } from "@/lib/permissions";
 import { ClientReportForm, type ClientReportFormData } from "@/components/client-report-form";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 
 export const Route = createFileRoute("/_app/reportes/")({
   head: () => ({ meta: [{ title: "Reportes — CRM Jurídico" }] }),
@@ -53,19 +37,6 @@ type ReportExportData = {
   caseExpediente: string;
   caseProcess: string | null;
   caseStatus: string | null;
-};
-
-const caseStatusTone: Record<
-  CaseRow["status"],
-  "default" | "info" | "warning" | "navy" | "gold" | "danger" | "success"
-> = {
-  Consulta: "default",
-  Documentación: "info",
-  "Demanda presentada": "gold",
-  "En proceso": "navy",
-  Audiencia: "warning",
-  Sentencia: "success",
-  Archivado: "default",
 };
 
 const categoryTone: Record<
@@ -92,7 +63,7 @@ function formatDate(date?: string | null) {
 function sanitizeFileName(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-zA-Z0-9-_ ]/g, "")
     .trim()
     .replace(/\s+/g, "-")
@@ -415,59 +386,38 @@ ${bodyParagraphs}
 }
 
 function ReportsPage() {
+  const { profile } = useAuth();
+  const permissions = usePermissions(profile);
   const { data: clients = [], isLoading: loadingClients } = useClients();
   const { data: cases = [], isLoading: loadingCases } = useCases();
-  const { data: documents = [] } = useDocuments();
-  const { data: events = [] } = useAgendaEvents();
   const { data: reports = [], isLoading: loadingReports } = useClientReports();
   const createReport = useCreateClientReport();
 
-  const [search, setSearch] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState("");
-  const [selectedCaseId, setSelectedCaseId] = useState("");
   const [reportFilter, setReportFilter] = useState<ReportCategory | "Todos">("Todos");
   const [preview, setPreview] = useState<{ src: string; data: ReportExportData } | null>(null);
-
-  const filteredClients = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(term) ||
-        (c.phone ?? "").includes(term) ||
-        (c.email ?? "").toLowerCase().includes(term),
-    );
-  }, [clients, search]);
-
-  const selectedClient =
-    clients.find((c) => c.id === selectedClientId) ?? filteredClients[0] ?? clients[0] ?? null;
-
-  const clientCases = selectedClient ? cases.filter((c) => c.client_id === selectedClient.id) : [];
-  const clientDocuments = selectedClient
-    ? documents.filter((d) => d.client_id === selectedClient.id)
-    : [];
-  const clientEvents = selectedClient
-    ? events.filter((e) => e.client_id === selectedClient.id)
-    : [];
-  const clientReports = selectedClient
-    ? reports.filter((r) => r.client_id === selectedClient.id)
-    : [];
-
-  const activeCases = clientCases.filter((c) => c.status !== "Archivado");
-  const selectedCase = clientCases.find((c) => c.id === selectedCaseId) ?? clientCases[0] ?? null;
-  const loading = loadingClients || loadingCases || loadingReports;
   const [newReportError, setNewReportError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   async function handlePreviewPublishedReport(report: ClientReportWithRelations) {
-    if (!selectedClient) return;
-    const data = buildPublishedReportData(selectedClient, clientCases, report);
+    const client = clients.find((c) => c.id === report.client_id);
+    if (!client) {
+      setExportError("No se encontró el cliente de este reporte.");
+      return;
+    }
+    setExportError(null);
+    const data = buildPublishedReportData(client, cases, report);
     const src = await createReportJpg(data);
     setPreview({ src, data });
   }
 
   function handleDownloadPublishedReport(report: ClientReportWithRelations) {
-    if (!selectedClient) return;
-    const data = buildPublishedReportData(selectedClient, clientCases, report);
+    const client = clients.find((c) => c.id === report.client_id);
+    if (!client) {
+      setExportError("No se encontró el cliente de este reporte.");
+      return;
+    }
+    setExportError(null);
+    const data = buildPublishedReportData(client, cases, report);
     downloadBlob(createReportDocx(data), reportFileName(data, "docx"));
   }
 
@@ -494,140 +444,42 @@ function ReportsPage() {
   }
 
   return (
-    <AppLayout
-      title="Reportes"
-      subtitle="Ficha integral del cliente, expedientes y bitácora compartida del estudio"
-    >
-      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-4">
-        <Card className="p-4 h-fit xl:sticky xl:top-24">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, teléfono o correo..."
-              aria-label="Buscar cliente para reportes"
-              className="pl-9"
-            />
-          </div>
-
-          <div className="space-y-2 max-h-[calc(100vh-190px)] overflow-y-auto pr-1">
-            {loadingClients ? (
-              <div className="flex items-center justify-center py-10">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            ) : filteredClients.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No se encontraron clientes.
-              </p>
-            ) : (
-              filteredClients.map((client) => (
-                <button
-                  key={client.id}
-                  onClick={() => {
-                    setSelectedClientId(client.id);
-                    setSelectedCaseId("");
-                  }}
-                  className={[
-                    "w-full flex items-center gap-3 rounded-lg border px-3 py-3 text-left transition",
-                    selectedClient?.id === client.id
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-border hover:bg-muted/40",
-                  ].join(" ")}
-                >
-                  <ClientAvatar client={client} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold truncate">{client.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {client.phone || client.email || "Sin contacto registrado"}
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </button>
-              ))
-            )}
-          </div>
-        </Card>
-
-        {loading ? (
-          <Card className="p-10">
-            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              Cargando información del cliente...
-            </div>
-          </Card>
-        ) : !selectedClient ? (
-          <Card className="p-10 text-center text-sm text-muted-foreground">
-            Aún no hay clientes registrados.
-          </Card>
+    <AppLayout title="Reportes" subtitle="Crea y consulta los reportes enviados a los clientes">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(360px,0.85fr)_minmax(0,1.15fr)] gap-4">
+        {permissions.canCreateReports ? (
+          <ClientReportForm
+            clients={clients}
+            cases={cases}
+            clientsLoading={loadingClients}
+            casesLoading={loadingCases}
+            onSubmit={handleNewReportSubmit}
+            saving={createReport.isPending}
+            error={newReportError}
+          />
         ) : (
-          <div className="space-y-4">
-            <Card className="p-5">
-              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                <div className="flex items-start gap-4 min-w-0">
-                  <ClientAvatar client={selectedClient} size="lg" />
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-bold tracking-tight truncate">
-                        {selectedClient.name}
-                      </h2>
-                      <StatusBadge
-                        tone={
-                          selectedClient.status === "Activo"
-                            ? "success"
-                            : selectedClient.status === "En espera"
-                              ? "warning"
-                              : "default"
-                        }
-                      >
-                        {selectedClient.status}
-                      </StatusBadge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {selectedClient.phone || selectedClient.email || "Sin contacto registrado"}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 lg:min-w-[320px]">
-                  <MiniStat label="Expedientes" value={clientCases.length} />
-                  <MiniStat label="Activos" value={activeCases.length} />
-                  <MiniStat label="Reportes" value={clientReports.length} />
-                </div>
-              </div>
-            </Card>
-
-            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(360px,0.92fr)_minmax(0,1.08fr)] gap-4">
-              <div className="space-y-4 min-w-0">
-                <ClientReportForm
-                  clients={clients}
-                  cases={cases}
-                  onSubmit={handleNewReportSubmit}
-                  saving={createReport.isPending}
-                  error={newReportError}
-                />
-                <ReportsFeed
-                  reports={clientReports}
-                  filter={reportFilter}
-                  onFilterChange={setReportFilter}
-                  onPreview={handlePreviewPublishedReport}
-                  onDownload={handleDownloadPublishedReport}
-                />
-              </div>
-
-              <div className="space-y-4 min-w-0">
-                <ClientInfo client={selectedClient} />
-                <CasesBlock
-                  cases={clientCases}
-                  selectedCase={selectedCase}
-                  selectedCaseId={selectedCase?.id ?? ""}
-                  onSelectCase={setSelectedCaseId}
-                />
-                <DocumentsBlock documents={clientDocuments} />
-                <AgendaBlock events={clientEvents} />
-              </div>
-            </div>
-          </div>
+          <Card className="p-5 text-sm text-muted-foreground">
+            No tienes permisos para crear reportes.
+          </Card>
         )}
+
+        <div className="space-y-4">
+          {exportError && (
+            <p
+              role="alert"
+              className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+            >
+              {exportError}
+            </p>
+          )}
+          <ReportsFeed
+            reports={reports}
+            loading={loadingReports}
+            filter={reportFilter}
+            onFilterChange={setReportFilter}
+            onPreview={handlePreviewPublishedReport}
+            onDownload={handleDownloadPublishedReport}
+          />
+        </div>
       </div>
       {preview && (
         <ReportPreviewModal
@@ -640,28 +492,6 @@ function ReportsPage() {
         />
       )}
     </AppLayout>
-  );
-}
-
-function ClientAvatar({ client, size = "md" }: { client: ClientRow; size?: "md" | "lg" }) {
-  return (
-    <div
-      className={`${size === "lg" ? "h-14 w-14 text-sm" : "h-10 w-10 text-xs"} grid place-items-center rounded-full font-bold text-white shrink-0`}
-      style={{ background: client.color }}
-    >
-      {client.initials}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </div>
-      <div className="text-sm font-bold mt-0.5 truncate">{value}</div>
-    </div>
   );
 }
 
@@ -722,129 +552,16 @@ function ReportPreviewModal({
   );
 }
 
-function ClientInfo({ client }: { client: ClientRow }) {
-  const rows = [
-    { icon: Phone, label: "Teléfono", value: client.phone },
-    { icon: Mail, label: "Correo", value: client.email },
-    { icon: FileText, label: "Registro", value: formatDate(client.registered_at) },
-  ].filter((row) => Boolean(row.value));
-
-  return (
-    <Card className="p-5">
-      <SectionHeader icon={Phone} title="Información del cliente" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-        {rows.map((row) => {
-          const Icon = row.icon;
-          return (
-            <div key={row.label} className="flex items-start gap-3 rounded-lg bg-muted/30 p-3">
-              <Icon className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  {row.label}
-                </div>
-                <div className="text-sm font-medium truncate">{row.value}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-function CasesBlock({
-  cases,
-  selectedCase,
-  selectedCaseId,
-  onSelectCase,
-}: {
-  cases: CaseRow[];
-  selectedCase: CaseRow | null;
-  selectedCaseId: string;
-  onSelectCase: (id: string) => void;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <SectionHeader icon={Briefcase} title="Expedientes del Cliente" />
-        {cases.length > 1 && (
-          <NativeSelect
-            value={selectedCaseId}
-            onChange={(e) => onSelectCase(e.target.value)}
-            aria-label="Seleccionar expediente"
-            className="h-9 min-w-[220px]"
-          >
-            {cases.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.expediente}
-              </option>
-            ))}
-          </NativeSelect>
-        )}
-      </div>
-      <div className="space-y-3 mt-4">
-        {cases.length === 0 ? (
-          <EmptyText text="Este cliente no tiene expedientes registrados." />
-        ) : !selectedCase ? (
-          <EmptyText text="Selecciona un expediente para ver el detalle." />
-        ) : (
-          <div className="rounded-lg border border-border p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-mono text-xs text-muted-foreground truncate">
-                  {selectedCase.expediente}
-                </div>
-                <div className="text-sm font-semibold mt-1">{selectedCase.process_type}</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge
-                  tone={
-                    selectedCase.priority === "Alta"
-                      ? "danger"
-                      : selectedCase.priority === "Media"
-                        ? "warning"
-                        : "info"
-                  }
-                >
-                  {selectedCase.priority === "Alta" && <AlertTriangle className="h-2.5 w-2.5" />}
-                  {selectedCase.priority}
-                </StatusBadge>
-                <StatusBadge tone={caseStatusTone[selectedCase.status]}>
-                  {selectedCase.status}
-                </StatusBadge>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 text-sm">
-              <InfoLine label="Materia" value={selectedCase.process_type || "—"} />
-              <InfoLine label="Próxima audiencia" value={formatDate(selectedCase.next_hearing)} />
-            </div>
-            {selectedCase.current_summary && (
-              <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm whitespace-pre-wrap">
-                {selectedCase.current_summary}
-              </div>
-            )}
-            <Link
-              to={"/casos/$id" as never}
-              params={{ id: selectedCase.id } as never}
-              className="inline-flex mt-3 text-xs font-semibold text-primary hover:underline"
-            >
-              Abrir expediente completo
-            </Link>
-          </div>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 function ReportsFeed({
   reports,
+  loading,
   filter,
   onFilterChange,
   onPreview,
   onDownload,
 }: {
   reports: ClientReportWithRelations[];
+  loading: boolean;
   filter: ReportCategory | "Todos";
   onFilterChange: (filter: ReportCategory | "Todos") => void;
   onPreview: (report: ClientReportWithRelations) => void;
@@ -856,7 +573,7 @@ function ReportsFeed({
   return (
     <Card className="p-5">
       <div className="flex flex-col gap-3">
-        <SectionHeader icon={MessageSquareText} title="Reportes" />
+        <SectionHeader icon={MessageSquareText} title="Reportes recientes" />
         <div className="flex flex-wrap gap-2">
           {(["Todos", ...REPORT_CATEGORIES] as Array<ReportCategory | "Todos">).map((category) => (
             <button
@@ -876,9 +593,14 @@ function ReportsFeed({
         </div>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {visibleReports.length === 0 ? (
+        {loading ? (
+          <div className="sm:col-span-2 flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            Cargando reportes...
+          </div>
+        ) : visibleReports.length === 0 ? (
           <div className="sm:col-span-2">
-            <EmptyText text="Todavía no hay reportes para este cliente." />
+            <EmptyText text="Todavía no hay reportes registrados." />
           </div>
         ) : (
           visibleReports.map((report) => (
@@ -898,6 +620,9 @@ function ReportsFeed({
                 <h3 className="truncate text-sm font-semibold" title={report.title}>
                   {report.title}
                 </h3>
+                <p className="truncate text-xs font-medium text-primary">
+                  {report.clients?.name ?? "Cliente eliminado"}
+                </p>
                 <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-foreground/75">
                   {report.body}
                 </p>
@@ -940,74 +665,6 @@ function ReportsFeed({
   );
 }
 
-function DocumentsBlock({
-  documents,
-}: {
-  documents: Database["public"]["Tables"]["documents"]["Row"][];
-}) {
-  return (
-    <Card className="p-5">
-      <SectionHeader icon={FileText} title="Documentos" />
-      <div className="space-y-2 mt-4">
-        {documents.length === 0 ? (
-          <EmptyText text="Sin documentos asociados al cliente." />
-        ) : (
-          documents.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-semibold truncate">{doc.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  {doc.type} · {doc.size} · {formatDate(doc.uploaded_at)}
-                </div>
-              </div>
-              <StatusBadge tone="default">{doc.type}</StatusBadge>
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
-  );
-}
-
-function AgendaBlock({
-  events,
-}: {
-  events: Database["public"]["Tables"]["agenda_events"]["Row"][];
-}) {
-  const sorted = [...events].sort((a, b) =>
-    `${a.event_date} ${a.event_time}`.localeCompare(`${b.event_date} ${b.event_time}`),
-  );
-
-  return (
-    <Card className="p-5">
-      <SectionHeader icon={CalendarDays} title="Agenda relacionada" />
-      <div className="space-y-2 mt-4">
-        {sorted.length === 0 ? (
-          <EmptyText text="Sin eventos de agenda asociados." />
-        ) : (
-          sorted.map((event) => (
-            <div key={event.id} className="rounded-lg border border-border p-3 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold truncate">{event.title}</span>
-                <StatusBadge tone={event.type === "Audiencia" ? "warning" : "info"}>
-                  {event.type}
-                </StatusBadge>
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {formatDate(event.event_date)} · {event.event_time}
-                {event.location ? ` · ${event.location}` : ""}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
-  );
-}
-
 function SectionHeader({ icon: Icon, title }: { icon: LucideIcon; title: string }) {
   return (
     <div className="flex items-center gap-2">
@@ -1015,17 +672,6 @@ function SectionHeader({ icon: Icon, title }: { icon: LucideIcon; title: string 
         <Icon className="h-4 w-4" />
       </div>
       <h3 className="text-sm font-semibold">{title}</h3>
-    </div>
-  );
-}
-
-function InfoLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-        {label}
-      </div>
-      <div className="font-medium mt-0.5">{value}</div>
     </div>
   );
 }

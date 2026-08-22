@@ -63,6 +63,27 @@ export function useCreateClientReport() {
       if (!user?.id) throw new Error("Sesión expirada. Inicia sesión de nuevo.");
 
       const db = await getAuthClient();
+
+      // Validación barata del payload antes de escribir: si viene un
+      // case_id, confirma que ese expediente pertenezca realmente a
+      // client_id. No es la garantía final (esa la da la foreign key
+      // compuesta client_reports_case_client_fkey en la base de datos),
+      // pero evita un round-trip fallido y da un mensaje más claro que el
+      // error crudo de Postgres ante un payload manipulado o inconsistente.
+      if (input.case_id) {
+        const { data: relatedCase, error: caseError } = await db
+          .from("cases")
+          .select("id")
+          .eq("id", input.case_id)
+          .eq("client_id", input.client_id)
+          .maybeSingle();
+
+        if (caseError) throw new Error(caseError.message);
+        if (!relatedCase) {
+          throw new Error("El expediente seleccionado no pertenece a este cliente.");
+        }
+      }
+
       const { data, error } = await db
         .from("client_reports")
         .insert({

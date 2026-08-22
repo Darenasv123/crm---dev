@@ -1,6 +1,8 @@
 /**
- * Funciones puras para generación de reportes de clientes
- * y construcción de URLs de WhatsApp
+ * Funciones puras para generación de reportes de clientes: construcción del
+ * mensaje/plantilla, búsqueda de clientes y acotamiento de expedientes al
+ * cliente seleccionado. No contiene ninguna lógica específica de WhatsApp —
+ * ver src/lib/whatsapp.ts para eso.
  */
 
 export interface ClientReportData {
@@ -56,50 +58,55 @@ Por favor, no se olvide de solicitar el informe de su proceso en ${data.reminder
   return message;
 }
 
-/**
- * Normaliza un número de teléfono peruano para WhatsApp
- * - Elimina espacios, guiones, paréntesis y el símbolo +
- * - Si tiene 9 dígitos, antepone 51 (código de Perú)
- * - Si ya tiene código de país, lo conserva
- */
-export function normalizePhoneNumber(phone: string): string | null {
-  // Limpiar caracteres no numéricos
-  const cleaned = phone.replace(/[\s\-()+ ]/g, "");
-
-  // Validar que solo contenga dígitos
-  if (!/^\d+$/.test(cleaned)) {
-    return null;
-  }
-
-  // Si tiene 9 dígitos, es un número peruano sin código
-  if (cleaned.length === 9) {
-    return `51${cleaned}`;
-  }
-
-  // Si tiene 11 dígitos y empieza con 51, ya está bien
-  if (cleaned.length === 11 && cleaned.startsWith("51")) {
-    return cleaned;
-  }
-
-  // Si tiene otro formato con código de país válido (10-15 dígitos), conservarlo
-  if (cleaned.length >= 10 && cleaned.length <= 15) {
-    return cleaned;
-  }
-
-  // Número inválido
-  return null;
+/** Datos mínimos de un cliente necesarios para la búsqueda por texto. */
+export interface SearchableClient {
+  name: string;
+  phone: string | null;
+  email: string | null;
 }
 
 /**
- * Construye la URL de WhatsApp Web con el mensaje
+ * Determina si un cliente coincide con un término de búsqueda libre por
+ * nombre, teléfono o correo (comparación insensible a mayúsculas/minúsculas,
+ * sin fuzzy matching).
  */
-export function buildWhatsAppUrl(phone: string, message: string): string | null {
-  const normalized = normalizePhoneNumber(phone);
+export function matchesClientSearch(client: SearchableClient, term: string): boolean {
+  const query = term.trim().toLowerCase();
+  if (!query) return true;
+  return (
+    client.name.toLowerCase().includes(query) ||
+    (client.phone ?? "").toLowerCase().includes(query) ||
+    (client.email ?? "").toLowerCase().includes(query)
+  );
+}
 
-  if (!normalized) {
-    return null;
-  }
+/** Filtra una lista de clientes por nombre, teléfono o correo. */
+export function searchClients<T extends SearchableClient>(clients: T[], term: string): T[] {
+  return clients.filter((client) => matchesClientSearch(client, term));
+}
 
-  const encodedMessage = encodeURIComponent(message);
-  return `https://wa.me/${normalized}?text=${encodedMessage}`;
+/** Datos mínimos de un expediente necesarios para acotarlo a un cliente. */
+export interface ClientScopedCase {
+  id: string;
+  client_id: string;
+}
+
+/** Filtra los expedientes que pertenecen al cliente indicado. */
+export function casesForClient<T extends ClientScopedCase>(cases: T[], clientId: string): T[] {
+  if (!clientId) return [];
+  return cases.filter((item) => item.client_id === clientId);
+}
+
+/**
+ * Verifica que un expediente exista y pertenezca realmente al cliente
+ * indicado, para impedir un `case_id` de un cliente distinto al `client_id`
+ * del reporte.
+ */
+export function isCaseOwnedByClient<T extends ClientScopedCase>(
+  cases: T[],
+  caseId: string,
+  clientId: string,
+): boolean {
+  if (!caseId) return true;
+  return cases.some((item) => item.id === caseId && item.client_id === clientId);
 }

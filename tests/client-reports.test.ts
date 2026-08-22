@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   buildClientReportMessage,
   formatSpanishDate,
-  normalizePhoneNumber,
-  buildWhatsAppUrl,
+  matchesClientSearch,
+  searchClients,
+  casesForClient,
+  isCaseOwnedByClient,
   type ClientReportData,
 } from "@/lib/client-reports";
 
@@ -112,101 +114,77 @@ describe("buildClientReportMessage", () => {
   });
 });
 
-describe("normalizePhoneNumber", () => {
-  it("debe normalizar número peruano de 9 dígitos", () => {
-    const result = normalizePhoneNumber("987654321");
-    expect(result).toBe("51987654321");
+describe("matchesClientSearch / searchClients — búsqueda de cliente para Reportes", () => {
+  const clients = [
+    { id: "c1", name: "Ana Torres", phone: "987654321", email: "ana@example.com" },
+    { id: "c2", name: "Bruno Salas", phone: "911222333", email: "bruno@estudio.pe" },
+    { id: "c3", name: "Carla Ñañez", phone: null, email: null },
+  ];
+
+  it("encuentra por coincidencia parcial de nombre, insensible a mayúsculas", () => {
+    expect(searchClients(clients, "ana t").map((c) => c.id)).toEqual(["c1"]);
+    expect(searchClients(clients, "ANA").map((c) => c.id)).toEqual(["c1"]);
   });
 
-  it("debe conservar código 51 si ya está presente", () => {
-    const result = normalizePhoneNumber("51987654321");
-    expect(result).toBe("51987654321");
+  it("encuentra por teléfono parcial", () => {
+    expect(searchClients(clients, "9112223").map((c) => c.id)).toEqual(["c2"]);
   });
 
-  it("debe eliminar el símbolo +", () => {
-    const result = normalizePhoneNumber("+51987654321");
-    expect(result).toBe("51987654321");
+  it("encuentra por correo parcial, insensible a mayúsculas", () => {
+    expect(searchClients(clients, "ESTUDIO.PE").map((c) => c.id)).toEqual(["c2"]);
   });
 
-  it("debe eliminar espacios", () => {
-    const result = normalizePhoneNumber("987 654 321");
-    expect(result).toBe("51987654321");
+  it("término vacío devuelve todos los clientes", () => {
+    expect(searchClients(clients, "").map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
+    expect(searchClients(clients, "   ").map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
   });
 
-  it("debe eliminar guiones", () => {
-    const result = normalizePhoneNumber("987-654-321");
-    expect(result).toBe("51987654321");
+  it("no falla con clientes sin teléfono ni correo", () => {
+    expect(searchClients(clients, "ñañez").map((c) => c.id)).toEqual(["c3"]);
   });
 
-  it("debe eliminar paréntesis", () => {
-    const result = normalizePhoneNumber("(987) 654-321");
-    expect(result).toBe("51987654321");
+  it("sin coincidencias devuelve lista vacía", () => {
+    expect(searchClients(clients, "no-existe-nadie")).toHaveLength(0);
   });
 
-  it("debe eliminar múltiples caracteres especiales", () => {
-    const result = normalizePhoneNumber("+51 (987) 654-321");
-    expect(result).toBe("51987654321");
-  });
-
-  it("debe rechazar número con letras", () => {
-    const result = normalizePhoneNumber("987abc321");
-    expect(result).toBeNull();
-  });
-
-  it("debe rechazar número muy corto", () => {
-    const result = normalizePhoneNumber("12345");
-    expect(result).toBeNull();
-  });
-
-  it("debe rechazar número muy largo", () => {
-    const result = normalizePhoneNumber("12345678901234567890");
-    expect(result).toBeNull();
-  });
-
-  it("debe aceptar números internacionales válidos", () => {
-    const result = normalizePhoneNumber("+1234567890");
-    expect(result).toBe("1234567890");
+  it("no aplica fuzzy matching (typo no encuentra resultado)", () => {
+    expect(matchesClientSearch(clients[0], "anaa")).toBe(false);
   });
 });
 
-describe("buildWhatsAppUrl", () => {
-  const message = "Hola, este es un mensaje de prueba con emojis 🧑🏻‍🎓 y saltos de línea.\n\nGracias.";
+describe("casesForClient / isCaseOwnedByClient — acotamiento de expediente al cliente", () => {
+  const cases = [
+    { id: "case-1", client_id: "c1" },
+    { id: "case-2", client_id: "c1" },
+    { id: "case-3", client_id: "c2" },
+  ];
 
-  it("debe producir URL wa.me correcta", () => {
-    const url = buildWhatsAppUrl("987654321", message);
-    expect(url).not.toBeNull();
-    expect(url).toMatch(/^https:\/\/wa\.me\/51987654321\?text=/);
+  it("solo devuelve expedientes del cliente indicado", () => {
+    expect(casesForClient(cases, "c1").map((c) => c.id)).toEqual(["case-1", "case-2"]);
+    expect(casesForClient(cases, "c2").map((c) => c.id)).toEqual(["case-3"]);
   });
 
-  it("debe codificar emojis correctamente", () => {
-    const url = buildWhatsAppUrl("987654321", "Test 🧑🏻‍🎓");
-    expect(url).not.toBeNull();
-    expect(url).toContain("Test%20");
+  it("cliente sin expedientes devuelve lista vacía", () => {
+    expect(casesForClient(cases, "c3")).toHaveLength(0);
   });
 
-  it("debe codificar saltos de línea", () => {
-    const url = buildWhatsAppUrl("987654321", "Línea 1\nLínea 2");
-    expect(url).not.toBeNull();
-    expect(url).toContain("%0A");
+  it("client_id vacío devuelve lista vacía (sin cliente seleccionado aún)", () => {
+    expect(casesForClient(cases, "")).toHaveLength(0);
   });
 
-  it("debe retornar null para número inválido", () => {
-    const url = buildWhatsAppUrl("abc123", message);
-    expect(url).toBeNull();
+  it("acepta un expediente que sí pertenece al cliente", () => {
+    expect(isCaseOwnedByClient(cases, "case-1", "c1")).toBe(true);
   });
 
-  it("debe usar número normalizado en la URL", () => {
-    const url = buildWhatsAppUrl("+51 (987) 654-321", message);
-    expect(url).not.toBeNull();
-    expect(url).toContain("wa.me/51987654321");
+  it("rechaza un expediente de otro cliente (mismatch client_id/case_id)", () => {
+    expect(isCaseOwnedByClient(cases, "case-3", "c1")).toBe(false);
   });
 
-  it("debe codificar mensaje completo", () => {
-    const url = buildWhatsAppUrl(
-      "987654321",
-      "Test con espacios y caracteres especiales: ¿Cómo estás?",
-    );
-    expect(url).not.toBeNull();
-    expect(url).toContain("Test%20con%20espacios");
+  it("rechaza un case_id inexistente", () => {
+    expect(isCaseOwnedByClient(cases, "case-inexistente", "c1")).toBe(false);
+  });
+
+  it("case_id vacío se considera válido (expediente opcional)", () => {
+    expect(isCaseOwnedByClient(cases, "", "c1")).toBe(true);
   });
 });
