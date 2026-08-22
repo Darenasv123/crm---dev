@@ -23,10 +23,11 @@ import {
 import { useState, useEffect, useId } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
+import { EmailSettings } from "@/components/settings/email-settings";
+import { TemplatesSettings } from "@/components/settings/templates-settings";
 import {
   Plus,
   Bell,
-  MessageCircle,
   Mail,
   FileText,
   Shield,
@@ -60,7 +61,6 @@ const TABS = [
   { id: "herramientas", label: "Herramientas administrativas", icon: FolderArchive },
   { id: "google-calendar", label: "Google Calendar", icon: Calendar },
   { id: "notificaciones", label: "Notificaciones", icon: Bell },
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
   { id: "correo", label: "Correo", icon: Mail },
   { id: "plantillas", label: "Plantillas", icon: FileText },
 ];
@@ -746,95 +746,9 @@ function SettingsPage() {
             </Card>
           )}
 
-          {tab === "whatsapp" && (
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
-                  <MessageCircle className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold">Integración con WhatsApp Business</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Envía recordatorios y confirmaciones de audiencia a clientes.
-                  </p>
-                </div>
-                <span className="ml-auto">
-                  <StatusBadge tone="info">Próximamente</StatusBadge>
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField label="Número conectado" value="+51 998 ••• •••" />
-                <FormField label="Nombre del remitente" value="Abogados a tu Servicio" />
-                <FormField label="Plantilla por defecto" value="Recordatorio audiencia" />
-                <FormField label="Idioma" value="Español (Perú)" />
-              </div>
-              <button
-                disabled
-                className="mt-5 h-10 px-4 rounded-lg bg-muted text-muted-foreground text-sm font-semibold cursor-not-allowed"
-              >
-                Disponible próximamente
-              </button>
-            </Card>
-          )}
+          {tab === "correo" && <EmailSettings />}
 
-          {tab === "correo" && (
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-sky-50 text-sky-600">
-                  <Mail className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold">Configuración de correo</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Servidor SMTP para envío automático de notificaciones. Próximamente.
-                  </p>
-                </div>
-                <span className="ml-auto">
-                  <StatusBadge tone="info">Próximamente</StatusBadge>
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField label="Servidor SMTP" value="smtp.abogados.pe" />
-                <FormField label="Puerto" value="587" />
-                <FormField label="Usuario" value="notificaciones@abogados.pe" />
-                <FormField label="Encriptación" value="TLS" />
-              </div>
-            </Card>
-          )}
-
-          {tab === "plantillas" && (
-            <Card className="p-6">
-              <h3 className="text-base font-semibold mb-1">Plantillas de documentos</h3>
-              <p className="text-xs text-muted-foreground mb-5">
-                Documentos preconfigurados para uso rápido. Próximamente.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {[
-                  "Demanda de divorcio",
-                  "Demanda laboral",
-                  "Carta notarial",
-                  "Poder general",
-                  "Contrato de servicios",
-                  "Escrito de apelación",
-                ].map((t, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/30 hover:bg-muted/30 transition cursor-pointer"
-                  >
-                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary">
-                      <FileText className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold truncate">{t}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        Plantilla DOCX · 12 variables
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
+          {tab === "plantillas" && <TemplatesSettings />}
         </div>
       </div>
 

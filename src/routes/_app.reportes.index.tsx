@@ -11,11 +11,12 @@ import {
   type ClientReportWithRelations,
   type ReportCategory,
 } from "@/hooks/use-reports";
-import { Download, Eye, Loader2, MessageSquareText, type LucideIcon } from "lucide-react";
+import { Download, Eye, Loader2, Mail, MessageSquareText, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import type { Database } from "@/lib/database.types";
 import { formatPeruDate, formatPeruDateTime, formatPeruTime } from "@/lib/peru-time";
 import { usePermissions } from "@/lib/permissions";
+import { useEmailConfigStatus, useSendReportEmail } from "@/hooks/use-email";
 import { ClientReportForm, type ClientReportFormData } from "@/components/client-report-form";
 
 export const Route = createFileRoute("/_app/reportes/")({
@@ -392,11 +393,17 @@ function ReportsPage() {
   const { data: cases = [], isLoading: loadingCases } = useCases();
   const { data: reports = [], isLoading: loadingReports } = useClientReports();
   const createReport = useCreateClientReport();
+  const { data: emailStatus } = useEmailConfigStatus();
+  const sendReportEmail = useSendReportEmail();
 
   const [reportFilter, setReportFilter] = useState<ReportCategory | "Todos">("Todos");
   const [preview, setPreview] = useState<{ src: string; data: ReportExportData } | null>(null);
   const [newReportError, setNewReportError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [sendingReportId, setSendingReportId] = useState<string | null>(null);
+  const [emailFeedback, setEmailFeedback] = useState<
+    Record<string, { kind: "success" | "error"; message: string } | undefined>
+  >({});
 
   async function handlePreviewPublishedReport(report: ClientReportWithRelations) {
     const client = clients.find((c) => c.id === report.client_id);
@@ -419,6 +426,31 @@ function ReportsPage() {
     setExportError(null);
     const data = buildPublishedReportData(client, cases, report);
     downloadBlob(createReportDocx(data), reportFileName(data, "docx"));
+  }
+
+  async function handleSendReportEmail(report: ClientReportWithRelations) {
+    // Guardar el reporte y enviarlo por correo son operaciones
+    // independientes: un fallo aquí nunca revierte ni afecta el reporte
+    // ya persistido, solo actualiza el feedback de envío de este reporte.
+    setSendingReportId(report.id);
+    setEmailFeedback((prev) => ({ ...prev, [report.id]: undefined }));
+    try {
+      await sendReportEmail.mutateAsync(report.id);
+      setEmailFeedback((prev) => ({
+        ...prev,
+        [report.id]: { kind: "success", message: "Correo enviado." },
+      }));
+    } catch (err) {
+      setEmailFeedback((prev) => ({
+        ...prev,
+        [report.id]: {
+          kind: "error",
+          message: err instanceof Error ? err.message : "No se pudo enviar el correo.",
+        },
+      }));
+    } finally {
+      setSendingReportId(null);
+    }
   }
 
   async function handleNewReportSubmit(data: ClientReportFormData, finalText: string) {
@@ -478,6 +510,10 @@ function ReportsPage() {
             onFilterChange={setReportFilter}
             onPreview={handlePreviewPublishedReport}
             onDownload={handleDownloadPublishedReport}
+            emailConfigured={Boolean(emailStatus?.configured)}
+            sendingReportId={sendingReportId}
+            emailFeedback={emailFeedback}
+            onSendEmail={handleSendReportEmail}
           />
         </div>
       </div>
@@ -559,6 +595,10 @@ function ReportsFeed({
   onFilterChange,
   onPreview,
   onDownload,
+  emailConfigured,
+  sendingReportId,
+  emailFeedback,
+  onSendEmail,
 }: {
   reports: ClientReportWithRelations[];
   loading: boolean;
@@ -566,6 +606,10 @@ function ReportsFeed({
   onFilterChange: (filter: ReportCategory | "Todos") => void;
   onPreview: (report: ClientReportWithRelations) => void;
   onDownload: (report: ClientReportWithRelations) => void;
+  emailConfigured: boolean;
+  sendingReportId: string | null;
+  emailFeedback: Record<string, { kind: "success" | "error"; message: string } | undefined>;
+  onSendEmail: (report: ClientReportWithRelations) => void;
 }) {
   const visibleReports =
     filter === "Todos" ? reports : reports.filter((report) => report.category === filter);
@@ -655,8 +699,45 @@ function ReportsFeed({
                   >
                     <Download className="h-3.5 w-3.5" />
                   </button>
+                  {(() => {
+                    const clientEmail = report.clients?.email ?? null;
+                    const disabledReason = !emailConfigured
+                      ? "El correo del estudio no está configurado."
+                      : !clientEmail
+                        ? "El cliente no tiene un correo registrado."
+                        : null;
+                    const sending = sendingReportId === report.id;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => onSendEmail(report)}
+                        disabled={Boolean(disabledReason) || sending}
+                        title={disabledReason ?? "Enviar reporte por correo"}
+                        aria-label={`Enviar reporte ${report.title} por correo`}
+                        className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {sending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Mail className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
+              {emailFeedback[report.id] && (
+                <p
+                  role={emailFeedback[report.id]?.kind === "error" ? "alert" : "status"}
+                  className={`mt-2 text-[11px] ${
+                    emailFeedback[report.id]?.kind === "success"
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {emailFeedback[report.id]?.message}
+                </p>
+              )}
             </article>
           ))
         )}

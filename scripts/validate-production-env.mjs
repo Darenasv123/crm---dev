@@ -67,6 +67,25 @@ const OPTIONAL = [
     name: "GOOGLE_SHARED_CALENDAR_ID",
     description: "ID del calendario compartido (puede configurarse en la UI)",
   },
+  // Correo (Fase 5): deliberadamente OPCIONAL, no REQUIRED. El CRM debe
+  // poder arrancar en producción sin Correo configurado -- de hecho, el
+  // propio SMTP de GoTrue (recuperación de contraseña) ya está deshabilitado
+  // hoy en este entorno por no funcionar (ver src/lib/feature-flags.ts).
+  // Si Correo se declara requisito productivo en un release futuro, mover
+  // este bloque a REQUIRED entonces, no antes.
+  {
+    name: "SMTP_HOST",
+    description: 'Servidor SMTP saliente. Sin esto, Correo permanece "no configurado" en el CRM.',
+  },
+  { name: "SMTP_PORT", description: "Puerto SMTP (por defecto 587)" },
+  {
+    name: "SMTP_SECURE",
+    description: '"true" para SMTPS implícito (usualmente puerto 465), si no se omite',
+  },
+  { name: "SMTP_USER", description: "Usuario/cuenta SMTP" },
+  { name: "SMTP_PASSWORD", description: "Contraseña SMTP (secreto, nunca se expone al navegador)" },
+  { name: "SMTP_FROM_EMAIL", description: "Correo remitente de los envíos del CRM" },
+  { name: "SMTP_FROM_NAME", description: "Nombre visible del remitente (opcional)" },
 ];
 
 // Variables that must NEVER appear in this process for safety

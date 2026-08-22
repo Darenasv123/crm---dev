@@ -1684,6 +1684,53 @@ export type Database = {
           },
         ];
       };
+      templates: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          file_name: string;
+          id: string;
+          mime_type: string;
+          name: string;
+          size: number;
+          storage_path: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          file_name: string;
+          id?: string;
+          mime_type: string;
+          name: string;
+          size: number;
+          storage_path: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          file_name?: string;
+          id?: string;
+          mime_type?: string;
+          name?: string;
+          size?: number;
+          storage_path?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "templates_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;

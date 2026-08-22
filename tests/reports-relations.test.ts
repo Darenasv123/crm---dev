@@ -1,10 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const casoSource = readFileSync("src/routes/_app.casos.$id.tsx", "utf8");
 const clientRelatedSource = readFileSync("src/components/clients/client-related-page.tsx", "utf8");
 const useReportsSource = readFileSync("src/hooks/use-reports.ts", "utf8");
-const whatsappSource = readFileSync("src/lib/whatsapp.ts", "utf8");
 const clientReportsSource = readFileSync("src/lib/client-reports.ts", "utf8");
 
 describe("Expediente → Reportes (Sección J, antes MISSING)", () => {
@@ -42,16 +41,16 @@ describe("Esquema de client_reports (Sección W — no se requirió migración)"
   });
 });
 
-describe("Decoupling de WhatsApp (Sección M)", () => {
+describe("Retiro de WhatsApp (Fase 5, Sección U — antes solo aislado, ahora eliminado del runtime)", () => {
   it("client-reports.ts no contiene ninguna lógica específica de WhatsApp", () => {
     expect(clientReportsSource).not.toContain("wa.me");
     expect(clientReportsSource).not.toContain("normalizePhoneNumber");
     expect(clientReportsSource).not.toContain("buildWhatsAppUrl");
   });
 
-  it("la lógica de WhatsApp vive aislada en su propio módulo, sin consumidores activos", () => {
-    expect(whatsappSource).toContain("export function normalizePhoneNumber");
-    expect(whatsappSource).toContain("export function buildWhatsAppUrl");
+  it("src/lib/whatsapp.ts ya no existe (se eliminó al no tener consumidores activos)", () => {
+    expect(existsSync("src/lib/whatsapp.ts")).toBe(false);
+    expect(existsSync("tests/whatsapp.test.ts")).toBe(false);
   });
 
   it("ningún componente de Reportes importa src/lib/whatsapp", () => {

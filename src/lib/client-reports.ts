@@ -1,8 +1,8 @@
 /**
  * Funciones puras para generación de reportes de clientes: construcción del
  * mensaje/plantilla, búsqueda de clientes y acotamiento de expedientes al
- * cliente seleccionado. No contiene ninguna lógica específica de WhatsApp —
- * ver src/lib/whatsapp.ts para eso.
+ * cliente seleccionado. No contiene ninguna lógica de WhatsApp (retirado
+ * del producto en Fase 5).
  */
 
 export interface ClientReportData {

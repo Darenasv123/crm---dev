@@ -181,6 +181,31 @@ export function resolveDocumentPermissions(role: string | null | undefined): Doc
 }
 
 // ---------------------------------------------------------------------------
+// Permisos de Plantillas (Configuración → Plantillas)
+// ---------------------------------------------------------------------------
+
+export interface TemplatePermissions {
+  /** Puede ver la biblioteca de plantillas. Administrador y Personal tienen acceso igual. */
+  canViewTemplates: boolean;
+  /** Puede descargar plantillas. Administrador y Personal tienen acceso igual. */
+  canDownloadTemplates: boolean;
+  /** Puede crear/subir plantillas (solo Administrador: no hay razón de negocio para Personal). */
+  canCreateTemplates: boolean;
+  /** Puede eliminar plantillas (solo Administrador). */
+  canDeleteTemplates: boolean;
+}
+
+export function resolveTemplatePermissions(role: string | null | undefined): TemplatePermissions {
+  const admin = isAdminRole(role);
+  return {
+    canViewTemplates: true,
+    canDownloadTemplates: true,
+    canCreateTemplates: admin,
+    canDeleteTemplates: admin,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Permisos de Reportes
 // ---------------------------------------------------------------------------
 
@@ -275,6 +300,7 @@ export function usePermissions(
   TaskPermissions &
   AgendaPermissions &
   DocumentPermissions &
+  TemplatePermissions &
   ReportPermissions &
   ClientPermissions &
   CasePermissions {
@@ -284,6 +310,7 @@ export function usePermissions(
     ...resolveTaskPermissions(profile?.role),
     ...resolveAgendaPermissions(profile?.role),
     ...resolveDocumentPermissions(profile?.role),
+    ...resolveTemplatePermissions(profile?.role),
     ...resolveReportPermissions(profile?.role),
     ...resolveClientPermissions(profile?.role),
     ...resolveCasePermissions(profile?.role),

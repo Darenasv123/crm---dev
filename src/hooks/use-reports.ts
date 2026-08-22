@@ -13,7 +13,7 @@ type ClientReport = Database["public"]["Tables"]["client_reports"]["Row"];
 type ClientReportInsert = Database["public"]["Tables"]["client_reports"]["Insert"];
 
 export interface ClientReportWithRelations extends ClientReport {
-  clients?: { name: string; initials: string; color: string } | null;
+  clients?: { name: string; initials: string; color: string; email: string | null } | null;
   cases?: {
     expediente: string;
     process_type: string;
@@ -44,7 +44,7 @@ export function useClientReports() {
       const { data, error } = await db
         .from("client_reports")
         .select(
-          "*, clients(name, initials, color), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
+          "*, clients(name, initials, color, email), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
         )
         .order("created_at", { ascending: false });
 
@@ -98,7 +98,7 @@ export function useCreateClientReport() {
           final_text: input.final_text || null,
         })
         .select(
-          "*, clients(name, initials, color), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
+          "*, clients(name, initials, color, email), cases(expediente, process_type, materia, status), profiles(full_name, initials, role)",
         )
         .single();
 

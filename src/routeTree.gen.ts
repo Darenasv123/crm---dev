@@ -19,6 +19,7 @@ import { Route as ApiHealthRouteImport } from './routes/api.health'
 import { Route as AppTareasIndexRouteImport } from './routes/_app.tareas.index'
 import { Route as AppRevisionIaIndexRouteImport } from './routes/_app.revision-ia.index'
 import { Route as AppReportesIndexRouteImport } from './routes/_app.reportes.index'
+import { Route as AppPlantillasIndexRouteImport } from './routes/_app.plantillas.index'
 import { Route as AppPagosIndexRouteImport } from './routes/_app.pagos.index'
 import { Route as AppImportacionesIndexRouteImport } from './routes/_app.importaciones.index'
 import { Route as AppDocumentosIndexRouteImport } from './routes/_app.documentos.index'
@@ -33,6 +34,9 @@ import { Route as ApiGoogleCalendarMaintenanceRouteImport } from './routes/api.g
 import { Route as ApiGoogleCalendarConnectRouteImport } from './routes/api.google-calendar.connect'
 import { Route as ApiGoogleCalendarCallbackRouteImport } from './routes/api.google-calendar.callback'
 import { Route as ApiGoogleCalendarActionsRouteImport } from './routes/api.google-calendar.actions'
+import { Route as ApiEmailTestRouteImport } from './routes/api.email.test'
+import { Route as ApiEmailStatusRouteImport } from './routes/api.email.status'
+import { Route as ApiEmailSendReportRouteImport } from './routes/api.email.send-report'
 import { Route as AppTareasTodasRouteImport } from './routes/_app.tareas.todas'
 import { Route as AppTareasTableroRouteImport } from './routes/_app.tareas.tablero'
 import { Route as AppTareasProximasRouteImport } from './routes/_app.tareas.proximas'
@@ -91,6 +95,11 @@ const AppRevisionIaIndexRoute = AppRevisionIaIndexRouteImport.update({
 const AppReportesIndexRoute = AppReportesIndexRouteImport.update({
   id: '/reportes/',
   path: '/reportes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPlantillasIndexRoute = AppPlantillasIndexRouteImport.update({
+  id: '/plantillas/',
+  path: '/plantillas/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPagosIndexRoute = AppPagosIndexRouteImport.update({
@@ -169,6 +178,21 @@ const ApiGoogleCalendarActionsRoute =
     path: '/api/google-calendar/actions',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiEmailTestRoute = ApiEmailTestRouteImport.update({
+  id: '/api/email/test',
+  path: '/api/email/test',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEmailStatusRoute = ApiEmailStatusRouteImport.update({
+  id: '/api/email/status',
+  path: '/api/email/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEmailSendReportRoute = ApiEmailSendReportRouteImport.update({
+  id: '/api/email/send-report',
+  path: '/api/email/send-report',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppTareasTodasRoute = AppTareasTodasRouteImport.update({
   id: '/tareas/todas',
   path: '/tareas/todas',
@@ -234,6 +258,9 @@ export interface FileRoutesByFullPath {
   '/tareas/proximas': typeof AppTareasProximasRoute
   '/tareas/tablero': typeof AppTareasTableroRoute
   '/tareas/todas': typeof AppTareasTodasRoute
+  '/api/email/send-report': typeof ApiEmailSendReportRoute
+  '/api/email/status': typeof ApiEmailStatusRoute
+  '/api/email/test': typeof ApiEmailTestRoute
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
@@ -248,6 +275,7 @@ export interface FileRoutesByFullPath {
   '/documentos/': typeof AppDocumentosIndexRoute
   '/importaciones/': typeof AppImportacionesIndexRoute
   '/pagos/': typeof AppPagosIndexRoute
+  '/plantillas/': typeof AppPlantillasIndexRoute
   '/reportes/': typeof AppReportesIndexRoute
   '/revision-ia/': typeof AppRevisionIaIndexRoute
   '/tareas/': typeof AppTareasIndexRoute
@@ -269,6 +297,9 @@ export interface FileRoutesByTo {
   '/tareas/proximas': typeof AppTareasProximasRoute
   '/tareas/tablero': typeof AppTareasTableroRoute
   '/tareas/todas': typeof AppTareasTodasRoute
+  '/api/email/send-report': typeof ApiEmailSendReportRoute
+  '/api/email/status': typeof ApiEmailStatusRoute
+  '/api/email/test': typeof ApiEmailTestRoute
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
@@ -283,6 +314,7 @@ export interface FileRoutesByTo {
   '/documentos': typeof AppDocumentosIndexRoute
   '/importaciones': typeof AppImportacionesIndexRoute
   '/pagos': typeof AppPagosIndexRoute
+  '/plantillas': typeof AppPlantillasIndexRoute
   '/reportes': typeof AppReportesIndexRoute
   '/revision-ia': typeof AppRevisionIaIndexRoute
   '/tareas': typeof AppTareasIndexRoute
@@ -306,6 +338,9 @@ export interface FileRoutesById {
   '/_app/tareas/proximas': typeof AppTareasProximasRoute
   '/_app/tareas/tablero': typeof AppTareasTableroRoute
   '/_app/tareas/todas': typeof AppTareasTodasRoute
+  '/api/email/send-report': typeof ApiEmailSendReportRoute
+  '/api/email/status': typeof ApiEmailStatusRoute
+  '/api/email/test': typeof ApiEmailTestRoute
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
@@ -320,6 +355,7 @@ export interface FileRoutesById {
   '/_app/documentos/': typeof AppDocumentosIndexRoute
   '/_app/importaciones/': typeof AppImportacionesIndexRoute
   '/_app/pagos/': typeof AppPagosIndexRoute
+  '/_app/plantillas/': typeof AppPlantillasIndexRoute
   '/_app/reportes/': typeof AppReportesIndexRoute
   '/_app/revision-ia/': typeof AppRevisionIaIndexRoute
   '/_app/tareas/': typeof AppTareasIndexRoute
@@ -343,6 +379,9 @@ export interface FileRouteTypes {
     | '/tareas/proximas'
     | '/tareas/tablero'
     | '/tareas/todas'
+    | '/api/email/send-report'
+    | '/api/email/status'
+    | '/api/email/test'
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
@@ -357,6 +396,7 @@ export interface FileRouteTypes {
     | '/documentos/'
     | '/importaciones/'
     | '/pagos/'
+    | '/plantillas/'
     | '/reportes/'
     | '/revision-ia/'
     | '/tareas/'
@@ -378,6 +418,9 @@ export interface FileRouteTypes {
     | '/tareas/proximas'
     | '/tareas/tablero'
     | '/tareas/todas'
+    | '/api/email/send-report'
+    | '/api/email/status'
+    | '/api/email/test'
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
@@ -392,6 +435,7 @@ export interface FileRouteTypes {
     | '/documentos'
     | '/importaciones'
     | '/pagos'
+    | '/plantillas'
     | '/reportes'
     | '/revision-ia'
     | '/tareas'
@@ -414,6 +458,9 @@ export interface FileRouteTypes {
     | '/_app/tareas/proximas'
     | '/_app/tareas/tablero'
     | '/_app/tareas/todas'
+    | '/api/email/send-report'
+    | '/api/email/status'
+    | '/api/email/test'
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
@@ -428,6 +475,7 @@ export interface FileRouteTypes {
     | '/_app/documentos/'
     | '/_app/importaciones/'
     | '/_app/pagos/'
+    | '/_app/plantillas/'
     | '/_app/reportes/'
     | '/_app/revision-ia/'
     | '/_app/tareas/'
@@ -444,6 +492,9 @@ export interface RootRouteChildren {
   ResonanciaRoute: typeof ResonanciaRoute
   RestablecerContrasenaRoute: typeof RestablecerContrasenaRoute
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiEmailSendReportRoute: typeof ApiEmailSendReportRoute
+  ApiEmailStatusRoute: typeof ApiEmailStatusRoute
+  ApiEmailTestRoute: typeof ApiEmailTestRoute
   ApiGoogleCalendarActionsRoute: typeof ApiGoogleCalendarActionsRoute
   ApiGoogleCalendarCallbackRoute: typeof ApiGoogleCalendarCallbackRoute
   ApiGoogleCalendarConnectRoute: typeof ApiGoogleCalendarConnectRoute
@@ -523,6 +574,13 @@ declare module '@tanstack/react-router' {
       path: '/reportes'
       fullPath: '/reportes/'
       preLoaderRoute: typeof AppReportesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/plantillas/': {
+      id: '/_app/plantillas/'
+      path: '/plantillas'
+      fullPath: '/plantillas/'
+      preLoaderRoute: typeof AppPlantillasIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/pagos/': {
@@ -623,6 +681,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGoogleCalendarActionsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/email/test': {
+      id: '/api/email/test'
+      path: '/api/email/test'
+      fullPath: '/api/email/test'
+      preLoaderRoute: typeof ApiEmailTestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/email/status': {
+      id: '/api/email/status'
+      path: '/api/email/status'
+      fullPath: '/api/email/status'
+      preLoaderRoute: typeof ApiEmailStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/email/send-report': {
+      id: '/api/email/send-report'
+      path: '/api/email/send-report'
+      fullPath: '/api/email/send-report'
+      preLoaderRoute: typeof ApiEmailSendReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/tareas/todas': {
       id: '/_app/tareas/todas'
       path: '/tareas/todas'
@@ -711,6 +790,7 @@ interface AppRouteChildren {
   AppDocumentosIndexRoute: typeof AppDocumentosIndexRoute
   AppImportacionesIndexRoute: typeof AppImportacionesIndexRoute
   AppPagosIndexRoute: typeof AppPagosIndexRoute
+  AppPlantillasIndexRoute: typeof AppPlantillasIndexRoute
   AppReportesIndexRoute: typeof AppReportesIndexRoute
   AppRevisionIaIndexRoute: typeof AppRevisionIaIndexRoute
   AppTareasIndexRoute: typeof AppTareasIndexRoute
@@ -735,6 +815,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppDocumentosIndexRoute: AppDocumentosIndexRoute,
   AppImportacionesIndexRoute: AppImportacionesIndexRoute,
   AppPagosIndexRoute: AppPagosIndexRoute,
+  AppPlantillasIndexRoute: AppPlantillasIndexRoute,
   AppReportesIndexRoute: AppReportesIndexRoute,
   AppRevisionIaIndexRoute: AppRevisionIaIndexRoute,
   AppTareasIndexRoute: AppTareasIndexRoute,
@@ -753,6 +834,9 @@ const rootRouteChildren: RootRouteChildren = {
   ResonanciaRoute: ResonanciaRoute,
   RestablecerContrasenaRoute: RestablecerContrasenaRoute,
   ApiHealthRoute: ApiHealthRoute,
+  ApiEmailSendReportRoute: ApiEmailSendReportRoute,
+  ApiEmailStatusRoute: ApiEmailStatusRoute,
+  ApiEmailTestRoute: ApiEmailTestRoute,
   ApiGoogleCalendarActionsRoute: ApiGoogleCalendarActionsRoute,
   ApiGoogleCalendarCallbackRoute: ApiGoogleCalendarCallbackRoute,
   ApiGoogleCalendarConnectRoute: ApiGoogleCalendarConnectRoute,
