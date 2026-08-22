@@ -126,10 +126,13 @@ export function useRetryAgendaSync() {
   return useMutation({
     mutationFn: async (id: string) => {
       const db = await getAuthClient();
-      await db
+      const { error } = await db
         .from("agenda_events")
         .update({ sync_status: "pending", sync_error: null })
         .eq("id", id);
+      // Antes se ignoraba este error (p. ej. RLS rechazando la actualización)
+      // y se intentaba igual el push a Google — ahora se detiene aquí.
+      if (error) throw new Error(error.message);
       await syncAgendaEvent(id);
       return id;
     },

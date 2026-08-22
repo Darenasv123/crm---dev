@@ -39,6 +39,23 @@ const REQUIRED = [
     description:
       "URL HTTPS pública del webhook: https://abogado.consoldi.com/api/google-calendar/webhook",
   },
+  // Requerida al mismo nivel que el resto de variables de Google Calendar de
+  // arriba: este script valida el target Node/Virtualmin, donde no existe
+  // scheduled() de Cloudflare Workers. Sin este secreto, nada puede disparar
+  // /api/google-calendar/maintenance — el canal nunca se renueva y la cola
+  // de sincronización nunca se procesa, degradando Google→CRM en silencio
+  // hasta que expira el canal (~6 días). Si Google Calendar ya es una
+  // integración requerida en este release (como indican las variables
+  // GOOGLE_CLIENT_ID/SECRET de arriba, también obligatorias), su
+  // mantenimiento programado lo es igual.
+  {
+    name: "GOOGLE_CALENDAR_MAINTENANCE_SECRET",
+    description:
+      "Secreto para /api/google-calendar/maintenance (cron del SO en el target Node, " +
+      "sustituye a scheduled() de Cloudflare Workers). Genera un valor aleatorio largo " +
+      "(ej. openssl rand -hex 32) y configura un cron/systemd timer que lo envíe en el " +
+      "header X-Maintenance-Secret.",
+  },
 ];
 
 const OPTIONAL = [

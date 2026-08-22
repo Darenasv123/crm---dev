@@ -86,7 +86,7 @@ async function hmac(value: string) {
   );
 }
 
-async function timingSafeEqual(left: string, right: string) {
+export async function timingSafeEqual(left: string, right: string) {
   const leftBytes = textEncoder.encode(left);
   const rightBytes = textEncoder.encode(right);
   if (leftBytes.length !== rightBytes.length) return false;
@@ -220,7 +220,7 @@ async function activeConnection() {
   return data as Connection | null;
 }
 
-function eventStart(event: GoogleEvent) {
+export function eventStart(event: GoogleEvent) {
   const value = event.start?.dateTime ?? event.start?.date ?? "";
   if (!value) return { event_date: new Date().toISOString().slice(0, 10), event_time: "09:00" };
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { event_date: value, event_time: "09:00" };
@@ -260,6 +260,50 @@ async function recordSync(
     });
 }
 
+/**
+ * Determina si un evento entrante de Google debe marcarse como conflicto en
+ * vez de sobreescribir la fila local. Política real (no last-write-wins
+ * ciego): solo hay conflicto si el evento local tiene un cambio CRM sin
+ * empujar aún (sync_status "pending") Y ese cambio es más reciente que la
+ * última modificación conocida en Google. Si el local no está pendiente,
+ * Google puede sobreescribir sin preguntar (no hay cambio local en riesgo).
+ * Función pura para poder cubrir la política con tests sin mockear la BD.
+ */
+export function shouldFlagSyncConflict(
+  local: { sync_status: string | null; updated_at: string } | null,
+  event: { updated?: string },
+): boolean {
+  if (!local || local.sync_status !== "pending" || !event.updated) return false;
+  return new Date(local.updated_at).getTime() > new Date(event.updated).getTime();
+}
+
+/**
+ * Umbral para considerar "abandonada" una solicitud de sync en estado
+ * "processing" (p. ej. el proceso Node murió a mitad de un poll).
+ * `syncGoogleToCrm` para una sola conexión tarda segundos/pocos minutos
+ * incluso paginando, por lo que este umbral es holgado a propósito para no
+ * reclamar un job que legítimamente sigue en curso.
+ */
+export const STALE_PROCESSING_MS = 15 * 60 * 1000;
+
+/**
+ * Determina si una solicitud "processing" debe reclamarse de vuelta a
+ * "pending". Usa `claimed_at` (fijado por el propio claim, ver
+ * `processGoogleSyncQueue`) — NUNCA `created_at`, que solo refleja cuándo
+ * llegó el webhook, no cuándo un worker empezó a procesarlo. Una solicitud
+ * puede esperar en "pending" un tiempo arbitrario antes de ser reclamada;
+ * usar `created_at` marcaría como abandonado un job que recién empezó,
+ * permitiendo que dos workers lo procesen a la vez.
+ *
+ * Si `claimedAt` es null (fila anterior a la migración que añadió la
+ * columna, o estado inconsistente) se trata como "no abandonado" — más
+ * seguro no reclamar por falta de evidencia que reclamar por error.
+ */
+export function isStaleProcessing(claimedAt: string | null, now: Date = new Date()): boolean {
+  if (!claimedAt) return false;
+  return now.getTime() - new Date(claimedAt).getTime() > STALE_PROCESSING_MS;
+}
+
 async function applyGoogleEvent(connection: Connection, event: GoogleEvent) {
   const db = adminClient();
   const { data: local } = await db
@@ -284,11 +328,7 @@ async function applyGoogleEvent(connection: Connection, event: GoogleEvent) {
     return;
   }
 
-  if (
-    local?.sync_status === "pending" &&
-    event.updated &&
-    new Date(local.updated_at).getTime() > new Date(event.updated).getTime()
-  ) {
+  if (shouldFlagSyncConflict(local, event)) {
     await db
       .from("agenda_events")
       .update({ sync_status: "conflict", sync_error: "Cambios simultáneos en CRM y Google." })
@@ -393,7 +433,7 @@ export async function syncGoogleToCrm(connectionId?: string) {
   return { processed };
 }
 
-function googleEventPayload(event: {
+export function googleEventPayload(event: {
   id: string;
   title: string;
   type: string;
@@ -823,6 +863,18 @@ export async function acceptGoogleWebhook(request: Request) {
 
 export async function processGoogleSyncQueue() {
   const db = adminClient();
+
+  // Reclama solicitudes "processing" abandonadas (p. ej. el proceso murió
+  // entre el claim y el resultado final) para que no queden huérfanas para
+  // siempre. Basado en claimed_at (cuándo un worker la tomó), NUNCA en
+  // created_at (cuándo llegó el webhook) — ver isStaleProcessing().
+  const staleCutoff = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  await db
+    .from("google_calendar_sync_requests")
+    .update({ status: "pending", claimed_at: null })
+    .eq("status", "processing")
+    .lt("claimed_at", staleCutoff);
+
   const { data: requests, error } = await db
     .from("google_calendar_sync_requests")
     .select("*")
@@ -833,7 +885,7 @@ export async function processGoogleSyncQueue() {
   for (const item of requests ?? []) {
     const { data: claimed } = await db
       .from("google_calendar_sync_requests")
-      .update({ status: "processing" })
+      .update({ status: "processing", claimed_at: new Date().toISOString() })
       .eq("id", item.id)
       .eq("status", "pending")
       .select("id")
@@ -859,6 +911,15 @@ export async function processGoogleSyncQueue() {
   return { processed: requests?.length ?? 0 };
 }
 
+/**
+ * Ventana de debounce del claim de renovación de canal. Solo necesita cubrir
+ * una ejecución real de renewGoogleChannel() (un par de llamadas a la API de
+ * Google, típicamente segundos) — se mantiene corta a propósito para no
+ * bloquear una renovación legítima si una ejecución anterior falló sin
+ * limpiar su claim.
+ */
+export const RENEWAL_CLAIM_DEBOUNCE_MS = 5 * 60 * 1000;
+
 export async function runGoogleCalendarScheduledMaintenance() {
   const db = adminClient();
   const queue = await processGoogleSyncQueue();
@@ -876,12 +937,37 @@ export async function runGoogleCalendarScheduledMaintenance() {
     .maybeSingle();
   if (channel) return { queue: queue.processed, renewed: false };
 
+  // Claim optimista: si dos ejecuciones de mantenimiento se solapan mientras
+  // el canal está por expirar, ambas podrían llegar hasta aquí antes de que
+  // cualquiera cree un canal nuevo. Sin este claim, crearían dos canales
+  // reales en Google y cada una detendría el canal recién creado por la
+  // otra al "limpiar viejos", pudiendo dejar la conexión sin ningún canal
+  // activo. Mismo patrón de UPDATE condicional ya usado para la cola.
+  const claimCutoff = new Date(Date.now() - RENEWAL_CLAIM_DEBOUNCE_MS).toISOString();
+  const { data: claimedConnection } = await db
+    .from("google_calendar_connections")
+    .update({ renewal_claimed_at: new Date().toISOString() })
+    .eq("id", connection.id)
+    .or(`renewal_claimed_at.is.null,renewal_claimed_at.lt.${claimCutoff}`)
+    .select("id")
+    .maybeSingle();
+  if (!claimedConnection) {
+    // Otra ejecución ya reclamó la renovación hace poco; se abstiene este ciclo.
+    return { queue: queue.processed, renewed: false };
+  }
+
   await renewGoogleChannel(connection.id);
   return { queue: queue.processed, renewed: true };
 }
 
 export async function authorizeAgendaSync(request: Request) {
-  await requireRole(request, ["Administrador", "Personal"]);
+  // resolveAgendaPermissions() otorga canCreateEvents/canEditEvents/
+  // canDeleteEvents/canResolveSync exclusivamente a Administrador — Personal
+  // nunca genera legítimamente un push a Google. Antes este gate aceptaba
+  // ambos roles, lo que permitía a Personal forzar una sincronización vía el
+  // botón "Reintentar" (que no estaba protegido en la UI) sin poder editar
+  // el evento. Corregido para reflejar el modelo de permisos real.
+  await requireRole(request, ["Administrador"]);
 }
 
 export function safeServerError(cause: unknown) {

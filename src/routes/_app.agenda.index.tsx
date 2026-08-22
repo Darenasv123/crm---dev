@@ -519,6 +519,7 @@ function CalendarPage() {
                             <AgendaSyncStatus
                               event={e}
                               isAdmin={isAdmin}
+                              canRetry={canEditEvents}
                               busy={retrySync.isPending || resolveConflict.isPending}
                               onRetry={() => retrySync.mutate(e.id)}
                               onResolve={(resolution) =>
@@ -817,12 +818,15 @@ function SyncBadge({ status }: { status: string | null }) {
 function AgendaSyncStatus({
   event,
   isAdmin,
+  canRetry,
   busy,
   onRetry,
   onResolve,
 }: {
   event: AgendaEventWithClient;
   isAdmin: boolean;
+  /** Reintentar equivale a forzar un push a Google: mismo permiso que editar. */
+  canRetry: boolean;
   busy: boolean;
   onRetry: () => void;
   onResolve: (resolution: "crm" | "google") => void;
@@ -830,7 +834,7 @@ function AgendaSyncStatus({
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <SyncBadge status={event.sync_status} />
-      {event.sync_status === "error" && (
+      {event.sync_status === "error" && canRetry && (
         <button
           type="button"
           disabled={busy}

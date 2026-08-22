@@ -29,6 +29,7 @@ import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
 import { Route as ApiGoogleCalendarWebhookRouteImport } from './routes/api.google-calendar.webhook'
 import { Route as ApiGoogleCalendarSyncEventRouteImport } from './routes/api.google-calendar.sync-event'
 import { Route as ApiGoogleCalendarStatusRouteImport } from './routes/api.google-calendar.status'
+import { Route as ApiGoogleCalendarMaintenanceRouteImport } from './routes/api.google-calendar.maintenance'
 import { Route as ApiGoogleCalendarConnectRouteImport } from './routes/api.google-calendar.connect'
 import { Route as ApiGoogleCalendarCallbackRouteImport } from './routes/api.google-calendar.callback'
 import { Route as ApiGoogleCalendarActionsRouteImport } from './routes/api.google-calendar.actions'
@@ -144,6 +145,12 @@ const ApiGoogleCalendarStatusRoute = ApiGoogleCalendarStatusRouteImport.update({
   path: '/api/google-calendar/status',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGoogleCalendarMaintenanceRoute =
+  ApiGoogleCalendarMaintenanceRouteImport.update({
+    id: '/api/google-calendar/maintenance',
+    path: '/api/google-calendar/maintenance',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiGoogleCalendarConnectRoute =
   ApiGoogleCalendarConnectRouteImport.update({
     id: '/api/google-calendar/connect',
@@ -230,6 +237,7 @@ export interface FileRoutesByFullPath {
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/maintenance': typeof ApiGoogleCalendarMaintenanceRoute
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
@@ -264,6 +272,7 @@ export interface FileRoutesByTo {
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/maintenance': typeof ApiGoogleCalendarMaintenanceRoute
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
@@ -300,6 +309,7 @@ export interface FileRoutesById {
   '/api/google-calendar/actions': typeof ApiGoogleCalendarActionsRoute
   '/api/google-calendar/callback': typeof ApiGoogleCalendarCallbackRoute
   '/api/google-calendar/connect': typeof ApiGoogleCalendarConnectRoute
+  '/api/google-calendar/maintenance': typeof ApiGoogleCalendarMaintenanceRoute
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
@@ -336,6 +346,7 @@ export interface FileRouteTypes {
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
+    | '/api/google-calendar/maintenance'
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
@@ -370,6 +381,7 @@ export interface FileRouteTypes {
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
+    | '/api/google-calendar/maintenance'
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
@@ -405,6 +417,7 @@ export interface FileRouteTypes {
     | '/api/google-calendar/actions'
     | '/api/google-calendar/callback'
     | '/api/google-calendar/connect'
+    | '/api/google-calendar/maintenance'
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
@@ -434,6 +447,7 @@ export interface RootRouteChildren {
   ApiGoogleCalendarActionsRoute: typeof ApiGoogleCalendarActionsRoute
   ApiGoogleCalendarCallbackRoute: typeof ApiGoogleCalendarCallbackRoute
   ApiGoogleCalendarConnectRoute: typeof ApiGoogleCalendarConnectRoute
+  ApiGoogleCalendarMaintenanceRoute: typeof ApiGoogleCalendarMaintenanceRoute
   ApiGoogleCalendarStatusRoute: typeof ApiGoogleCalendarStatusRoute
   ApiGoogleCalendarSyncEventRoute: typeof ApiGoogleCalendarSyncEventRoute
   ApiGoogleCalendarWebhookRoute: typeof ApiGoogleCalendarWebhookRoute
@@ -579,6 +593,13 @@ declare module '@tanstack/react-router' {
       path: '/api/google-calendar/status'
       fullPath: '/api/google-calendar/status'
       preLoaderRoute: typeof ApiGoogleCalendarStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-calendar/maintenance': {
+      id: '/api/google-calendar/maintenance'
+      path: '/api/google-calendar/maintenance'
+      fullPath: '/api/google-calendar/maintenance'
+      preLoaderRoute: typeof ApiGoogleCalendarMaintenanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/google-calendar/connect': {
@@ -735,6 +756,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleCalendarActionsRoute: ApiGoogleCalendarActionsRoute,
   ApiGoogleCalendarCallbackRoute: ApiGoogleCalendarCallbackRoute,
   ApiGoogleCalendarConnectRoute: ApiGoogleCalendarConnectRoute,
+  ApiGoogleCalendarMaintenanceRoute: ApiGoogleCalendarMaintenanceRoute,
   ApiGoogleCalendarStatusRoute: ApiGoogleCalendarStatusRoute,
   ApiGoogleCalendarSyncEventRoute: ApiGoogleCalendarSyncEventRoute,
   ApiGoogleCalendarWebhookRoute: ApiGoogleCalendarWebhookRoute,
