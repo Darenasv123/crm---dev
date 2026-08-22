@@ -60,6 +60,14 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { attentionCount: taskAttentionCount } = usePendingTaskSummary();
+  // QA-008: el badge no es "total de tareas" — es "lo que requiere tu
+  // atención ahora" (Admin: disponibles sin tomar; Personal: asignadas a mí).
+  // El texto explícito evita que se confunda con el Total de la pestaña Todas,
+  // que cuenta algo distinto (todas las tareas de la fecha seleccionada).
+  const taskAttentionHint =
+    profile?.role === "Administrador"
+      ? "Tareas disponibles sin tomar, de cualquier fecha"
+      : "Tareas asignadas a mí, de cualquier fecha";
 
   async function handleSignOut() {
     await signOut();
@@ -128,7 +136,8 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 <span>{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
                   <span
-                    aria-label={`${taskAttentionCount} tareas requieren atención`}
+                    aria-label={`${taskAttentionCount} tareas requieren atención: ${taskAttentionHint}`}
+                    title={taskAttentionHint}
                     className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground"
                   >
                     {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
@@ -195,7 +204,11 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 <Icon className={`h-5 w-5 ${active ? "text-gold" : ""}`} />
                 <span>{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground">
+                  <span
+                    aria-label={`${taskAttentionCount} tareas requieren atención: ${taskAttentionHint}`}
+                    title={taskAttentionHint}
+                    className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground"
+                  >
                     {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
                   </span>
                 )}
@@ -359,7 +372,8 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 <span className="truncate">{item.label}</span>
                 {item.to === "/tareas" && taskAttentionCount > 0 && (
                   <span
-                    aria-label={`${taskAttentionCount} tareas`}
+                    aria-label={`${taskAttentionCount} tareas requieren atención: ${taskAttentionHint}`}
+                    title={taskAttentionHint}
                     className="absolute ml-5 mt-[-24px] min-w-4 rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground"
                   >
                     {taskAttentionCount > 9 ? "9+" : taskAttentionCount}

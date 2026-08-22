@@ -97,7 +97,9 @@ describe("sistema visual global del CRM", () => {
       "src/routes/_app.clientes.index.tsx",
       "src/routes/_app.clientes.$id.tsx",
       "src/routes/_app.casos.index.tsx",
-      "src/components/tasks/tasks-page.tsx",
+      // El formulario de tarea (crear/editar) vive en un componente propio,
+      // reutilizado por tasks-page.tsx en vez de duplicar el diálogo.
+      "src/components/tasks/task-form-dialog.tsx",
     ];
     for (const file of files) {
       const contents = source(file);
@@ -111,6 +113,7 @@ describe("sistema visual global del CRM", () => {
   it("limita controles nativos a componentes base y tipos justificados", () => {
     const scanTargets = [
       "src/components/tasks/tasks-page.tsx",
+      "src/components/tasks/task-form-dialog.tsx",
       "src/routes/_app.clientes.index.tsx",
       "src/routes/_app.clientes.$id.tsx",
       "src/routes/_app.configuracion.index.tsx",

@@ -156,6 +156,8 @@ function TaskSection({
     title: string;
     status: string;
     scheduled_for: string;
+    case_id: string | null;
+    cases: { case_number: string | null; expediente: string } | null;
     assignee: { full_name: string } | null;
   }>;
   muted?: boolean;
@@ -176,13 +178,17 @@ function TaskSection({
               key={task.id}
               className="grid gap-2 border-b p-4 last:border-0 sm:grid-cols-[1fr_auto_auto] sm:items-center"
             >
-              <div>
-                <p className="font-semibold">{task.title}</p>
+              <Link
+                to={"/tareas/todas" as never}
+                search={{ tarea: task.id } as never}
+                className="min-w-0 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+              >
+                <p className="truncate font-semibold">{task.title}</p>
                 <p className="text-xs text-muted-foreground">
                   Fecha de trabajo: {task.scheduled_for} ·{" "}
                   {task.assignee?.full_name || "Sin responsable"}
                 </p>
-              </div>
+              </Link>
               <StatusBadge
                 tone={
                   normalizeTaskStatus(task.status) === "completed"
@@ -194,9 +200,20 @@ function TaskSection({
               >
                 {TASK_STATUS_LABELS[normalizeTaskStatus(task.status)]}
               </StatusBadge>
-              <Button asChild variant="outline" size="sm">
-                <Link to={"/tareas/todas" as never}>Abrir tareas</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                {task.case_id && task.cases && (
+                  <Button asChild variant="ghost" size="sm">
+                    <Link to={"/casos/$id" as never} params={{ id: task.case_id } as never}>
+                      Ver expediente
+                    </Link>
+                  </Button>
+                )}
+                <Button asChild variant="outline" size="sm">
+                  <Link to={"/tareas/todas" as never} search={{ tarea: task.id } as never}>
+                    Ver detalle
+                  </Link>
+                </Button>
+              </div>
             </div>
           ))}
         </Card>

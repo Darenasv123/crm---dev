@@ -162,9 +162,11 @@ function CaseDetail() {
           ) : (
             <>
               {tasks.slice(0, 8).map((task) => (
-                <div
+                <Link
                   key={task.id}
-                  className="flex items-center justify-between gap-3 border-b p-4 last:border-b-0"
+                  to={"/tareas/todas" as never}
+                  search={{ tarea: task.id } as never}
+                  className="flex items-center justify-between gap-3 border-b p-4 last:border-b-0 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{task.title}</p>
@@ -187,11 +189,11 @@ function CaseDetail() {
                       {TASK_STATUS_LABELS[normalizeTaskStatus(task.status)]}
                     </StatusBadge>
                   </div>
-                </div>
+                </Link>
               ))}
               <div className="border-t p-3 text-center">
                 <Button asChild variant="outline" size="sm">
-                  <Link to={"/tareas/todas" as never}>Abrir tareas</Link>
+                  <Link to={"/tareas/todas" as never}>Ver todas las tareas</Link>
                 </Button>
               </div>
             </>

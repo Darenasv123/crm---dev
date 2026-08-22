@@ -6,7 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  ExternalLink,
+  Edit3,
   Filter,
   Hand,
   Loader2,
@@ -14,20 +14,13 @@ import {
   Plus,
   RotateCcw,
   Search,
+  UserX,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppLayout, Card } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/data-state";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { FormActions, FormErrorSummary, FormField, FormSection } from "@/components/ui/form-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -35,7 +28,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useClaimDailyTask,
-  useCreateDailyTask,
   useDailyTasks,
   useDeleteDailyTask,
   useReturnDailyTask,
@@ -62,26 +54,29 @@ import {
   normalizeTaskPriority,
   normalizeTaskStatus,
   shiftIsoDate,
-  type TaskFormValues,
   type TaskStatus,
 } from "@/lib/tasks";
 import { usePermissions } from "@/lib/permissions";
 import { getTaskVisualState } from "@/lib/task-visual";
 import { TaskPriorityBadge } from "@/components/tasks/TaskPriorityBadge";
+import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
 
 type PageMode = "available" | "assigned" | "all" | "board";
+/** Alcance de fecha de la vista. "all" solo tiene sentido con mode="all": muestra
+ * todas las fechas para que el conteo "Total" sea coherente con lo que el tab promete. */
+type DateScope = "day" | "upcoming" | "overdue" | "all";
 
-const EMPTY_FORM: TaskFormValues = {
-  title: "",
-  description: "",
-  client_id: "",
-  case_id: "",
-  priority: "Normal",
-  scheduled_for: limaToday(),
-  due_date: "",
-};
-
-export function TasksPage({ mode }: { mode: PageMode }) {
+export function TasksPage({
+  mode,
+  initialTaskId,
+  onTaskUrlChange,
+}: {
+  mode: PageMode;
+  /** ID de tarea a abrir automáticamente (deep-link), si la ruta lo soporta. */
+  initialTaskId?: string;
+  /** Notifica cambios de selección para que la ruta pueda reflejarlos en la URL. */
+  onTaskUrlChange?: (taskId: string | null) => void;
+}) {
   const { user, profile } = useAuth();
   const permissions = usePermissions(profile);
   const isAdmin = permissions.canManageAllTasks;
@@ -99,8 +94,11 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const [withoutCase, setWithoutCase] = useState(false);
   const [showCompleted, setShowCompleted] = useState(mode === "all");
   const [selectedDate, setSelectedDate] = useState(limaToday());
-  const [dateScope, setDateScope] = useState<"day" | "upcoming" | "overdue">("day");
+  // "Todas" promete ver todo el universo de tareas: no debe heredar el filtro
+  // de "hoy" que sí tiene sentido en Disponibles/Mis tareas/Tablero (QA-008).
+  const [dateScope, setDateScope] = useState<DateScope>(mode === "all" ? "all" : "day");
   const [showForm, setShowForm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   // Filter panel state
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -114,12 +112,12 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const [draftWithoutCase, setDraftWithoutCase] = useState(false);
   const [draftShowCompleted, setDraftShowCompleted] = useState(mode === "all");
 
-  const [form, setForm] = useState<TaskFormValues>(EMPTY_FORM);
   const [selectedTask, setSelectedTask] = useState<DailyTask | null>(null);
   const [observationDraft, setObservationDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [claimedId, setClaimedId] = useState<string | null>(null);
+  const [deepLinkTried, setDeepLinkTried] = useState<string | null>(null);
 
   const { data: tasks = [], isLoading } = useDailyTasks({
     view,
@@ -141,7 +139,6 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   const { data: clients = [] } = useTaskClients();
   const { data: cases = [] } = useTaskCases();
   const { data: profiles = [] } = useProfiles();
-  const createTask = useCreateDailyTask();
   const claimTask = useClaimDailyTask();
   const returnTask = useReturnDailyTask();
   const updateTask = useUpdateDailyTask();
@@ -173,6 +170,24 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       .length,
     overdue: accumulatedTasks.length,
   };
+
+  // Deep-link: abre automáticamente la tarea de ?tarea=<id> cuando llega en la URL.
+  // Solo lo intenta una vez por ID (deepLinkTried) para no reabrir el detalle
+  // si el usuario lo cierra manualmente después.
+  useEffect(() => {
+    if (!initialTaskId || initialTaskId === deepLinkTried) return;
+    const match = tasks.find((item) => item.id === initialTaskId);
+    if (match) {
+      setSelectedTask(match);
+      setObservationDraft(match.description ?? "");
+      setDeepLinkTried(initialTaskId);
+    } else if (!isLoading) {
+      // La tarea no existe en esta vista (fue eliminada, o queda fuera de los
+      // filtros activos). No rompemos la página: solo lo comunicamos.
+      setError("La tarea enlazada ya no está disponible en esta vista.");
+      setDeepLinkTried(initialTaskId);
+    }
+  }, [initialTaskId, deepLinkTried, tasks, isLoading]);
 
   // Count active filters (excluding defaults)
   const activeFilterCount = [
@@ -238,18 +253,6 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         { to: "/tareas/tablero", label: "Tablero" },
       ];
 
-  async function create(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    try {
-      await createTask.mutateAsync({ values: form, cases });
-      setForm(EMPTY_FORM);
-      setShowForm(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo crear la tarea.");
-    }
-  }
-
   async function runAction(task: DailyTask, action: () => Promise<unknown>) {
     setBusyId(task.id);
     setError(null);
@@ -279,6 +282,12 @@ export function TasksPage({ mode }: { mode: PageMode }) {
   function openTaskDetail(task: DailyTask) {
     setSelectedTask(task);
     setObservationDraft(task.description ?? "");
+    onTaskUrlChange?.(task.id);
+  }
+
+  function closeTaskDetail() {
+    setSelectedTask(null);
+    onTaskUrlChange?.(null);
   }
 
   async function saveObservation() {
@@ -396,6 +405,14 @@ export function TasksPage({ mode }: { mode: PageMode }) {
           >
             <AlertTriangle className="h-4 w-4" /> Atrasadas
           </Button>
+          <Button
+            type="button"
+            variant={dateScope === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setDateScope("all")}
+          >
+            Todas las fechas
+          </Button>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">
           La fecha de trabajo se conserva aunque la tarea se complete después.
@@ -403,7 +420,19 @@ export function TasksPage({ mode }: { mode: PageMode }) {
       </Card>
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Total" value={metrics.total} />
+        <Metric
+          label="Total"
+          value={metrics.total}
+          hint={
+            dateScope === "all"
+              ? "Todas las fechas"
+              : dateScope === "day"
+                ? `Fecha: ${selectedDate}`
+                : dateScope === "upcoming"
+                  ? "Próximas"
+                  : "Atrasadas"
+          }
+        />
         <Metric label="Pendientes" value={metrics.pending} />
         <Metric label="En desarrollo" value={metrics.running} />
         <Metric label="Completadas" value={metrics.completed} />
@@ -734,153 +763,82 @@ export function TasksPage({ mode }: { mode: PageMode }) {
         />
       )}
 
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent size="lg">
-          <DialogHeader icon={Plus}>
-            <DialogTitle>Nueva tarea disponible</DialogTitle>
-            <DialogDescription>
-              Se crea pendiente y sin responsable para que el equipo pueda tomarla.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={create}>
-            <FormSection title="Información de la tarea">
-              <FormField id="task-title" label="Tarea" required className="sm:col-span-2">
-                <Input
-                  id="task-title"
-                  autoFocus
-                  required
-                  value={form.title}
-                  onChange={(event) => setForm({ ...form, title: event.target.value })}
-                />
-              </FormField>
-              <FormField id="task-client" label="Cliente" optional>
-                <NativeSelect
-                  id="task-client"
-                  value={form.client_id}
-                  onChange={(event) =>
-                    setForm({ ...form, client_id: event.target.value, case_id: "" })
-                  }
-                >
-                  <option value="">Tarea general</option>
-                  {clients.map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </FormField>
-              <FormField id="task-case" label="Expediente" optional>
-                <NativeSelect
-                  id="task-case"
-                  value={form.case_id}
-                  onChange={(event) => {
-                    const selected = cases.find((item) => item.id === event.target.value);
-                    setForm({
-                      ...form,
-                      case_id: event.target.value,
-                      client_id: selected?.client_id ?? form.client_id,
-                    });
-                  }}
-                >
-                  <option value="">Sin expediente</option>
-                  {cases
-                    .filter((item) => !form.client_id || item.client_id === form.client_id)
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.case_number || item.expediente || item.process_type}
-                      </option>
-                    ))}
-                </NativeSelect>
-              </FormField>
-              <FormField id="task-priority" label="Prioridad" className="sm:col-span-2">
-                <NativeSelect
-                  id="task-priority"
-                  value={form.priority}
-                  onChange={(event) =>
-                    setForm({ ...form, priority: event.target.value as TaskFormValues["priority"] })
-                  }
-                >
-                  {TASK_PRIORITIES.map((item) => (
-                    <option key={item}>{item}</option>
-                  ))}
-                </NativeSelect>
-              </FormField>
-              <FormField id="task-scheduled-for" label="Fecha de trabajo" required>
-                <Input
-                  id="task-scheduled-for"
-                  type="date"
-                  required
-                  value={form.scheduled_for}
-                  onChange={(event) => setForm({ ...form, scheduled_for: event.target.value })}
-                />
-              </FormField>
-              <FormField id="task-due-date" label="Vencimiento" optional>
-                <Input
-                  id="task-due-date"
-                  type="datetime-local"
-                  value={form.due_date}
-                  onChange={(event) => setForm({ ...form, due_date: event.target.value })}
-                />
-              </FormField>
-              <FormField
-                id="task-description"
-                label="Observaciones"
-                optional
-                className="sm:col-span-2"
-              >
-                <Textarea
-                  id="task-description"
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                />
-              </FormField>
-              {error && <FormErrorSummary className="sm:col-span-2">{error}</FormErrorSummary>}
-            </FormSection>
-            <FormActions>
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" loading={createTask.isPending}>
-                Crear tarea
-              </Button>
-            </FormActions>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <TaskFormDialog
+        mode="create"
+        open={showForm}
+        onOpenChange={setShowForm}
+        clients={clients}
+        cases={cases}
+      />
+
+      {selectedTask && (
+        <TaskFormDialog
+          mode="edit"
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          task={selectedTask}
+          clients={clients}
+          cases={cases}
+          onSaved={setSelectedTask}
+        />
+      )}
 
       <Sheet
         open={!!selectedTask}
         onOpenChange={(open) => {
-          if (!open) setSelectedTask(null);
+          if (!open) closeTaskDetail();
         }}
       >
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           {selectedTask && (
             <>
               <SheetHeader className="pr-8">
-                <SheetTitle>{selectedTask.title}</SheetTitle>
+                <div className="flex items-start justify-between gap-3">
+                  <SheetTitle>{selectedTask.title}</SheetTitle>
+                  {isAdmin && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowEditDialog(true)}
+                    >
+                      <Edit3 className="h-4 w-4" /> Editar tarea
+                    </Button>
+                  )}
+                </div>
                 <SheetDescription>
                   Detalle operativo de la tarea y sus observaciones.
                 </SheetDescription>
               </SheetHeader>
 
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <DetailValue
-                  label="Cliente"
-                  value={
+                {(() => {
+                  const resolvedClientId = selectedTask.client_id ?? selectedTask.cases?.client_id;
+                  const resolvedClientName =
                     selectedTask.cases?.clients?.name ||
                     selectedTask.clients?.name ||
-                    "Tarea general"
-                  }
-                />
-                <DetailValue
-                  label="Expediente"
-                  value={
-                    selectedTask.cases?.case_number ||
-                    selectedTask.cases?.expediente ||
-                    "Sin expediente"
-                  }
-                />
+                    "Tarea general";
+                  return resolvedClientId ? (
+                    <DetailLink
+                      label="Cliente"
+                      value={resolvedClientName}
+                      to="/clientes/$id"
+                      params={{ id: resolvedClientId }}
+                    />
+                  ) : (
+                    <DetailValue label="Cliente" value={resolvedClientName} />
+                  );
+                })()}
+                {selectedTask.case_id && selectedTask.cases ? (
+                  <DetailLink
+                    label="Expediente"
+                    value={selectedTask.cases.case_number || selectedTask.cases.expediente}
+                    to="/casos/$id"
+                    params={{ id: selectedTask.case_id }}
+                  />
+                ) : (
+                  <DetailValue label="Expediente" value="Sin expediente" />
+                )}
                 <DetailValue
                   label="Estado"
                   value={TASK_STATUS_LABELS[normalizeTaskStatus(selectedTask.status)]}
@@ -1008,22 +966,56 @@ function TaskList({
             </div>
 
             {/* Cliente */}
-            <span className="truncate text-sm">
-              {task.cases?.clients?.name || task.clients?.name || "General"}
-            </span>
+            {(() => {
+              const resolvedClientId = task.client_id ?? task.cases?.client_id;
+              const resolvedClientName = task.cases?.clients?.name || task.clients?.name;
+              return resolvedClientId ? (
+                <Link
+                  to={"/clientes/$id" as never}
+                  params={{ id: resolvedClientId } as never}
+                  className="truncate text-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+                >
+                  {resolvedClientName}
+                </Link>
+              ) : (
+                <span className="truncate text-sm text-muted-foreground">General</span>
+              );
+            })()}
 
-            {/* Expediente */}
-            <span className="truncate text-sm font-mono text-xs">
-              {task.cases?.case_number || task.cases?.expediente || "Sin expediente"}
-            </span>
+            {/* Expediente — lleva a la ficha del expediente, no al cliente:
+                el número identifica precisamente al expediente, y desde su
+                ficha ya hay acceso directo al cliente. */}
+            {task.case_id && task.cases ? (
+              <Link
+                to={"/casos/$id" as never}
+                params={{ id: task.case_id } as never}
+                className="truncate text-sm font-mono text-xs hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+              >
+                {task.cases.case_number || task.cases.expediente}
+              </Link>
+            ) : (
+              <span className="truncate text-sm font-mono text-xs text-muted-foreground">
+                Sin expediente
+              </span>
+            )}
 
-            {/* Estado */}
-            {isAdmin || own ? (
+            {/* Estado — una tarea disponible (sin tomar) nunca muestra un
+                select interactivo: parecía un control roto (QA-007). Debe
+                tomarse primero para poder cambiar su estado. */}
+            {available ? (
+              <span
+                className="inline-flex w-fit items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary"
+                title="Primero debes tomar la tarea para cambiar su estado."
+              >
+                <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                Disponible — tómala primero
+              </span>
+            ) : isAdmin || own ? (
               <NativeSelect
                 value={normalizeTaskStatus(task.status)}
                 onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
-                disabled={isBusy || available}
-                className="h-9 rounded-lg border bg-background px-2 text-xs"
+                disabled={isBusy}
+                className="h-9 rounded-lg border bg-background pl-2 pr-8 text-xs"
                 aria-label="Cambiar estado de tarea"
               >
                 {TASK_STATUSES.map((item) => (
@@ -1044,24 +1036,41 @@ function TaskList({
             {/* Prioridad */}
             <TaskPriorityBadge priority={task.priority} />
 
-            {/* Responsable */}
+            {/* Responsable — el select solo asigna a una persona; "liberar" es
+                un botón aparte con su propio target táctil, en vez de una
+                opción de texto largo dentro del select (chocaba con la
+                flecha nativa al perder el padding derecho reservado). */}
             {isAdmin ? (
-              <NativeSelect
-                value={task.assigned_to ?? ""}
-                onChange={(event) => onAssign(task, event.target.value)}
-                disabled={isBusy}
-                className="h-9 min-w-0 rounded-lg border bg-background px-2 text-xs"
-                aria-label="Asignar responsable"
-              >
-                <option value="">Liberar a Disponibles</option>
-                {profiles
-                  .filter((item) => item.status === "Activo")
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.full_name}
-                    </option>
-                  ))}
-              </NativeSelect>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <NativeSelect
+                  value={task.assigned_to ?? ""}
+                  onChange={(event) => onAssign(task, event.target.value)}
+                  disabled={isBusy}
+                  className="h-9 min-w-0 flex-1 rounded-lg border bg-background pl-2 pr-8 text-xs"
+                  aria-label="Asignar responsable"
+                >
+                  <option value="">Sin asignar</option>
+                  {profiles
+                    .filter((item) => item.status === "Activo")
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.full_name}
+                      </option>
+                    ))}
+                </NativeSelect>
+                {task.assigned_to && (
+                  <button
+                    type="button"
+                    onClick={() => onAssign(task, "")}
+                    disabled={isBusy}
+                    title="Liberar a Disponibles"
+                    aria-label={`Liberar a Disponibles: ${task.title}`}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition-colors hover:bg-muted/50 disabled:opacity-50"
+                  >
+                    <UserX className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             ) : (
               <span className="truncate text-sm">
                 {task.assignee?.full_name || (
@@ -1115,17 +1124,6 @@ function TaskList({
                 </button>
               )}
 
-              {task.case_id && (
-                <Link
-                  to={"/casos/$id" as never}
-                  params={{ id: task.case_id } as never}
-                  className="grid h-9 w-9 place-items-center rounded-lg border transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2"
-                  aria-label="Abrir expediente relacionado"
-                >
-                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              )}
-
               {isAdmin && (
                 <button
                   type="button"
@@ -1158,6 +1156,34 @@ function DetailValue({
     <div className={className}>
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 text-sm">{value}</p>
+    </div>
+  );
+}
+
+/** Variante de DetailValue que navega a la ficha relacionada (Cliente/Expediente). */
+function DetailLink({
+  label,
+  value,
+  to,
+  params,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  to: string;
+  params: Record<string, string>;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <Link
+        to={to as never}
+        params={params as never}
+        className="mt-1 inline-block text-sm font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+      >
+        {value}
+      </Link>
     </div>
   );
 }
@@ -1218,11 +1244,12 @@ function TaskChip({ status, userId }: { status: string; userId?: string }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <Card className="p-4">
       <p className="text-2xl font-bold">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
+      {hint && <p className="mt-0.5 text-[10px] text-muted-foreground/80">{hint}</p>}
     </Card>
   );
 }

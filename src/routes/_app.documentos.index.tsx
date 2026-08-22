@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import {
   useDocuments,
@@ -42,6 +42,8 @@ import { DocumentViewerDialog } from "@/components/documents/document-viewer-dia
 export const Route = createFileRoute("/_app/documentos/")({
   validateSearch: (search: Record<string, unknown>) => ({
     documento: typeof search.documento === "string" ? search.documento : undefined,
+    // Dispara la apertura de "Subir archivo" desde accesos externos (Dashboard QA-003).
+    subir: search.subir === "1" ? ("1" as const) : undefined,
   }),
   head: () => ({ meta: [{ title: "Documentos — CRM Jurídico" }] }),
   component: DocsPage,
@@ -69,7 +71,8 @@ function displayDocumentType(type: string) {
 }
 
 function DocsPage() {
-  const { documento: requestedDocumentId } = Route.useSearch();
+  const { documento: requestedDocumentId, subir } = Route.useSearch();
+  const navigate = useNavigate();
   const [activeType, setActiveType] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [processingFilter, setProcessingFilter] = useState("");
@@ -107,6 +110,17 @@ function DocsPage() {
     null,
   );
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (subir !== "1") return;
+    if (permissions.canUploadDocuments) setShowUpload(true);
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, subir: undefined })) as never,
+      replace: true,
+    });
+    // Solo debe dispararse con el valor recibido al cargar la ruta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subir]);
 
   const filtered = docs.filter((d) => {
     const matchesSearch =

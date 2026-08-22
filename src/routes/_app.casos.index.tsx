@@ -9,7 +9,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -83,6 +83,8 @@ export const Route = createFileRoute("/_app/casos/")({
     tareas: typeof search.tareas === "string" ? search.tareas : "",
     documentos: typeof search.documentos === "string" ? search.documentos : "",
     ordenar: typeof search.ordenar === "string" ? search.ordenar : "recent",
+    // Dispara la apertura del alta desde accesos externos (Dashboard QA-003).
+    nuevo: search.nuevo === "1" ? ("1" as const) : undefined,
   }),
   component: CasesPage,
 });
@@ -127,6 +129,17 @@ function CasesPage() {
   const permissions = usePermissions(profile);
   const canCreate = permissions.canCreateCases;
   const canEdit = permissions.canEditCases;
+
+  useEffect(() => {
+    if (routeSearch.nuevo !== "1") return;
+    if (canCreate) setShowForm(true);
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, nuevo: undefined })) as never,
+      replace: true,
+    });
+    // Solo debe dispararse con el valor recibido al cargar la ruta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeSearch.nuevo]);
   const editingCase = editingCaseId ? (cases.find((c) => c.id === editingCaseId) ?? null) : null;
 
   const filtered = useMemo(() => {

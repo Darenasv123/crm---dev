@@ -12,7 +12,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
 import { CSVImport } from "@/components/csv-import";
 import { ImportMethodSelector } from "@/components/zip-import/import-method-selector";
@@ -65,6 +65,9 @@ export const Route = createFileRoute("/_app/clientes/")({
     expedientes: typeof search.expedientes === "string" ? search.expedientes : "",
     tareas: typeof search.tareas === "string" ? search.tareas : "",
     ordenar: typeof search.ordenar === "string" ? search.ordenar : "nombre",
+    // Dispara la apertura del alta desde accesos externos (Dashboard QA-003).
+    // Se consume una sola vez: no debe reabrirse solo por refrescar la página.
+    nuevo: search.nuevo === "1" ? ("1" as const) : undefined,
   }),
   component: ClientsPage,
 });
@@ -111,6 +114,17 @@ function ClientsPage() {
   const canEdit = permissions.canEditClients;
   const canImportZip = profile?.role === "Administrador" && profile.status === "Activo";
   const editingClient = editingClientId ? clients.find((c) => c.id === editingClientId) : null;
+
+  useEffect(() => {
+    if (routeSearch.nuevo !== "1") return;
+    if (canCreate) setShowForm(true);
+    navigate({
+      search: ((prev: Record<string, unknown>) => ({ ...prev, nuevo: undefined })) as never,
+      replace: true,
+    });
+    // Solo debe dispararse con el valor recibido al cargar la ruta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeSearch.nuevo]);
 
   const caseCounts = useMemo(
     () =>

@@ -49,7 +49,13 @@ export function normalizeTaskPriority(priority: string): TaskPriority {
   return TASK_PRIORITIES.includes(priority as TaskPriority) ? (priority as TaskPriority) : "Normal";
 }
 
-export function validateTaskForm(
+/**
+ * Valida los campos comunes a creación y edición de una tarea.
+ * No decide nada sobre `status`/`assigned_to`: eso es responsabilidad
+ * exclusiva del flujo de creación (siempre "pending"/sin dueño) y de las
+ * acciones dedicadas de Tomar/Devolver/Reasignar, nunca de este formulario.
+ */
+function validateTaskFormFields(
   values: TaskFormValues,
   cases: Array<{ id: string; client_id: string }>,
 ) {
@@ -69,14 +75,45 @@ export function validateTaskForm(
   return {
     title,
     description: values.description.trim() || null,
-    assigned_to: null,
     case_id: values.case_id || null,
     client_id: (relatedCase?.client_id ?? values.client_id) || null,
-    status: "pending" as const,
     priority: values.priority,
     scheduled_for: values.scheduled_for,
     due_date: values.due_date ? new Date(values.due_date).toISOString() : null,
   };
+}
+
+export function validateTaskForm(
+  values: TaskFormValues,
+  cases: Array<{ id: string; client_id: string }>,
+) {
+  return {
+    ...validateTaskFormFields(values, cases),
+    assigned_to: null,
+    status: "pending" as const,
+  };
+}
+
+/**
+ * Valida y prepara los campos editables de una tarea ya existente.
+ * Deliberadamente NO toca `status` ni `assigned_to`: editar una tarea
+ * nunca debe equivaler a tomarla, devolverla o reasignarla — esos flujos
+ * ya tienen sus propias acciones (Tomar/Devolver/Responsable).
+ */
+export function validateTaskEditForm(
+  values: TaskFormValues,
+  cases: Array<{ id: string; client_id: string }>,
+) {
+  return validateTaskFormFields(values, cases);
+}
+
+/** Convierte un timestamp ISO (o null) al valor esperado por un input datetime-local. */
+export function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export function limaToday() {

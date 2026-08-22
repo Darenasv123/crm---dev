@@ -186,11 +186,31 @@ function Dashboard() {
 
       <Card className="mt-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <QuickAction icon={UserPlus} label="Nuevo cliente" to="/clientes" />
-          <QuickAction icon={FolderPlus} label="Nuevo expediente" to="/casos" />
-          <QuickAction icon={FileText} label="Subir documento" to="/documentos" />
-          {canViewPayments && <QuickAction icon={Landmark} label="Registrar pago" to="/pagos" />}
-          <QuickAction icon={CalendarPlus} label="Agendar actividad" to="/agenda" />
+          {/* Estas cuatro sí inician la acción real (abren su formulario de alta),
+              reutilizando el mismo diálogo que la lista respectiva ya tiene. */}
+          <QuickAction
+            icon={UserPlus}
+            label="Nuevo cliente"
+            to="/clientes"
+            search={{ nuevo: "1" }}
+          />
+          <QuickAction
+            icon={FolderPlus}
+            label="Nuevo expediente"
+            to="/casos"
+            search={{ nuevo: "1" }}
+          />
+          <QuickAction
+            icon={FileText}
+            label="Subir documento"
+            to="/documentos"
+            search={{ subir: "1" }}
+          />
+          {/* Pagos y Agenda quedan fuera de alcance de esta fase (sección R):
+              el texto describe honestamente el destino real (una lista), en
+              vez de prometer silenciosamente el inicio de un alta. */}
+          {canViewPayments && <QuickAction icon={Landmark} label="Ver pagos" to="/pagos" />}
+          <QuickAction icon={CalendarPlus} label="Ver agenda" to="/agenda" />
         </div>
       </Card>
 
@@ -225,7 +245,8 @@ function Dashboard() {
               return (
                 <Link
                   key={task.id}
-                  to={"/tareas" as never}
+                  to={"/tareas/todas" as never}
+                  search={{ tarea: task.id } as never}
                   className={`rounded-lg border-l-2 border border-border p-3 transition hover:shadow-sm ${vs.accentBorder} ${vs.rowBg}`}
                   aria-label={`${task.title} — ${vs.ariaDescription}`}
                 >
@@ -527,18 +548,20 @@ function QuickAction({
   icon: Icon,
   label,
   to,
+  search,
   onClick,
 }: {
   icon: typeof Users;
   label: string;
   to?: string;
+  search?: Record<string, string>;
   onClick?: () => void;
 }) {
   const className =
     "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted/60";
   if (to) {
     return (
-      <Link to={to as never} className={className}>
+      <Link to={to as never} search={search as never} className={className}>
         <Icon className="h-3.5 w-3.5" />
         {label}
       </Link>

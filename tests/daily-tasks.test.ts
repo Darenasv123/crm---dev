@@ -5,6 +5,8 @@ import {
   isAvailableTask,
   normalizeTaskPriority,
   normalizeTaskStatus,
+  toDatetimeLocalValue,
+  validateTaskEditForm,
   validateTaskForm,
   type TaskLike,
 } from "@/lib/tasks";
@@ -77,5 +79,115 @@ describe("cola voluntaria de tareas", () => {
       canReassign: false,
     });
     expect(canManageTask("Personal", "user-2", "user-1").canUpdateStatus).toBe(false);
+  });
+});
+
+describe("edición de tareas (validateTaskEditForm)", () => {
+  it("valida y normaliza los mismos campos editables que la creación", () => {
+    expect(
+      validateTaskEditForm(
+        {
+          title: " Revisar escrito ",
+          description: " Antes de presentar ",
+          client_id: "client-1",
+          case_id: "",
+          priority: "Alta",
+          scheduled_for: "2026-08-06",
+          due_date: "",
+        },
+        [],
+      ),
+    ).toEqual({
+      title: "Revisar escrito",
+      description: "Antes de presentar",
+      case_id: null,
+      client_id: "client-1",
+      priority: "Alta",
+      scheduled_for: "2026-08-06",
+      due_date: null,
+    });
+  });
+
+  it("nunca incluye status ni assigned_to en el payload: editar no es tomar/liberar", () => {
+    const payload = validateTaskEditForm(
+      {
+        title: "Tarea existente",
+        description: "",
+        client_id: "",
+        case_id: "",
+        priority: "Normal",
+        scheduled_for: "2026-08-06",
+        due_date: "",
+      },
+      [],
+    );
+    expect(payload).not.toHaveProperty("status");
+    expect(payload).not.toHaveProperty("assigned_to");
+  });
+
+  it("rechaza un expediente que no existe o que no corresponde al cliente", () => {
+    expect(() =>
+      validateTaskEditForm(
+        {
+          title: "Tarea",
+          description: "",
+          client_id: "",
+          case_id: "case-x",
+          priority: "Normal",
+          scheduled_for: "2026-08-06",
+          due_date: "",
+        },
+        [],
+      ),
+    ).toThrow("El expediente seleccionado no existe.");
+
+    expect(() =>
+      validateTaskEditForm(
+        {
+          title: "Tarea",
+          description: "",
+          client_id: "client-b",
+          case_id: "case-a",
+          priority: "Normal",
+          scheduled_for: "2026-08-06",
+          due_date: "",
+        },
+        [{ id: "case-a", client_id: "client-a" }],
+      ),
+    ).toThrow("El expediente no corresponde al cliente seleccionado.");
+  });
+
+  it("no altera título/prioridad/fecha cuando el formulario reenvía los mismos valores", () => {
+    const original = {
+      title: "Notificar a la parte",
+      description: "Detalle",
+      client_id: "client-1",
+      case_id: "",
+      priority: "Urgente" as const,
+      scheduled_for: "2026-08-10",
+      due_date: "",
+    };
+    expect(validateTaskEditForm(original, [])).toEqual({
+      title: original.title,
+      description: original.description,
+      case_id: null,
+      client_id: original.client_id,
+      priority: original.priority,
+      scheduled_for: original.scheduled_for,
+      due_date: null,
+    });
+  });
+});
+
+describe("deep-link de tareas (toDatetimeLocalValue)", () => {
+  it("convierte un ISO a formato datetime-local", () => {
+    const local = toDatetimeLocalValue("2026-08-20T15:30:00.000Z");
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  });
+
+  it("devuelve cadena vacía para null/undefined/valores inválidos", () => {
+    expect(toDatetimeLocalValue(null)).toBe("");
+    expect(toDatetimeLocalValue(undefined)).toBe("");
+    expect(toDatetimeLocalValue("no-es-una-fecha")).toBe("");
   });
 });
