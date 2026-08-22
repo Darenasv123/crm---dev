@@ -1,6 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppLayout, Card, StatusBadge } from "@/components/app-layout";
-import { useProfiles, useRegisterStaff, useUpdateProfile } from "@/hooks/use-profiles";
 import { useClients } from "@/hooks/use-clients";
 import { useCases } from "@/hooks/use-cases";
 import { usePayments } from "@/hooks/use-payments";
@@ -20,21 +19,19 @@ import {
   runGoogleCalendarAction,
   type GoogleCalendarStatus,
 } from "@/lib/google-calendar-client";
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Input } from "@/components/ui/input";
 import { EmailSettings } from "@/components/settings/email-settings";
 import { TemplatesSettings } from "@/components/settings/templates-settings";
+import { UsersSettings } from "@/components/settings/users-settings";
+import { DEFAULT_SECTION, isValidSection, type Section } from "@/lib/settings-sections";
 import {
-  Plus,
   Bell,
   Mail,
   FileText,
   Shield,
   ChevronRight,
-  X,
-  Eye,
-  EyeOff,
   Loader2,
   Download,
   Database,
@@ -46,16 +43,22 @@ import {
   CalendarDays,
   FolderArchive,
   History,
-  Wrench,
   Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_app/configuracion/")({
+  // QA-006: la sección activa vive en la URL (?seccion=...), no solo en
+  // estado interno -- así refresh/Back/Forward/enlaces directos funcionan
+  // correctamente. Una sección inválida o ausente cae al valor por defecto
+  // seguro ("usuarios"), nunca a una pantalla en blanco o rota.
+  validateSearch: (search: Record<string, unknown>): { seccion: Section } => ({
+    seccion: isValidSection(search.seccion) ? search.seccion : DEFAULT_SECTION,
+  }),
   head: () => ({ meta: [{ title: "Configuración — CRM Jurídico" }] }),
   component: SettingsPage,
 });
 
-const TABS = [
+const TABS: { id: Section; label: string; icon: typeof Shield }[] = [
   { id: "usuarios", label: "Usuarios y roles", icon: Shield },
   { id: "backup", label: "Backup / Exportar", icon: Database },
   { id: "herramientas", label: "Herramientas administrativas", icon: FolderArchive },
@@ -65,28 +68,9 @@ const TABS = [
   { id: "plantillas", label: "Plantillas", icon: FileText },
 ];
 
-const ROLES = ["Administrador", "Personal"] as const;
-type Role = (typeof ROLES)[number];
-
-const roleColor: Record<Role, "navy" | "info"> = {
-  Administrador: "navy",
-  Personal: "info",
-};
-
 function SettingsPage() {
-  const [tab, setTab] = useState("usuarios");
-  const [showRegister, setShowRegister] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    role: "Personal" as Role,
-    phone: "",
-  });
+  const { seccion: tab } = Route.useSearch();
+
   const [exporting, setExporting] = useState(false);
   const [exportingType, setExportingType] = useState<string | null>(null);
   const [gcalStatus, setGcalStatus] = useState<GoogleCalendarStatus>({ connected: false });
@@ -94,22 +78,14 @@ function SettingsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
-  // Edit staff modal state
-  const [editProfile, setEditProfile] = useState<{
-    id: string;
-    full_name: string;
-    phone: string;
-    role: Role;
-    status: string;
-  } | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
   const { profile: currentProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const canLoadAdminData = !authLoading && currentProfile?.role === "Administrador";
 
-  // Redirect non-admins away from this page
+  // Redirect non-admins away from this page. Configuración en su totalidad
+  // (incluida la sección Usuarios) sigue siendo exclusiva de Administrador
+  // -- sin cambios respecto a fases anteriores. Plantillas para Personal
+  // vive en /plantillas, no aquí.
   useEffect(() => {
     if (!authLoading && currentProfile && currentProfile.role !== "Administrador") {
       navigate({ to: "/", replace: true });
@@ -130,45 +106,13 @@ function SettingsPage() {
       });
   }, [canLoadAdminData]);
 
-  const { data: profiles = [], isLoading } = useProfiles({ enabled: canLoadAdminData });
   const { data: clients = [] } = useClients({ enabled: canLoadAdminData });
   const { data: cases = [] } = useCases({ enabled: canLoadAdminData });
   const { data: payments = [] } = usePayments({ enabled: canLoadAdminData });
   const { data: agendaEvents = [] } = useAgendaEvents({ enabled: canLoadAdminData });
-  const registerStaff = useRegisterStaff();
-  const updateProfile = useUpdateProfile();
 
   // While auth resolves or if not admin, render nothing
   if (authLoading || !currentProfile || currentProfile.role !== "Administrador") return null;
-
-  async function handleEditProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editProfile) return;
-    setEditSaving(true);
-    setEditError(null);
-    const words = editProfile.full_name.trim().split(/\s+/);
-    const initials =
-      words.length >= 2
-        ? (words[0][0] + words[1][0]).toUpperCase()
-        : words[0].slice(0, 2).toUpperCase();
-    try {
-      await updateProfile.mutateAsync({
-        id: editProfile.id,
-        updates: {
-          full_name: editProfile.full_name,
-          phone: editProfile.phone || null,
-          role: editProfile.role,
-          status: editProfile.status as "Activo" | "Inactivo",
-          initials,
-        },
-      });
-      setEditProfile(null);
-    } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Error al actualizar.");
-    } finally {
-      setEditSaving(false);
-    }
-  }
 
   async function handleBackup() {
     setExporting(true);
@@ -331,34 +275,6 @@ function SettingsPage() {
     }
   }
 
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
-    try {
-      await registerStaff.mutateAsync({
-        email: form.email,
-        password: form.password,
-        fullName: `${form.firstName} ${form.lastName}`.trim(),
-        role: form.role,
-        phone: form.phone,
-      });
-      setShowRegister(false);
-      setForm({
-        firstName: "",
-        lastName: "",
-        email: "",
-        password: "",
-        role: "Personal",
-        phone: "",
-      });
-    } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : "Error al registrar. Verifica los datos.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <AppLayout title="Configuración" subtitle="Gestión del estudio y preferencias">
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
@@ -369,9 +285,11 @@ function SettingsPage() {
               const Icon = t.icon;
               const active = tab === t.id;
               return (
-                <button
+                <Link
                   key={t.id}
-                  onClick={() => setTab(t.id)}
+                  to="/configuracion"
+                  search={{ seccion: t.id } as never}
+                  aria-current={active ? "page" : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${active ? "bg-primary text-primary-foreground font-semibold shadow-soft" : "hover:bg-muted/50"}`}
                 >
                   <Icon className="h-4 w-4" />
@@ -379,101 +297,14 @@ function SettingsPage() {
                   <ChevronRight
                     className={`h-4 w-4 ${active ? "text-primary-foreground/70" : "text-muted-foreground"}`}
                   />
-                </button>
+                </Link>
               );
             })}
           </nav>
         </Card>
 
         <div>
-          {tab === "usuarios" && (
-            <Card className="overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                <div>
-                  <h3 className="text-base font-semibold">Personal del estudio</h3>
-                  <p className="text-xs text-muted-foreground">Roles: Administrador · Personal</p>
-                </div>
-                <button
-                  onClick={() => setShowRegister(true)}
-                  className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Registrar personal
-                </button>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-                    <th className="py-3 pl-5">Usuario</th>
-                    <th className="py-3 px-3">Rol</th>
-                    <th className="py-3 px-3">Estado</th>
-                    <th className="py-3 pr-5 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center">
-                        <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
-                      </td>
-                    </tr>
-                  ) : profiles.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                        No hay personal registrado aún.
-                      </td>
-                    </tr>
-                  ) : (
-                    profiles.map((u) => (
-                      <tr key={u.id} className="border-t border-border hover:bg-muted/30">
-                        <td className="py-3 pl-5">
-                          <div className="flex items-center gap-3">
-                            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                              {u.initials}
-                            </div>
-                            <div>
-                              <div className="font-semibold">{u.full_name}</div>
-                              <div className="text-xs text-muted-foreground">{u.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <StatusBadge
-                            tone={roleColor[u.role as keyof typeof roleColor] || "default"}
-                          >
-                            {u.role}
-                          </StatusBadge>
-                        </td>
-                        <td className="py-3 px-3">
-                          <StatusBadge tone={u.status === "Activo" ? "success" : "default"}>
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${u.status === "Activo" ? "bg-emerald-500" : "bg-muted-foreground"}`}
-                            />{" "}
-                            {u.status}
-                          </StatusBadge>
-                        </td>
-                        <td className="py-3 pr-5 text-right">
-                          <button
-                            onClick={() =>
-                              setEditProfile({
-                                id: u.id,
-                                full_name: u.full_name,
-                                phone: u.phone ?? "",
-                                role: u.role as Role,
-                                status: u.status,
-                              })
-                            }
-                            className="h-8 px-3 rounded-md text-xs font-semibold text-primary hover:bg-primary/10"
-                          >
-                            Editar
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </Card>
-          )}
+          {tab === "usuarios" && <UsersSettings />}
 
           {/* ── BACKUP TAB ── */}
           {tab === "backup" && (
@@ -751,220 +582,6 @@ function SettingsPage() {
           {tab === "plantillas" && <TemplatesSettings />}
         </div>
       </div>
-
-      {/* Register Staff Modal */}
-      {showRegister && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="text-base font-semibold">Registrar personal</h3>
-                <p className="text-xs text-muted-foreground">Añade un miembro al estudio</p>
-              </div>
-              <button
-                onClick={() => setShowRegister(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  label="Nombre *"
-                  value={form.firstName}
-                  onChange={(v) => setForm((f) => ({ ...f, firstName: v }))}
-                />
-                <FormField
-                  label="Apellidos *"
-                  value={form.lastName}
-                  onChange={(v) => setForm((f) => ({ ...f, lastName: v }))}
-                />
-              </div>
-              <FormField
-                label="Correo electrónico *"
-                value={form.email}
-                onChange={(v) => setForm((f) => ({ ...f, email: v }))}
-              />
-              <div>
-                <label
-                  htmlFor="register-password"
-                  className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                  Contraseña *
-                </label>
-                <div className="relative mt-1.5">
-                  <Input
-                    id="register-password"
-                    type={showPassword ? "text" : "password"}
-                    value={form.password}
-                    onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Mínimo 8 caracteres"
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Rol
-                </label>
-                <div className="mt-1.5 flex gap-3">
-                  {ROLES.map((r) => (
-                    <label
-                      key={r}
-                      className="flex-1 flex items-center gap-2 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition"
-                    >
-                      <input
-                        type="radio"
-                        name="rol"
-                        value={r}
-                        checked={form.role === r}
-                        onChange={() => setForm((f) => ({ ...f, role: r }))}
-                        className="accent-primary"
-                      />
-                      <span className="text-sm font-medium">{r}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <FormField
-                label="Teléfono (opcional)"
-                value={form.phone}
-                onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
-              />
-              {formError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {formError}
-                </p>
-              )}
-              <div className="flex gap-3 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowRegister(false)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {saving ? "Registrando..." : "Registrar"}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-      {/* Edit Staff Modal */}
-      {editProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-xl">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="text-base font-semibold">Editar usuario</h3>
-                <p className="text-xs text-muted-foreground">Actualiza los datos del miembro</p>
-              </div>
-              <button
-                onClick={() => setEditProfile(null)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleEditProfile} className="space-y-4">
-              <FormField
-                label="Nombre completo *"
-                value={editProfile.full_name}
-                onChange={(v) => setEditProfile((p) => (p ? { ...p, full_name: v } : p))}
-              />
-              <FormField
-                label="Teléfono"
-                value={editProfile.phone}
-                onChange={(v) => setEditProfile((p) => (p ? { ...p, phone: v } : p))}
-              />
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Rol
-                </label>
-                <div className="mt-1.5 flex gap-3">
-                  {ROLES.map((r) => (
-                    <label
-                      key={r}
-                      className="flex-1 flex items-center gap-2 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition"
-                    >
-                      <input
-                        type="radio"
-                        name="edit-rol"
-                        value={r}
-                        checked={editProfile.role === r}
-                        onChange={() => setEditProfile((p) => (p ? { ...p, role: r } : p))}
-                        className="accent-primary"
-                      />
-                      <span className="text-sm font-medium">{r}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Estado
-                </label>
-                <div className="mt-1.5 flex gap-3">
-                  {["Activo", "Inactivo"].map((s) => (
-                    <label
-                      key={s}
-                      className="flex-1 flex items-center gap-2 p-3 rounded-lg border border-border cursor-pointer hover:border-primary/40 has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition"
-                    >
-                      <input
-                        type="radio"
-                        name="edit-status"
-                        value={s}
-                        checked={editProfile.status === s}
-                        onChange={() => setEditProfile((p) => (p ? { ...p, status: s } : p))}
-                        className="accent-primary"
-                      />
-                      <span className="text-sm font-medium">{s}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {editError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {editError}
-                </p>
-              )}
-              <div className="flex gap-3 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditProfile(null)}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm font-medium hover:bg-muted/60"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSaving}
-                  className="flex-1 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:brightness-110 disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {editSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {editSaving ? "Guardando..." : "Guardar cambios"}
-                </button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
     </AppLayout>
   );
 }
@@ -1123,34 +740,6 @@ function Toggle({ label, desc, storageKey }: { label: string; desc: string; stor
           className={`absolute top-0.5 h-5 w-5 rounded-full bg-card shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`}
         />
       </button>
-    </div>
-  );
-}
-
-function FormField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange?: (v: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div>
-      <label
-        htmlFor={id}
-        className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-      >
-        {label}
-      </label>
-      <Input
-        id={id}
-        defaultValue={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        className="mt-1.5"
-      />
     </div>
   );
 }

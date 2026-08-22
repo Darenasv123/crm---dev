@@ -56,10 +56,22 @@ describe("Fase 5B — Configuración administrativa sigue protegida (Sección C)
     expect(configSource).toContain('navigate({ to: "/", replace: true })');
   });
 
-  it("las queries administrativas (Usuarios, Backup, Pagos, Agenda) siguen gateadas por canLoadAdminData", () => {
-    expect(configSource).toContain("useProfiles({ enabled: canLoadAdminData })");
+  it("las queries administrativas (Backup, Pagos, Agenda) siguen gateadas por canLoadAdminData", () => {
+    // useProfiles se movió a components/settings/users-settings.tsx (Fase
+    // 6): sigue protegido porque ese componente solo se monta detrás del
+    // mismo early-return admin-only de esta página (verificado abajo), no
+    // porque reciba su propio `enabled`.
     expect(configSource).toContain("useClients({ enabled: canLoadAdminData })");
     expect(configSource).toContain("usePayments({ enabled: canLoadAdminData })");
+  });
+
+  it("UsersSettings (que llama useProfiles) solo se renderiza detrás del gate admin-only de la página", () => {
+    const usersSettingsSource = readFileSync("src/components/settings/users-settings.tsx", "utf8");
+    expect(usersSettingsSource).toContain("useProfiles()");
+    expect(configSource).toContain(
+      'import { UsersSettings } from "@/components/settings/users-settings"',
+    );
+    expect(configSource).toContain('{tab === "usuarios" && <UsersSettings />}');
   });
 
   it("no se abrió ningún otro tab administrativo a Personal (Usuarios/Backup/Herramientas/Google Calendar siguen dentro del gate de página)", () => {

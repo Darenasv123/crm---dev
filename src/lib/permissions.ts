@@ -282,6 +282,28 @@ export function resolveCasePermissions(role: string | null | undefined): CasePer
 }
 
 // ---------------------------------------------------------------------------
+// Permisos de Usuarios (Configuración → Usuarios y roles)
+// ---------------------------------------------------------------------------
+
+export interface UserPermissions {
+  /** Puede gestionar personal: listar, crear, editar rol/estado (solo Administrador). */
+  canManageUsers: boolean;
+}
+
+export function resolveUserPermissions(role: string | null | undefined): UserPermissions {
+  return {
+    // Solo Administrador gestiona usuarios. La página /configuracion ya
+    // gatea el acceso completo por rol; este resolver es la fuente
+    // centralizada equivalente para cualquier componente que necesite
+    // consultarlo sin comparar role === "Administrador" directamente.
+    // La garantía final es la RLS de public.profiles (policy
+    // profiles_update_admin, is_admin() en using y with check) y el
+    // trigger prevent_last_admin_removal — no este resolver.
+    canManageUsers: isAdminRole(role),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Hook-friendly helper
 // ---------------------------------------------------------------------------
 
@@ -303,7 +325,8 @@ export function usePermissions(
   TemplatePermissions &
   ReportPermissions &
   ClientPermissions &
-  CasePermissions {
+  CasePermissions &
+  UserPermissions {
   return {
     ...resolvePaymentPermissions(profile?.role),
     ...resolveMigrationPermissions(profile?.role, profile?.status),
@@ -314,5 +337,6 @@ export function usePermissions(
     ...resolveReportPermissions(profile?.role),
     ...resolveClientPermissions(profile?.role),
     ...resolveCasePermissions(profile?.role),
+    ...resolveUserPermissions(profile?.role),
   };
 }
