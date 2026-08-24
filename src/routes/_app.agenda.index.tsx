@@ -270,7 +270,8 @@ function CalendarPage() {
             <div className="flex items-center gap-3">
               <button
                 onClick={prevMonth}
-                className="h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-muted/60"
+                aria-label="Mes anterior"
+                className="min-h-11 min-w-11 grid place-items-center rounded-lg border border-border hover:bg-muted/60"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -279,7 +280,8 @@ function CalendarPage() {
               </h3>
               <button
                 onClick={nextMonth}
-                className="h-9 w-9 grid place-items-center rounded-lg border border-border hover:bg-muted/60"
+                aria-label="Mes siguiente"
+                className="min-h-11 min-w-11 grid place-items-center rounded-lg border border-border hover:bg-muted/60"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -412,7 +414,8 @@ function CalendarPage() {
                 </h3>
                 <button
                   onClick={() => setSelectedDay(null)}
-                  className="h-6 w-6 grid place-items-center rounded hover:bg-muted/60 text-muted-foreground"
+                  aria-label="Cerrar detalle del día"
+                  className="min-h-11 min-w-11 grid place-items-center rounded hover:bg-muted/60 text-muted-foreground"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -462,7 +465,7 @@ function CalendarPage() {
                                       ?.expediente,
                                   })
                                 }
-                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-sky-600 hover:bg-sky-50"
+                                className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-sky-600 hover:bg-sky-50"
                                 title="Ver en Google Calendar"
                               >
                                 <ExternalLink className="h-3 w-3" />
@@ -471,7 +474,7 @@ function CalendarPage() {
                                 type="button"
                                 onClick={() => openEditEvent(e)}
                                 disabled={!canEditEvents}
-                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title={canEditEvents ? "Editar evento" : "Sin permisos"}
                               >
                                 <Pencil className="h-3 w-3" />
@@ -482,7 +485,8 @@ function CalendarPage() {
                                     deleteEvent.mutate({ id: e.id });
                                   }
                                 }}
-                                className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                aria-label={`Eliminar ${e.title}`}
+                                className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50"
                               >
                                 <Trash2 className="h-3 w-3" />
                               </button>
@@ -604,7 +608,7 @@ function CalendarPage() {
                               })
                             }
                             title="Ver en Google Calendar"
-                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-sky-600 hover:bg-sky-50 transition"
+                            className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-sky-600 hover:bg-sky-50 transition"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </button>
@@ -613,7 +617,7 @@ function CalendarPage() {
                             onClick={() => openEditEvent(e)}
                             disabled={!canEditEvents}
                             title={canEditEvents ? "Editar evento" : "Sin permisos"}
-                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -626,7 +630,7 @@ function CalendarPage() {
                               }
                             }}
                             title={canDeleteEvents ? "Eliminar evento" : "Sin permisos"}
-                            className="h-6 w-6 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="min-h-11 min-w-11 grid place-items-center rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -644,14 +648,15 @@ function CalendarPage() {
       {/* ── Modal de evento ── */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md p-6 shadow-xl">
+          <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-semibold">
                 {editingId ? "Editar evento" : "Nuevo evento"}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+                aria-label="Cerrar"
+                className="min-h-11 min-w-11 grid place-items-center rounded-lg hover:bg-muted/60"
               >
                 <X className="h-4 w-4" />
               </button>

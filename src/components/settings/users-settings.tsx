@@ -145,100 +145,104 @@ export function UsersSettings() {
             <Plus className="h-3.5 w-3.5" /> Registrar personal
           </button>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
-              <th className="py-3 pl-5">Usuario</th>
-              <th className="py-3 px-3">Rol</th>
-              <th className="py-3 px-3">Estado</th>
-              <th className="py-3 pr-5 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={4} className="py-10 text-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
+                <th className="py-3 pl-5">Usuario</th>
+                <th className="py-3 px-3">Rol</th>
+                <th className="py-3 px-3">Estado</th>
+                <th className="py-3 pr-5 text-right">Acciones</th>
               </tr>
-            ) : profiles.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
-                  No hay personal registrado aún.
-                </td>
-              </tr>
-            ) : (
-              profiles.map((u) => {
-                const isSelf = u.id === currentProfile?.id;
-                const isLastActiveAdmin =
-                  u.role === "Administrador" && u.status === "Activo" && activeAdminCount <= 1;
-                return (
-                  <tr key={u.id} className="border-t border-border hover:bg-muted/30">
-                    <td className="py-3 pl-5">
-                      <div className="flex items-center gap-3">
-                        <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                          {u.initials}
-                        </div>
-                        <div>
-                          <div className="font-semibold">
-                            {u.full_name}
-                            {isSelf && (
-                              <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                                (tú)
-                              </span>
-                            )}
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="py-10 text-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
+                  </td>
+                </tr>
+              ) : profiles.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                    No hay personal registrado aún.
+                  </td>
+                </tr>
+              ) : (
+                profiles.map((u) => {
+                  const isSelf = u.id === currentProfile?.id;
+                  const isLastActiveAdmin =
+                    u.role === "Administrador" && u.status === "Activo" && activeAdminCount <= 1;
+                  return (
+                    <tr key={u.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="py-3 pl-5">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                            {u.initials}
                           </div>
-                          <div className="text-xs text-muted-foreground">{u.email}</div>
+                          <div>
+                            <div className="font-semibold">
+                              {u.full_name}
+                              {isSelf && (
+                                <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                                  (tú)
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{u.email}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <StatusBadge tone={roleColor[u.role as keyof typeof roleColor] || "default"}>
-                        {u.role}
-                      </StatusBadge>
-                    </td>
-                    <td className="py-3 px-3">
-                      <StatusBadge tone={u.status === "Activo" ? "success" : "default"}>
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${u.status === "Activo" ? "bg-emerald-500" : "bg-muted-foreground"}`}
-                        />{" "}
-                        {u.status}
-                      </StatusBadge>
-                      {isLastActiveAdmin && (
-                        <div className="mt-1 text-[10px] text-amber-600">
-                          Único Administrador activo
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 pr-5 text-right">
-                      <button
-                        onClick={() =>
-                          setEditProfile({
-                            id: u.id,
-                            full_name: u.full_name,
-                            phone: u.phone ?? "",
-                            role: u.role as Role,
-                            status: u.status,
-                            original: { role: u.role as Role, status: u.status },
-                          })
-                        }
-                        className="h-8 px-3 rounded-md text-xs font-semibold text-primary hover:bg-primary/10"
-                      >
-                        Editar
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      </td>
+                      <td className="py-3 px-3">
+                        <StatusBadge
+                          tone={roleColor[u.role as keyof typeof roleColor] || "default"}
+                        >
+                          {u.role}
+                        </StatusBadge>
+                      </td>
+                      <td className="py-3 px-3">
+                        <StatusBadge tone={u.status === "Activo" ? "success" : "default"}>
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${u.status === "Activo" ? "bg-emerald-500" : "bg-muted-foreground"}`}
+                          />{" "}
+                          {u.status}
+                        </StatusBadge>
+                        {isLastActiveAdmin && (
+                          <div className="mt-1 text-[10px] text-amber-600">
+                            Único Administrador activo
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 pr-5 text-right">
+                        <button
+                          onClick={() =>
+                            setEditProfile({
+                              id: u.id,
+                              full_name: u.full_name,
+                              phone: u.phone ?? "",
+                              role: u.role as Role,
+                              status: u.status,
+                              original: { role: u.role as Role, status: u.status },
+                            })
+                          }
+                          className="min-h-11 px-3 rounded-md text-xs font-semibold text-primary hover:bg-primary/10"
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       {/* Register Staff Modal */}
       {showRegister && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-base font-semibold">Registrar personal</h3>
@@ -246,7 +250,7 @@ export function UsersSettings() {
               </div>
               <button
                 onClick={() => setShowRegister(false)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+                className="min-h-11 min-w-11 grid place-items-center rounded-lg hover:bg-muted/60"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -355,8 +359,8 @@ export function UsersSettings() {
 
       {/* Edit Staff Modal */}
       {editProfile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <Card className="w-full max-w-md p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-base font-semibold">Editar usuario</h3>
@@ -367,7 +371,7 @@ export function UsersSettings() {
               </div>
               <button
                 onClick={() => setEditProfile(null)}
-                className="h-8 w-8 grid place-items-center rounded-lg hover:bg-muted/60"
+                className="min-h-11 min-w-11 grid place-items-center rounded-lg hover:bg-muted/60"
               >
                 <X className="h-4 w-4" />
               </button>

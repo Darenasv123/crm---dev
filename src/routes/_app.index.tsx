@@ -56,15 +56,17 @@ function activityIcon(t: string) {
 }
 
 function Dashboard() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const isAdmin = profile?.role === "Administrador";
   const { canViewPayments, canViewFinancialMetrics } = usePermissions(profile);
-  const { data: clients = [] } = useClients();
-  const { data: cases = [] } = useCases();
-  const { data: events = [] } = useAgendaEvents();
-  const { data: payments = [] } = usePayments({ enabled: canViewPayments });
+  const { data: clients = [], isLoading: clientsLoading } = useClients();
+  const { data: cases = [], isLoading: casesLoading } = useCases();
+  const { data: events = [], isLoading: eventsLoading } = useAgendaEvents();
+  const { data: payments = [], isLoading: paymentsLoading } = usePayments({
+    enabled: canViewPayments,
+  });
   const { data: reports = [] } = useClientReports();
-  const { data: documents = [] } = useDocuments();
+  const { data: documents = [], isLoading: documentsLoading } = useDocuments();
   const today = getPeruTodayISO();
   const {
     tasks: dailyTasks,
@@ -137,11 +139,14 @@ function Dashboard() {
     return "Buenas noches";
   })();
 
-  const displayName = profile?.full_name ?? "equipo";
+  // QA-014: mientras el perfil todavía no cargó, el saludo no debe fingir
+  // una identidad ("equipo") como si fuera el nombre real del usuario --
+  // se omite el nombre hasta que profile.full_name esté disponible.
+  const title = authLoading || !profile?.full_name ? greeting : `${greeting}, ${profile.full_name}`;
 
   return (
     <AppLayout
-      title={`${greeting}, ${displayName}`}
+      title={title}
       subtitle={`Resumen del estudio jurídico — ${formatPeruDate(new Date().toISOString(), { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`}
     >
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -149,6 +154,7 @@ function Dashboard() {
           icon={Users}
           label="Clientes activos"
           value={activeClients.length}
+          loading={clientsLoading}
           tone="clients"
           to="/clientes"
         />
@@ -156,6 +162,7 @@ function Dashboard() {
           icon={Briefcase}
           label="Expedientes activos"
           value={activeCases.length}
+          loading={casesLoading}
           tone="cases"
           to="/casos"
         />
@@ -163,6 +170,7 @@ function Dashboard() {
           icon={CalendarClock}
           label="Actividades próximas"
           value={upcomingEvents.length}
+          loading={eventsLoading}
           tone="agenda"
           to="/agenda"
         />
@@ -171,6 +179,7 @@ function Dashboard() {
             icon={CreditCard}
             label="Pagos pendientes"
             value={pendingPayments.length}
+            loading={paymentsLoading}
             tone="danger"
             to="/pagos"
           />
@@ -179,6 +188,7 @@ function Dashboard() {
           icon={FileText}
           label="Docs. sin expediente"
           value={documentsWithoutCase.length}
+          loading={documentsLoading}
           tone="documents"
           to="/documentos"
         />
@@ -221,9 +231,13 @@ function Dashboard() {
               <ClipboardList className="h-4 w-4 text-primary" /> Trabajo pendiente
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {isAdmin
-                ? `${availableTaskCount} disponibles · ${runningTaskCount} en ejecución`
-                : `${myTaskCount} propias · ${availableTaskCount} disponibles`}
+              {tasksLoading ? (
+                <span className="inline-block h-3 w-32 animate-pulse rounded bg-muted/60 align-middle" />
+              ) : isAdmin ? (
+                `${availableTaskCount} disponibles · ${runningTaskCount} en ejecución`
+              ) : (
+                `${myTaskCount} propias · ${availableTaskCount} disponibles`
+              )}
             </p>
           </div>
           <Link
@@ -288,6 +302,7 @@ function Dashboard() {
             <WorkBucket
               icon={CreditCard}
               label="Pagos vencidos"
+              loading={canViewFinancialMetrics && paymentsLoading}
               empty={
                 canViewFinancialMetrics ? "Sin pagos vencidos." : "Visible para administradores."
               }
@@ -303,6 +318,7 @@ function Dashboard() {
             <WorkBucket
               icon={CalendarClock}
               label="Actividades de hoy"
+              loading={eventsLoading}
               empty="Sin eventos para hoy."
               items={todayEvents.slice(0, 5).map((e) => ({
                 title: e.title,
@@ -312,6 +328,7 @@ function Dashboard() {
             <WorkBucket
               icon={FileText}
               label="Documentos sin expediente"
+              loading={documentsLoading}
               empty="No hay documentos sueltos."
               items={documentsWithoutCase.slice(0, 5).map((doc) => ({
                 title: doc.name,
@@ -321,6 +338,7 @@ function Dashboard() {
             <WorkBucket
               icon={Users}
               label="Clientes sin contacto"
+              loading={clientsLoading}
               empty="Todos tienen teléfono o correo."
               items={clientsWithoutContact.map((client) => ({
                 title: client.name,
@@ -344,7 +362,9 @@ function Dashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {upcomingEvents.slice(0, 7).length === 0 ? (
+            {eventsLoading ? (
+              <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
+            ) : upcomingEvents.slice(0, 7).length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay actividades próximas.</p>
             ) : (
               upcomingEvents.slice(0, 7).map((event) => (
@@ -388,7 +408,9 @@ function Dashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {urgentCases.length === 0 ? (
+            {casesLoading ? (
+              <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
+            ) : urgentCases.length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay expedientes urgentes.</p>
             ) : (
               urgentCases.map((item) => (
@@ -425,7 +447,9 @@ function Dashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {documentsPendingReview.slice(0, 5).length === 0 ? (
+            {documentsLoading ? (
+              <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
+            ) : documentsPendingReview.slice(0, 5).length === 0 ? (
               <p className="text-sm text-muted-foreground">No hay documentos pendientes.</p>
             ) : (
               documentsPendingReview.slice(0, 5).map((doc) => (
@@ -451,7 +475,12 @@ function Dashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {recentActivity.length === 0 ? (
+            {clientsLoading ||
+            casesLoading ||
+            documentsLoading ||
+            (canViewPayments && paymentsLoading) ? (
+              <div className="h-16 animate-pulse rounded-lg bg-muted/50" />
+            ) : recentActivity.length === 0 ? (
               <p className="text-sm text-muted-foreground">Aun no hay actividad registrada.</p>
             ) : (
               recentActivity.map((item, index) => {
@@ -496,12 +525,14 @@ function KpiCard({
   icon: Icon,
   label,
   value,
+  loading = false,
   tone,
   to,
 }: {
   icon: typeof Users;
   label: string;
   value: number;
+  loading?: boolean;
   tone:
     | "clients"
     | "cases"
@@ -535,7 +566,15 @@ function KpiCard({
             <Icon className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <div className="text-2xl font-bold tracking-tight">{value}</div>
+            {loading ? (
+              <div
+                className="h-7 w-10 animate-pulse rounded bg-muted/60"
+                role="status"
+                aria-label={`Cargando ${label}`}
+              />
+            ) : (
+              <div className="text-2xl font-bold tracking-tight">{value}</div>
+            )}
             <div className="mt-0.5 text-xs text-muted-foreground truncate">{label}</div>
           </div>
         </div>
@@ -580,11 +619,13 @@ function WorkBucket({
   label,
   items,
   empty,
+  loading = false,
 }: {
   icon: typeof Users;
   label: string;
   items: Array<{ title: string; meta: string }>;
   empty: string;
+  loading?: boolean;
 }) {
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3">
@@ -595,7 +636,13 @@ function WorkBucket({
         {label}
       </div>
       <div className="space-y-2">
-        {items.length === 0 ? (
+        {loading ? (
+          <div
+            className="h-8 animate-pulse rounded bg-muted/60"
+            role="status"
+            aria-label={`Cargando ${label}`}
+          />
+        ) : items.length === 0 ? (
           <p className="text-xs text-muted-foreground">{empty}</p>
         ) : (
           items.map((item, index) => (

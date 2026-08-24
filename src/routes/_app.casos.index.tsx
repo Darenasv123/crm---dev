@@ -496,7 +496,10 @@ function CasesPage() {
                 >
                   {item.clients?.name || "Sin cliente"}
                 </p>
-                <p className="mt-2 truncate text-sm text-muted-foreground lg:mt-0">
+                <p
+                  className="mt-2 truncate text-sm text-muted-foreground lg:mt-0"
+                  title={item.materia || item.process_type || undefined}
+                >
                   {item.materia || item.process_type}
                 </p>
                 <div className="mt-3 lg:mt-0">

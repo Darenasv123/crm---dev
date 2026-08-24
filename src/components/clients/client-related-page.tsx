@@ -136,8 +136,12 @@ function RelatedList({
             <Icon className="h-4 w-4" />
           </span>
           <span className="min-w-0">
-            <span className="block truncate font-semibold">{row.title}</span>
-            <span className="block truncate text-sm text-muted-foreground">{row.detail}</span>
+            <span className="block truncate font-semibold" title={row.title}>
+              {row.title}
+            </span>
+            <span className="block truncate text-sm text-muted-foreground" title={row.detail}>
+              {row.detail}
+            </span>
           </span>
         </Link>
       ))}
@@ -183,7 +187,9 @@ function TaskSection({
                 search={{ tarea: task.id } as never}
                 className="min-w-0 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
               >
-                <p className="truncate font-semibold">{task.title}</p>
+                <p className="truncate font-semibold" title={task.title}>
+                  {task.title}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   Fecha de trabajo: {task.scheduled_for} ·{" "}
                   {task.assignee?.full_name || "Sin responsable"}

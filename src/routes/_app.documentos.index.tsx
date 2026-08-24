@@ -445,14 +445,14 @@ function DocsPage() {
                       </td>
                       <td className="py-2.5 px-3 text-xs text-muted-foreground">{d.size}</td>
                       <td className="sticky right-0 bg-card py-2.5 pr-4 text-right">
-                        <div className="inline-flex items-center gap-0.5">
+                        <div className="inline-flex items-center gap-1">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               openEdit(d);
                             }}
-                            className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
+                            className="min-h-11 min-w-11 grid place-items-center rounded hover:bg-muted"
                             title="Editar metadatos"
                             aria-label={`Editar ${d.name}`}
                           >
@@ -465,7 +465,7 @@ function DocsPage() {
                               handlePreview(d);
                             }}
                             disabled={previewingId === d.id}
-                            className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
+                            className="min-h-11 min-w-11 grid place-items-center rounded hover:bg-muted"
                             title="Visualizar"
                             aria-label={`Visualizar ${d.name}`}
                           >
@@ -481,7 +481,7 @@ function DocsPage() {
                               e.stopPropagation();
                               handleDownload(d);
                             }}
-                            className="h-7 w-7 grid place-items-center rounded hover:bg-muted"
+                            className="min-h-11 min-w-11 grid place-items-center rounded hover:bg-muted"
                             title="Descargar"
                             aria-label={`Descargar ${d.name}`}
                           >
@@ -500,7 +500,7 @@ function DocsPage() {
                                   deleteDoc.mutate({ id: d.id, storagePath: d.storage_path });
                                 }
                               }}
-                              className="h-7 w-7 grid place-items-center rounded hover:bg-red-50 hover:text-red-600"
+                              className="min-h-11 min-w-11 grid place-items-center rounded hover:bg-red-50 hover:text-red-600"
                               title="Eliminar"
                               aria-label={`Eliminar ${d.name}`}
                             >
@@ -548,7 +548,7 @@ function DocsPage() {
       {/* Upload Modal */}
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md p-6 shadow-xl">
+          <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-base font-semibold">Subir archivo</h3>
@@ -577,7 +577,10 @@ function DocsPage() {
                   {uploadFile ? (
                     <>
                       <FileText className="h-6 w-6 text-primary" />
-                      <span className="text-sm font-medium text-primary truncate max-w-[280px]">
+                      <span
+                        className="text-sm font-medium text-primary truncate max-w-[280px]"
+                        title={uploadFile.name}
+                      >
                         {uploadFile.name}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
@@ -721,7 +724,7 @@ function DocsPage() {
 
       {editingDocument && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <Card className="w-full max-w-lg p-6 shadow-xl">
+          <Card className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
             <div className="mb-5 flex items-start justify-between">
               <div>
                 <h3 className="font-semibold">Editar documento</h3>
@@ -980,7 +983,10 @@ function PreviewPanel({
               <div className="flex flex-col items-center gap-3 p-4">
                 <FileExtIcon name={selected.name} className="h-16 w-16 rounded-2xl" />
                 <div className="text-center">
-                  <div className="text-xs font-semibold text-foreground truncate max-w-[200px]">
+                  <div
+                    className="text-xs font-semibold text-foreground truncate max-w-[200px]"
+                    title={selected.name}
+                  >
                     {selected.name}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wider">
@@ -1000,7 +1006,9 @@ function PreviewPanel({
 
           {/* Metadata */}
           <div className="mt-3 space-y-1">
-            <div className="text-sm font-semibold truncate">{selected.name}</div>
+            <div className="text-sm font-semibold truncate" title={selected.name}>
+              {selected.name}
+            </div>
             <div className="text-xs text-muted-foreground">
               {displayDocumentType(selected.type)} · {selected.size}
             </div>

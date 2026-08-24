@@ -927,218 +927,239 @@ function TaskList({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-primary/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
-        <span>Tarea</span>
-        <span>Cliente</span>
-        <span>Expediente</span>
-        <span>Estado</span>
-        <span>Prioridad</span>
-        <span>Responsable</span>
-        <span>Acción principal</span>
-      </div>
-      {tasks.map((task) => {
-        const vs = getTaskVisualState(task, userId);
-        const available = vs.canClaim;
-        const own = task.assigned_to === userId;
-        const isBusy = busyId === task.id;
-        const Icon = vs.icon;
-        return (
-          <article
-            key={task.id}
-            aria-label={`${task.title} — ${vs.ariaDescription}`}
-            className={`grid gap-3 border-b border-l-2 p-4 transition-colors last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center ${vs.rowBg} ${vs.accentBorder} ${claimedId === task.id ? "animate-task-claimed" : ""}`}
-          >
-            {/* Título + descripción */}
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <h3 className="truncate font-semibold">{task.title}</h3>
-              </div>
-              {task.description && (
-                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                  {task.description}
-                </p>
-              )}
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <CalendarDays className="h-3 w-3" /> {task.scheduled_for}
-                {task.due_date && <> · vence {new Date(task.due_date).toLocaleString("es-PE")}</>}
-              </p>
-            </div>
+      {/* Fase 7D: el grid xl: exige ~1122px de contenido (suma de los
+          minmax de cada columna) + 32px de padding. Entre el breakpoint
+          xl (1280px) y ~1470px, el área de contenido (viewport - sidebar
+          256px - padding de página) puede ser menor a eso. Antes esto
+          vivía dentro de un Card con overflow-hidden: las columnas
+          Responsable/Acción principal quedaban recortadas sin forma de
+          alcanzarlas. Ahora el desbordamiento es un scroll horizontal
+          contenido en este wrapper, nunca en la página. */}
+      <div className="overflow-x-auto">
+        <div className="xl:min-w-[1160px]">
+          <div className="hidden grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] gap-3 border-b bg-primary/5 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground xl:grid">
+            <span>Tarea</span>
+            <span>Cliente</span>
+            <span>Expediente</span>
+            <span>Estado</span>
+            <span>Prioridad</span>
+            <span>Responsable</span>
+            <span>Acción principal</span>
+          </div>
+          {tasks.map((task) => {
+            const vs = getTaskVisualState(task, userId);
+            const available = vs.canClaim;
+            const own = task.assigned_to === userId;
+            const isBusy = busyId === task.id;
+            const Icon = vs.icon;
+            return (
+              <article
+                key={task.id}
+                aria-label={`${task.title} — ${vs.ariaDescription}`}
+                className={`grid gap-3 border-b border-l-2 p-4 transition-colors last:border-b-0 xl:grid-cols-[minmax(220px,2fr)_minmax(130px,1fr)_minmax(130px,1fr)_140px_100px_minmax(150px,1fr)_minmax(180px,1.2fr)] xl:items-center ${vs.rowBg} ${vs.accentBorder} ${claimedId === task.id ? "animate-task-claimed" : ""}`}
+              >
+                {/* Título + descripción */}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Icon
+                      className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <h3 className="truncate font-semibold" title={task.title}>
+                      {task.title}
+                    </h3>
+                  </div>
+                  {task.description && (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {task.description}
+                    </p>
+                  )}
+                  <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <CalendarDays className="h-3 w-3" /> {task.scheduled_for}
+                    {task.due_date && (
+                      <> · vence {new Date(task.due_date).toLocaleString("es-PE")}</>
+                    )}
+                  </p>
+                </div>
 
-            {/* Cliente */}
-            {(() => {
-              const resolvedClientId = task.client_id ?? task.cases?.client_id;
-              const resolvedClientName = task.cases?.clients?.name || task.clients?.name;
-              return resolvedClientId ? (
-                <Link
-                  to={"/clientes/$id" as never}
-                  params={{ id: resolvedClientId } as never}
-                  className="truncate text-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
-                >
-                  {resolvedClientName}
-                </Link>
-              ) : (
-                <span className="truncate text-sm text-muted-foreground">General</span>
-              );
-            })()}
+                {/* Cliente */}
+                {(() => {
+                  const resolvedClientId = task.client_id ?? task.cases?.client_id;
+                  const resolvedClientName = task.cases?.clients?.name || task.clients?.name;
+                  return resolvedClientId ? (
+                    <Link
+                      to={"/clientes/$id" as never}
+                      params={{ id: resolvedClientId } as never}
+                      className="truncate text-sm hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+                      title={resolvedClientName ?? undefined}
+                    >
+                      {resolvedClientName}
+                    </Link>
+                  ) : (
+                    <span className="truncate text-sm text-muted-foreground">General</span>
+                  );
+                })()}
 
-            {/* Expediente — lleva a la ficha del expediente, no al cliente:
+                {/* Expediente — lleva a la ficha del expediente, no al cliente:
                 el número identifica precisamente al expediente, y desde su
                 ficha ya hay acceso directo al cliente. */}
-            {task.case_id && task.cases ? (
-              <Link
-                to={"/casos/$id" as never}
-                params={{ id: task.case_id } as never}
-                className="truncate text-sm font-mono text-xs hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
-              >
-                {task.cases.case_number || task.cases.expediente}
-              </Link>
-            ) : (
-              <span className="truncate text-sm font-mono text-xs text-muted-foreground">
-                Sin expediente
-              </span>
-            )}
+                {task.case_id && task.cases ? (
+                  <Link
+                    to={"/casos/$id" as never}
+                    params={{ id: task.case_id } as never}
+                    className="truncate text-sm font-mono text-xs hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:rounded-sm"
+                    title={task.cases.case_number || task.cases.expediente}
+                  >
+                    {task.cases.case_number || task.cases.expediente}
+                  </Link>
+                ) : (
+                  <span className="truncate text-sm font-mono text-xs text-muted-foreground">
+                    Sin expediente
+                  </span>
+                )}
 
-            {/* Estado — una tarea disponible (sin tomar) nunca muestra un
+                {/* Estado — una tarea disponible (sin tomar) nunca muestra un
                 select interactivo: parecía un control roto (QA-007). Debe
                 tomarse primero para poder cambiar su estado. */}
-            {available ? (
-              <span
-                className="inline-flex w-fit items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary"
-                title="Primero debes tomar la tarea para cambiar su estado."
-              >
-                <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                Disponible — tómala primero
-              </span>
-            ) : isAdmin || own ? (
-              <NativeSelect
-                value={normalizeTaskStatus(task.status)}
-                onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
-                disabled={isBusy}
-                className="h-9 rounded-lg border bg-background pl-2 pr-8 text-xs"
-                aria-label="Cambiar estado de tarea"
-              >
-                {TASK_STATUSES.map((item) => (
-                  <option key={item} value={item}>
-                    {TASK_STATUS_LABELS[item]}
-                  </option>
-                ))}
-              </NativeSelect>
-            ) : (
-              <span
-                className={`inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${vs.badgeClasses}`}
-              >
-                <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-                {vs.label}
-              </span>
-            )}
+                {available ? (
+                  <span
+                    className="inline-flex w-fit items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary"
+                    title="Primero debes tomar la tarea para cambiar su estado."
+                  >
+                    <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    Disponible — tómala primero
+                  </span>
+                ) : isAdmin || own ? (
+                  <NativeSelect
+                    value={normalizeTaskStatus(task.status)}
+                    onChange={(event) => onStatus(task, event.target.value as TaskStatus)}
+                    disabled={isBusy}
+                    className="min-h-11 rounded-lg border bg-background pl-2 pr-8 text-xs"
+                    aria-label="Cambiar estado de tarea"
+                  >
+                    {TASK_STATUSES.map((item) => (
+                      <option key={item} value={item}>
+                        {TASK_STATUS_LABELS[item]}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                ) : (
+                  <span
+                    className={`inline-flex w-fit items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${vs.badgeClasses}`}
+                  >
+                    <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    {vs.label}
+                  </span>
+                )}
 
-            {/* Prioridad */}
-            <TaskPriorityBadge priority={task.priority} />
+                {/* Prioridad */}
+                <TaskPriorityBadge priority={task.priority} />
 
-            {/* Responsable — el select solo asigna a una persona; "liberar" es
+                {/* Responsable — el select solo asigna a una persona; "liberar" es
                 un botón aparte con su propio target táctil, en vez de una
                 opción de texto largo dentro del select (chocaba con la
                 flecha nativa al perder el padding derecho reservado). */}
-            {isAdmin ? (
-              <div className="flex min-w-0 items-center gap-1.5">
-                <NativeSelect
-                  value={task.assigned_to ?? ""}
-                  onChange={(event) => onAssign(task, event.target.value)}
-                  disabled={isBusy}
-                  className="h-9 min-w-0 flex-1 rounded-lg border bg-background pl-2 pr-8 text-xs"
-                  aria-label="Asignar responsable"
-                >
-                  <option value="">Sin asignar</option>
-                  {profiles
-                    .filter((item) => item.status === "Activo")
-                    .map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.full_name}
-                      </option>
-                    ))}
-                </NativeSelect>
-                {task.assigned_to && (
+                {isAdmin ? (
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <NativeSelect
+                      value={task.assigned_to ?? ""}
+                      onChange={(event) => onAssign(task, event.target.value)}
+                      disabled={isBusy}
+                      className="min-h-11 min-w-0 flex-1 rounded-lg border bg-background pl-2 pr-8 text-xs"
+                      aria-label="Asignar responsable"
+                    >
+                      <option value="">Sin asignar</option>
+                      {profiles
+                        .filter((item) => item.status === "Activo")
+                        .map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.full_name}
+                          </option>
+                        ))}
+                    </NativeSelect>
+                    {task.assigned_to && (
+                      <button
+                        type="button"
+                        onClick={() => onAssign(task, "")}
+                        disabled={isBusy}
+                        title="Liberar a Disponibles"
+                        aria-label={`Liberar a Disponibles: ${task.title}`}
+                        className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg border transition-colors hover:bg-muted/50 disabled:opacity-50"
+                      >
+                        <UserX className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <span className="truncate text-sm" title={task.assignee?.full_name ?? undefined}>
+                    {task.assignee?.full_name || (
+                      <span className="text-muted-foreground">Sin asignar</span>
+                    )}
+                  </span>
+                )}
+
+                {/* Acciones */}
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => onAssign(task, "")}
-                    disabled={isBusy}
-                    title="Liberar a Disponibles"
-                    aria-label={`Liberar a Disponibles: ${task.title}`}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition-colors hover:bg-muted/50 disabled:opacity-50"
+                    onClick={() => onOpen(task)}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2"
                   >
-                    <UserX className="h-4 w-4" aria-hidden="true" />
+                    <MessageSquareText className="h-4 w-4" aria-hidden="true" />
+                    Ver detalle
                   </button>
-                )}
-              </div>
-            ) : (
-              <span className="truncate text-sm">
-                {task.assignee?.full_name || (
-                  <span className="text-muted-foreground">Sin asignar</span>
-                )}
-              </span>
-            )}
 
-            {/* Acciones */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => onOpen(task)}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2"
-              >
-                <MessageSquareText className="h-4 w-4" aria-hidden="true" />
-                Ver detalle
-              </button>
-
-              {available && (
-                <button
-                  type="button"
-                  onClick={() => onClaim(task)}
-                  disabled={isBusy}
-                  aria-label={`Tomar tarea: ${task.title}`}
-                  className="inline-flex h-9 min-w-[120px] items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-shadow hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
-                >
-                  {isBusy ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      <span>Tomando…</span>
-                    </>
-                  ) : (
-                    <>
-                      <Hand className="h-4 w-4" aria-hidden="true" />
-                      <span>Tomar tarea</span>
-                    </>
+                  {available && (
+                    <button
+                      type="button"
+                      onClick={() => onClaim(task)}
+                      disabled={isBusy}
+                      aria-label={`Tomar tarea: ${task.title}`}
+                      className="inline-flex h-9 min-w-[120px] items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-shadow hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
+                    >
+                      {isBusy ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          <span>Tomando…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Hand className="h-4 w-4" aria-hidden="true" />
+                          <span>Tomar tarea</span>
+                        </>
+                      )}
+                    </button>
                   )}
-                </button>
-              )}
 
-              {own && !isAdmin && normalizeTaskStatus(task.status) !== "completed" && (
-                <button
-                  type="button"
-                  onClick={() => onReturn(task)}
-                  disabled={isBusy}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 disabled:opacity-50"
-                >
-                  <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                  Devolver tarea
-                </button>
-              )}
+                  {own && !isAdmin && normalizeTaskStatus(task.status) !== "completed" && (
+                    <button
+                      type="button"
+                      onClick={() => onReturn(task)}
+                      disabled={isBusy}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors hover:bg-muted/50 disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                      Devolver tarea
+                    </button>
+                  )}
 
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(task)}
-                  disabled={isBusy}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-destructive/30 text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-                  aria-label={`Eliminar tarea: ${task.title}`}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          </article>
-        );
-      })}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(task)}
+                      disabled={isBusy}
+                      className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-destructive/30 text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                      aria-label={`Eliminar tarea: ${task.title}`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -1213,10 +1234,15 @@ function TaskBoard({ tasks, userId }: { tasks: DailyTask[]; userId?: string }) {
                 const vs = getTaskVisualState(task, userId);
                 return (
                   <Card key={task.id} className={`border-l-2 p-3 ${vs.accentBorder}`}>
-                    <p className="text-sm font-semibold line-clamp-2">{task.title}</p>
+                    <p className="text-sm font-semibold line-clamp-2" title={task.title}>
+                      {task.title}
+                    </p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <TaskPriorityBadge priority={task.priority} iconOnly />
-                      <span className="text-xs text-muted-foreground truncate">
+                      <span
+                        className="text-xs text-muted-foreground truncate"
+                        title={task.assignee?.full_name ?? undefined}
+                      >
                         {task.assignee?.full_name || "Sin asignar"}
                       </span>
                     </div>

@@ -13,7 +13,6 @@ import {
   Scale,
   LogOut,
   Menu,
-  X,
   ExternalLink,
   ListTodo,
   MoreHorizontal,
@@ -23,8 +22,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { Chatbot } from "@/components/chatbot";
+import { InstallPrompt } from "@/components/install-prompt";
 import { GlobalSearch } from "@/components/global-search";
 import { usePendingTaskSummary } from "@/hooks/use-daily-tasks";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 type NavItem = {
   to: string;
@@ -62,6 +63,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
   const [notifOpen, setNotifOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { attentionCount: taskAttentionCount } = usePendingTaskSummary();
+
   // QA-008: el badge no es "total de tareas" — es "lo que requiere tu
   // atención ahora" (Admin: disponibles sin tomar; Personal: asignadas a mí).
   // El texto explícito evita que se confunda con el Total de la pestaña Todas,
@@ -151,20 +153,19 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
         </nav>
       </aside>
 
-      {/* ── Mobile drawer overlay ── */}
-      {mobileMenuOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* ── Mobile drawer ── */}
-      <aside
-        className={`lg:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col bg-sidebar text-sidebar-foreground shadow-2xl transition-transform duration-300 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}
-      >
-        <div className="flex items-center justify-between px-5 py-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-3 min-w-0">
+      {/* ── Mobile drawer: primitive Radix (Sheet/Dialog) real — foco atrapado,
+          scroll del body bloqueado, Escape, click en backdrop y restauración
+          de foco al disparador vienen gratis del propio Dialog.Root. ── */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent
+          side="left"
+          className="lg:hidden flex w-72 max-w-[85vw] flex-col gap-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:text-sidebar-foreground/70 [&>button]:hover:bg-sidebar-accent/60 [&>button]:hover:text-white"
+        >
+          <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
+          <SheetDescription className="sr-only">
+            Accede a las secciones principales del CRM.
+          </SheetDescription>
+          <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-gold text-gold-foreground shrink-0">
               <Scale className="h-4 w-4" strokeWidth={2.4} />
             </div>
@@ -177,79 +178,71 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(false)}
-            className="h-8 w-8 grid place-items-center rounded-lg hover:bg-sidebar-accent/60 shrink-0"
-            aria-label="Cerrar menú"
-          >
-            <X className="h-4 w-4 text-sidebar-foreground/70" />
-          </button>
-        </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {visibleNav.map((item) => {
-            const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to as never}
-                onClick={() => setMobileMenuOpen(false)}
-                aria-current={active ? "page" : undefined}
-                className={[
-                  "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all",
-                  active
-                    ? "bg-sidebar-accent text-white shadow-soft ring-1 ring-inset ring-sidebar-border"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
-                ].join(" ")}
-              >
-                <Icon className={`h-5 w-5 ${active ? "text-gold" : ""}`} />
-                <span>{item.label}</span>
-                {item.to === "/tareas" && taskAttentionCount > 0 && (
-                  <span
-                    aria-label={`${taskAttentionCount} tareas requieren atención: ${taskAttentionHint}`}
-                    title={taskAttentionHint}
-                    className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground"
-                  >
-                    {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-        {/* User info at bottom of drawer */}
-        <div className="px-4 py-4 border-t border-sidebar-border">
-          <a
-            href="https://cej.pj.gob.pe/cej/forms/busquedaform.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Consultar expediente en el Portal del Poder Judicial"
-            className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white transition mb-2"
-          >
-            <ExternalLink className="h-5 w-5" />
-            Consultar expediente (CEJ)
-          </a>
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-white truncate">{displayName}</div>
-              <div className="text-[11px] text-sidebar-foreground/60">{role}</div>
-            </div>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              title="Cerrar sesión"
-              className="h-8 w-8 grid place-items-center rounded-lg text-sidebar-foreground/60 transition hover:bg-destructive/20 hover:text-destructive-foreground"
-              aria-label="Cerrar sesión"
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            {visibleNav.map((item) => {
+              const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to as never}
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={[
+                    "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all",
+                    active
+                      ? "bg-sidebar-accent text-white shadow-soft ring-1 ring-inset ring-sidebar-border"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white",
+                  ].join(" ")}
+                >
+                  <Icon className={`h-5 w-5 ${active ? "text-gold" : ""}`} />
+                  <span>{item.label}</span>
+                  {item.to === "/tareas" && taskAttentionCount > 0 && (
+                    <span
+                      aria-label={`${taskAttentionCount} tareas requieren atención: ${taskAttentionHint}`}
+                      title={taskAttentionHint}
+                      className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 py-0.5 text-center text-[10px] font-bold text-destructive-foreground"
+                    >
+                      {taskAttentionCount > 99 ? "99+" : taskAttentionCount}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+          {/* User info at bottom of drawer */}
+          <div className="px-4 py-4 border-t border-sidebar-border">
+            <a
+              href="https://cej.pj.gob.pe/cej/forms/busquedaform.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Consultar expediente en el Portal del Poder Judicial"
+              className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-white transition mb-2"
             >
-              <LogOut className="h-4 w-4" />
-            </button>
+              <ExternalLink className="h-5 w-5" />
+              Consultar expediente (CEJ)
+            </a>
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-white truncate">{displayName}</div>
+                <div className="text-[11px] text-sidebar-foreground/60">{role}</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                title="Cerrar sesión"
+                className="h-8 w-8 grid place-items-center rounded-lg text-sidebar-foreground/60 transition hover:bg-destructive/20 hover:text-destructive-foreground"
+                aria-label="Cerrar sesión"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        </div>
-      </aside>
+        </SheetContent>
+      </Sheet>
 
       {/* ── Main content ── */}
       <div className="flex-1 flex flex-col min-w-0">
@@ -260,7 +253,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden h-9 w-9 grid place-items-center rounded-lg hover:bg-muted/60 shrink-0"
+              className="lg:hidden min-h-11 min-w-11 grid place-items-center rounded-lg hover:bg-muted/60 shrink-0"
               aria-label="Abrir menú"
             >
               <Menu className="h-5 w-5" />
@@ -287,7 +280,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
                 <button
                   type="button"
                   onClick={() => setNotifOpen((v) => !v)}
-                  className="relative grid place-items-center h-9 w-9 rounded-lg bg-muted/60 hover:bg-muted transition"
+                  className="relative grid place-items-center min-h-11 min-w-11 rounded-lg bg-muted/60 hover:bg-muted transition"
                   aria-label="Ver notificaciones"
                 >
                   <Bell className="h-[18px] w-[18px] text-foreground/70" />
@@ -398,6 +391,7 @@ export function AppLayout({ children, title, subtitle, actions }: AppLayoutProps
 
       {/* Chatbot — visible en todas las páginas del CRM */}
       <Chatbot />
+      <InstallPrompt />
     </div>
   );
 }

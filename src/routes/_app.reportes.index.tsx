@@ -547,8 +547,12 @@ function ReportPreviewModal({
       <Card className="max-h-[92vh] w-full max-w-4xl overflow-hidden">
         <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <h3 className="text-base font-semibold truncate">{preview.data.title}</h3>
-            <p className="text-xs text-muted-foreground truncate">{preview.data.clientName}</p>
+            <h3 className="text-base font-semibold truncate" title={preview.data.title}>
+              {preview.data.title}
+            </h3>
+            <p className="text-xs text-muted-foreground truncate" title={preview.data.clientName}>
+              {preview.data.clientName}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -664,7 +668,10 @@ function ReportsFeed({
                 <h3 className="truncate text-sm font-semibold" title={report.title}>
                   {report.title}
                 </h3>
-                <p className="truncate text-xs font-medium text-primary">
+                <p
+                  className="truncate text-xs font-medium text-primary"
+                  title={report.clients?.name ?? "Cliente eliminado"}
+                >
                   {report.clients?.name ?? "Cliente eliminado"}
                 </p>
                 <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-foreground/75">
@@ -673,10 +680,16 @@ function ReportsFeed({
               </div>
               <div className="mt-2 flex items-end justify-between gap-2 border-t border-border pt-2">
                 <div className="min-w-0 text-[10px] leading-4 text-muted-foreground">
-                  <div className="truncate">
+                  <div
+                    className="truncate"
+                    title={report.profiles?.full_name ?? "Usuario del estudio"}
+                  >
                     {report.profiles?.full_name ?? "Usuario del estudio"}
                   </div>
-                  <div className="truncate font-mono">
+                  <div
+                    className="truncate font-mono"
+                    title={report.cases?.expediente ?? "Reporte general"}
+                  >
                     {report.cases?.expediente ?? "Reporte general"}
                   </div>
                 </div>
@@ -686,7 +699,7 @@ function ReportsFeed({
                     onClick={() => onPreview(report)}
                     title="Visualizar reporte"
                     aria-label={`Visualizar reporte ${report.title}`}
-                    className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </button>
@@ -695,7 +708,7 @@ function ReportsFeed({
                     onClick={() => onDownload(report)}
                     title="Descargar reporte editable en DOCX"
                     aria-label={`Descargar reporte ${report.title} en DOCX`}
-                    className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   >
                     <Download className="h-3.5 w-3.5" />
                   </button>
@@ -714,7 +727,7 @@ function ReportsFeed({
                         disabled={Boolean(disabledReason) || sending}
                         title={disabledReason ?? "Enviar reporte por correo"}
                         aria-label={`Enviar reporte ${report.title} por correo`}
-                        className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {sending ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />

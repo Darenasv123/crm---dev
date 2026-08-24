@@ -243,15 +243,22 @@ export function Chatbot() {
     <>
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
+        className={`fixed right-6 z-50 h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all
+          bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-[calc(1.5rem+env(safe-area-inset-bottom))]
           ${open ? "bg-muted text-foreground" : "bg-primary text-primary-foreground hover:brightness-110"}`}
         title="Asistente jurídico"
+        aria-label={open ? "Cerrar asistente jurídico" : "Abrir asistente jurídico"}
       >
         {open ? <ChevronDown className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-[380px] max-h-[600px] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+        <div
+          className="fixed right-6 z-50 flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden
+            w-[calc(100vw-3rem)] sm:w-[380px]
+            bottom-[calc(9.5rem+env(safe-area-inset-bottom))] lg:bottom-[calc(6rem+env(safe-area-inset-bottom))]
+            max-h-[min(600px,calc(100dvh-11rem))]"
+        >
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-gradient-to-r from-primary to-[oklch(0.28_0.07_255)]">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-white/15">
               <Bot className="h-5 w-5 text-white" />
@@ -267,7 +274,8 @@ export function Chatbot() {
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="h-8 w-8 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition"
+              aria-label="Cerrar asistente jurídico"
+              className="min-h-11 min-w-11 grid place-items-center rounded-lg bg-white/10 hover:bg-white/20 transition"
             >
               <X className="h-4 w-4 text-white" />
             </button>
@@ -344,7 +352,7 @@ export function Chatbot() {
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || loading || apiKeyMissing}
-              className="h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-40 transition"
+              className="min-h-11 min-w-11 shrink-0 grid place-items-center rounded-xl bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-40 transition"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

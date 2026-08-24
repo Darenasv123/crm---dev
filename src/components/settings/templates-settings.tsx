@@ -143,7 +143,9 @@ export function TemplatesSettings() {
                     <FileText className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">{template.name}</div>
+                    <div className="truncate text-sm font-semibold" title={template.name}>
+                      {template.name}
+                    </div>
                     <div className="text-[11px] text-muted-foreground">
                       {template.file_name.split(".").pop()?.toUpperCase()} ·{" "}
                       {formatSize(template.size)}
@@ -159,7 +161,7 @@ export function TemplatesSettings() {
                         onClick={() => handlePreview(template)}
                         disabled={previewingId === template.id}
                         aria-label={`Visualizar ${template.name}`}
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold hover:bg-muted/60 disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold hover:bg-muted/60 disabled:opacity-50"
                       >
                         {previewingId === template.id ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
@@ -172,7 +174,7 @@ export function TemplatesSettings() {
                         type="button"
                         onClick={() => handleDownload(template)}
                         aria-label={`Descargar ${template.name}`}
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold hover:bg-muted/60"
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-semibold hover:bg-muted/60"
                       >
                         <Download className="h-3 w-3" />
                         Descargar
@@ -183,7 +185,7 @@ export function TemplatesSettings() {
                           onClick={() => handleDelete(template)}
                           disabled={deletingId === template.id}
                           aria-label={`Eliminar ${template.name}`}
-                          className="inline-flex h-7 items-center gap-1 rounded-md border border-red-200 px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center gap-1 rounded-md border border-red-200 px-2 text-[11px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
                           {deletingId === template.id ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -243,8 +245,8 @@ function CreateTemplateDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <Card className="w-full max-w-md p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h3 className="text-base font-semibold">Nueva plantilla</h3>
@@ -256,7 +258,7 @@ function CreateTemplateDialog({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted/60"
+            className="grid min-h-11 min-w-11 place-items-center rounded-lg hover:bg-muted/60"
           >
             <X className="h-4 w-4" />
           </button>

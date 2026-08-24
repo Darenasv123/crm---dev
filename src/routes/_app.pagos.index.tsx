@@ -646,7 +646,7 @@ function ModalWrapper({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <Card className="w-full max-w-md p-6 shadow-xl">
+      <Card className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6 shadow-xl">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-semibold">{title}</h3>
           <button
