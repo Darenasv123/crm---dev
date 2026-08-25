@@ -1355,6 +1355,371 @@ export type Database = {
           },
         ];
       };
+      google_drive_channels: {
+        Row: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          last_message_number: number | null;
+          resource_id: string;
+          stopped_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          channel_id?: string;
+          channel_token_hash?: string;
+          connection_id?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          last_message_number?: number | null;
+          resource_id?: string;
+          stopped_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_channels_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_drive_connections";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_drive_client_folders: {
+        Row: {
+          client_id: string;
+          connection_id: string;
+          created_at: string;
+          drive_folder_id: string;
+          drive_folder_name_snapshot: string | null;
+          id: string;
+          last_synced_at: string | null;
+          linked_at: string;
+          linked_by: string | null;
+          match_type: string;
+          sync_error: string | null;
+          sync_status: string;
+          updated_at: string;
+        };
+        Insert: {
+          client_id: string;
+          connection_id: string;
+          created_at?: string;
+          drive_folder_id: string;
+          drive_folder_name_snapshot?: string | null;
+          id?: string;
+          last_synced_at?: string | null;
+          linked_at?: string;
+          linked_by?: string | null;
+          match_type: string;
+          sync_error?: string | null;
+          sync_status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_id?: string;
+          connection_id?: string;
+          created_at?: string;
+          drive_folder_id?: string;
+          drive_folder_name_snapshot?: string | null;
+          id?: string;
+          last_synced_at?: string | null;
+          linked_at?: string;
+          linked_by?: string | null;
+          match_type?: string;
+          sync_error?: string | null;
+          sync_status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_client_folders_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: true;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_drive_client_folders_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_drive_connections";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_drive_client_folders_linked_by_fkey";
+            columns: ["linked_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_drive_connections: {
+        Row: {
+          access_token_expires_at: string | null;
+          changes_page_token: string | null;
+          connected_by: string;
+          created_at: string;
+          encrypted_refresh_token: string | null;
+          google_account_email: string | null;
+          granted_scopes: string | null;
+          id: string;
+          last_error: string | null;
+          last_synced_at: string | null;
+          root_folder_id: string | null;
+          root_folder_name: string | null;
+          shared_drive_id: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          access_token_expires_at?: string | null;
+          changes_page_token?: string | null;
+          connected_by: string;
+          created_at?: string;
+          encrypted_refresh_token?: string | null;
+          google_account_email?: string | null;
+          granted_scopes?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          root_folder_id?: string | null;
+          root_folder_name?: string | null;
+          shared_drive_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          access_token_expires_at?: string | null;
+          changes_page_token?: string | null;
+          connected_by?: string;
+          created_at?: string;
+          encrypted_refresh_token?: string | null;
+          google_account_email?: string | null;
+          granted_scopes?: string | null;
+          id?: string;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          root_folder_id?: string | null;
+          root_folder_name?: string | null;
+          shared_drive_id?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_connections_connected_by_fkey";
+            columns: ["connected_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_drive_document_files: {
+        Row: {
+          connection_id: string;
+          created_at: string;
+          document_id: string;
+          drive_file_id: string;
+          drive_parent_id: string;
+          drive_web_view_link: string | null;
+          id: string;
+          last_synced_at: string | null;
+          last_synced_content_hash: string | null;
+          last_synced_drive_md5_checksum: string | null;
+          last_synced_drive_modified_time: string | null;
+          last_synced_drive_parent_id: string | null;
+          last_synced_drive_version: number | null;
+          last_synced_file_name: string | null;
+          sync_error: string | null;
+          sync_status: string;
+          updated_at: string;
+        };
+        Insert: {
+          connection_id: string;
+          created_at?: string;
+          document_id: string;
+          drive_file_id: string;
+          drive_parent_id: string;
+          drive_web_view_link?: string | null;
+          id?: string;
+          last_synced_at?: string | null;
+          last_synced_content_hash?: string | null;
+          last_synced_drive_md5_checksum?: string | null;
+          last_synced_drive_modified_time?: string | null;
+          last_synced_drive_parent_id?: string | null;
+          last_synced_drive_version?: number | null;
+          last_synced_file_name?: string | null;
+          sync_error?: string | null;
+          sync_status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          connection_id?: string;
+          created_at?: string;
+          document_id?: string;
+          drive_file_id?: string;
+          drive_parent_id?: string;
+          drive_web_view_link?: string | null;
+          id?: string;
+          last_synced_at?: string | null;
+          last_synced_content_hash?: string | null;
+          last_synced_drive_md5_checksum?: string | null;
+          last_synced_drive_modified_time?: string | null;
+          last_synced_drive_parent_id?: string | null;
+          last_synced_drive_version?: number | null;
+          last_synced_file_name?: string | null;
+          sync_error?: string | null;
+          sync_status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_document_files_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_drive_connections";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_drive_document_files_document_id_fkey";
+            columns: ["document_id"];
+            isOneToOne: true;
+            referencedRelation: "documents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_drive_oauth_states: {
+        Row: {
+          code_verifier: string;
+          created_at: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Insert: {
+          code_verifier: string;
+          created_at?: string;
+          expires_at: string;
+          requested_by: string;
+          state_hash: string;
+        };
+        Update: {
+          code_verifier?: string;
+          created_at?: string;
+          expires_at?: string;
+          requested_by?: string;
+          state_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_oauth_states_requested_by_fkey";
+            columns: ["requested_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_drive_sync_queue: {
+        Row: {
+          attempt_count: number;
+          available_at: string;
+          claimed_at: string | null;
+          client_id: string | null;
+          connection_id: string;
+          created_at: string;
+          dedupe_key: string;
+          document_id: string | null;
+          drive_file_id: string | null;
+          id: number;
+          last_error: string | null;
+          operation: string;
+          payload: Json;
+          processed_at: string | null;
+          status: string;
+          updated_at: string;
+        };
+        Insert: {
+          attempt_count?: number;
+          available_at?: string;
+          claimed_at?: string | null;
+          client_id?: string | null;
+          connection_id: string;
+          created_at?: string;
+          dedupe_key: string;
+          document_id?: string | null;
+          drive_file_id?: string | null;
+          id?: never;
+          last_error?: string | null;
+          operation: string;
+          payload?: Json;
+          processed_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          attempt_count?: number;
+          available_at?: string;
+          claimed_at?: string | null;
+          client_id?: string | null;
+          connection_id?: string;
+          created_at?: string;
+          dedupe_key?: string;
+          document_id?: string | null;
+          drive_file_id?: string | null;
+          id?: never;
+          last_error?: string | null;
+          operation?: string;
+          payload?: Json;
+          processed_at?: string | null;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "google_drive_sync_queue_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_drive_sync_queue_connection_id_fkey";
+            columns: ["connection_id"];
+            isOneToOne: false;
+            referencedRelation: "google_drive_connections";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "google_drive_sync_queue_document_id_fkey";
+            columns: ["document_id"];
+            isOneToOne: false;
+            referencedRelation: "documents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       import_folders: {
         Row: {
           analysis_status: string;
@@ -1767,6 +2132,79 @@ export type Database = {
           to: "case_tasks";
           isOneToOne: false;
           isSetofReturn: true;
+        };
+      };
+      claim_google_drive_sync_operations: {
+        Args: { p_limit?: number };
+        Returns: {
+          attempt_count: number;
+          available_at: string;
+          claimed_at: string | null;
+          client_id: string | null;
+          connection_id: string;
+          created_at: string;
+          dedupe_key: string;
+          document_id: string | null;
+          drive_file_id: string | null;
+          id: number;
+          last_error: string | null;
+          operation: string;
+          payload: Json;
+          processed_at: string | null;
+          status: string;
+          updated_at: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "google_drive_sync_queue";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
+      };
+      replace_google_drive_connection: {
+        Args: {
+          p_access_token_expires_at?: string | null;
+          p_connected_by: string;
+          p_encrypted_refresh_token: string;
+          p_google_account_email?: string | null;
+          p_granted_scopes?: string | null;
+        };
+        Returns: {
+          access_token_expires_at: string | null;
+          changes_page_token: string | null;
+          connected_by: string;
+          created_at: string;
+          encrypted_refresh_token: string | null;
+          google_account_email: string | null;
+          granted_scopes: string | null;
+          id: string;
+          last_error: string | null;
+          last_synced_at: string | null;
+          root_folder_id: string | null;
+          root_folder_name: string | null;
+          shared_drive_id: string | null;
+          status: string;
+          updated_at: string;
+        };
+      };
+      disconnect_google_drive_connection: {
+        Args: never;
+        Returns: {
+          access_token_expires_at: string | null;
+          changes_page_token: string | null;
+          connected_by: string;
+          created_at: string;
+          encrypted_refresh_token: string | null;
+          google_account_email: string | null;
+          granted_scopes: string | null;
+          id: string;
+          last_error: string | null;
+          last_synced_at: string | null;
+          root_folder_id: string | null;
+          root_folder_name: string | null;
+          shared_drive_id: string | null;
+          status: string;
+          updated_at: string;
         };
       };
       crm_is_active_admin: { Args: never; Returns: boolean };

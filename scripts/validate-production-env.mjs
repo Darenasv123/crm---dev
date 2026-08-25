@@ -67,6 +67,25 @@ const OPTIONAL = [
     name: "GOOGLE_SHARED_CALENDAR_ID",
     description: "ID del calendario compartido (puede configurarse en la UI)",
   },
+  // Google Drive (Fase 8B): OPCIONAL a propósito, a diferencia de las
+  // variables de Google Calendar de arriba (que sí son REQUIRED). Drive es
+  // una integración adicional que todavía no está conectada a ningún dato
+  // real -- el CRM debe poder arrancar en producción sin ella configurada.
+  // OAuth client separado de Calendar (nunca comparte GOOGLE_CLIENT_ID/
+  // SECRET), ver server-release/docs/GOOGLE_DRIVE_CONFIGURATION.md.
+  {
+    name: "GOOGLE_DRIVE_CLIENT_ID",
+    description: "Client ID de Google OAuth 2.0 para Drive (distinto del de Calendar)",
+  },
+  {
+    name: "GOOGLE_DRIVE_CLIENT_SECRET",
+    description: "Client Secret de Google OAuth 2.0 para Drive (secreto, distinto del de Calendar)",
+  },
+  {
+    name: "GOOGLE_DRIVE_REDIRECT_URI",
+    description:
+      "URI de redirección OAuth de Drive: https://abogado.consoldi.com/api/google-drive/callback",
+  },
   // Correo (Fase 5): deliberadamente OPCIONAL, no REQUIRED. El CRM debe
   // poder arrancar en producción sin Correo configurado -- de hecho, el
   // propio SMTP de GoTrue (recuperación de contraseña) ya está deshabilitado

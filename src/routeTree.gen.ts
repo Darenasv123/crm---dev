@@ -27,6 +27,10 @@ import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configu
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
+import { Route as ApiGoogleDriveStatusRouteImport } from './routes/api.google-drive.status'
+import { Route as ApiGoogleDriveDisconnectRouteImport } from './routes/api.google-drive.disconnect'
+import { Route as ApiGoogleDriveConnectRouteImport } from './routes/api.google-drive.connect'
+import { Route as ApiGoogleDriveCallbackRouteImport } from './routes/api.google-drive.callback'
 import { Route as ApiGoogleCalendarWebhookRouteImport } from './routes/api.google-calendar.webhook'
 import { Route as ApiGoogleCalendarSyncEventRouteImport } from './routes/api.google-calendar.sync-event'
 import { Route as ApiGoogleCalendarStatusRouteImport } from './routes/api.google-calendar.status'
@@ -136,6 +140,27 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
   id: '/agenda/',
   path: '/agenda/',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiGoogleDriveStatusRoute = ApiGoogleDriveStatusRouteImport.update({
+  id: '/api/google-drive/status',
+  path: '/api/google-drive/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGoogleDriveDisconnectRoute =
+  ApiGoogleDriveDisconnectRouteImport.update({
+    id: '/api/google-drive/disconnect',
+    path: '/api/google-drive/disconnect',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDriveConnectRoute = ApiGoogleDriveConnectRouteImport.update({
+  id: '/api/google-drive/connect',
+  path: '/api/google-drive/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGoogleDriveCallbackRoute = ApiGoogleDriveCallbackRouteImport.update({
+  id: '/api/google-drive/callback',
+  path: '/api/google-drive/callback',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGoogleCalendarWebhookRoute =
   ApiGoogleCalendarWebhookRouteImport.update({
@@ -268,6 +293,10 @@ export interface FileRoutesByFullPath {
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
+  '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
+  '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
+  '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -307,6 +336,10 @@ export interface FileRoutesByTo {
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
+  '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
+  '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
+  '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -348,6 +381,10 @@ export interface FileRoutesById {
   '/api/google-calendar/status': typeof ApiGoogleCalendarStatusRoute
   '/api/google-calendar/sync-event': typeof ApiGoogleCalendarSyncEventRoute
   '/api/google-calendar/webhook': typeof ApiGoogleCalendarWebhookRoute
+  '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
+  '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
+  '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -389,6 +426,10 @@ export interface FileRouteTypes {
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
+    | '/api/google-drive/callback'
+    | '/api/google-drive/connect'
+    | '/api/google-drive/disconnect'
+    | '/api/google-drive/status'
     | '/agenda/'
     | '/casos/'
     | '/clientes/'
@@ -428,6 +469,10 @@ export interface FileRouteTypes {
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
+    | '/api/google-drive/callback'
+    | '/api/google-drive/connect'
+    | '/api/google-drive/disconnect'
+    | '/api/google-drive/status'
     | '/agenda'
     | '/casos'
     | '/clientes'
@@ -468,6 +513,10 @@ export interface FileRouteTypes {
     | '/api/google-calendar/status'
     | '/api/google-calendar/sync-event'
     | '/api/google-calendar/webhook'
+    | '/api/google-drive/callback'
+    | '/api/google-drive/connect'
+    | '/api/google-drive/disconnect'
+    | '/api/google-drive/status'
     | '/_app/agenda/'
     | '/_app/casos/'
     | '/_app/clientes/'
@@ -502,6 +551,10 @@ export interface RootRouteChildren {
   ApiGoogleCalendarStatusRoute: typeof ApiGoogleCalendarStatusRoute
   ApiGoogleCalendarSyncEventRoute: typeof ApiGoogleCalendarSyncEventRoute
   ApiGoogleCalendarWebhookRoute: typeof ApiGoogleCalendarWebhookRoute
+  ApiGoogleDriveCallbackRoute: typeof ApiGoogleDriveCallbackRoute
+  ApiGoogleDriveConnectRoute: typeof ApiGoogleDriveConnectRoute
+  ApiGoogleDriveDisconnectRoute: typeof ApiGoogleDriveDisconnectRoute
+  ApiGoogleDriveStatusRoute: typeof ApiGoogleDriveStatusRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -631,6 +684,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/agenda/'
       preLoaderRoute: typeof AppAgendaIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/google-drive/status': {
+      id: '/api/google-drive/status'
+      path: '/api/google-drive/status'
+      fullPath: '/api/google-drive/status'
+      preLoaderRoute: typeof ApiGoogleDriveStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/disconnect': {
+      id: '/api/google-drive/disconnect'
+      path: '/api/google-drive/disconnect'
+      fullPath: '/api/google-drive/disconnect'
+      preLoaderRoute: typeof ApiGoogleDriveDisconnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/connect': {
+      id: '/api/google-drive/connect'
+      path: '/api/google-drive/connect'
+      fullPath: '/api/google-drive/connect'
+      preLoaderRoute: typeof ApiGoogleDriveConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/callback': {
+      id: '/api/google-drive/callback'
+      path: '/api/google-drive/callback'
+      fullPath: '/api/google-drive/callback'
+      preLoaderRoute: typeof ApiGoogleDriveCallbackRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/google-calendar/webhook': {
       id: '/api/google-calendar/webhook'
@@ -844,6 +925,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleCalendarStatusRoute: ApiGoogleCalendarStatusRoute,
   ApiGoogleCalendarSyncEventRoute: ApiGoogleCalendarSyncEventRoute,
   ApiGoogleCalendarWebhookRoute: ApiGoogleCalendarWebhookRoute,
+  ApiGoogleDriveCallbackRoute: ApiGoogleDriveCallbackRoute,
+  ApiGoogleDriveConnectRoute: ApiGoogleDriveConnectRoute,
+  ApiGoogleDriveDisconnectRoute: ApiGoogleDriveDisconnectRoute,
+  ApiGoogleDriveStatusRoute: ApiGoogleDriveStatusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
