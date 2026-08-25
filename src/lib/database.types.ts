@@ -2161,6 +2161,25 @@ export type Database = {
           isSetofReturn: true;
         };
       };
+      apply_google_drive_client_folder_mappings: {
+        Args: {
+          p_connection_id: string;
+          p_linked_by: string;
+          p_expected_root_folder_id: string;
+          p_mappings: Json;
+        };
+        Returns: Json;
+      };
+      set_google_drive_root_folder: {
+        Args: {
+          p_connection_id: string;
+          p_expected_current_root_folder_id: string | null;
+          p_new_root_folder_id: string;
+          p_new_root_folder_name: string;
+          p_new_shared_drive_id: string | null;
+        };
+        Returns: Json;
+      };
       replace_google_drive_connection: {
         Args: {
           p_access_token_expires_at?: string | null;

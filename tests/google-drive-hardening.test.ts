@@ -213,11 +213,25 @@ describe("Fase 8B.1 — schema: encrypted_refresh_token nullable + invariante po
     expect(block).toContain("status = 'disconnected' and encrypted_refresh_token is null");
   });
 
-  it("se corrigió la MISMA migración de 8B (sin aplicar), sin crear una segunda", () => {
+  // El punto de esta prueba en 8B.1 era que las correcciones de aquella
+  // subfase se hicieran EN la migración de fundación (que aún no se había
+  // aplicado), en vez de en un parche posterior. Sigue vigente: solo existe
+  // una migración de fundación y nadie la corrige desde otro archivo. Fase
+  // 8C sí añade una migración incremental propia, pero solo crea una función
+  // nueva -- no toca la estructura de 8B (verificado en
+  // tests/google-drive-onboarding-migration.test.ts).
+  it("las correcciones de 8B viven en su propia migración: nadie la parchea desde otra", () => {
     const driveMigrations = readdirSync("supabase/migrations").filter((file) =>
       file.includes("google_drive"),
     );
-    expect(driveMigrations).toEqual(["20260824100000_google_drive_sync_foundation.sql"]);
+    const foundations = driveMigrations.filter((file) => file.includes("sync_foundation"));
+    expect(foundations).toEqual(["20260824100000_google_drive_sync_foundation.sql"]);
+    for (const file of driveMigrations) {
+      if (file.includes("sync_foundation")) continue;
+      const source = read(`supabase/migrations/${file}`);
+      expect(source).not.toMatch(/alter table[\s\S]{0,120}google_drive/i);
+      expect(source).not.toMatch(/drop (table|constraint|index)[\s\S]{0,120}google_drive/i);
+    }
   });
 });
 

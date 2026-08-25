@@ -14,12 +14,16 @@ describe("QA-006 — validación real de ?seccion= (ejecución directa, no solo 
     expect(isValidSection(DEFAULT_SECTION)).toBe(true);
   });
 
-  it("acepta cada una de las 7 secciones reales tras el retiro de WhatsApp", () => {
+  // Fase 8C añadió "google-drive" reutilizando este mismo sistema de
+  // ?seccion= en lugar de crear estado paralelo, que es justo lo que QA-006
+  // exige. La lista sube de 7 a 8 secciones; ninguna anterior desaparece.
+  it("acepta cada una de las 8 secciones reales tras el retiro de WhatsApp", () => {
     expect(SECTIONS).toEqual([
       "usuarios",
       "backup",
       "herramientas",
       "google-calendar",
+      "google-drive",
       "notificaciones",
       "correo",
       "plantillas",

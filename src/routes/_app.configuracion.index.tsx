@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { EmailSettings } from "@/components/settings/email-settings";
 import { TemplatesSettings } from "@/components/settings/templates-settings";
 import { UsersSettings } from "@/components/settings/users-settings";
+import { GoogleDriveSettings } from "@/components/settings/google-drive-settings";
 import { DEFAULT_SECTION, isValidSection, type Section } from "@/lib/settings-sections";
 import {
   Bell,
@@ -36,6 +37,7 @@ import {
   Download,
   Database,
   Calendar,
+  HardDrive,
   CheckCircle,
   Users,
   Briefcase,
@@ -63,6 +65,7 @@ const TABS: { id: Section; label: string; icon: typeof Shield }[] = [
   { id: "backup", label: "Backup / Exportar", icon: Database },
   { id: "herramientas", label: "Herramientas administrativas", icon: FolderArchive },
   { id: "google-calendar", label: "Google Calendar", icon: Calendar },
+  { id: "google-drive", label: "Google Drive", icon: HardDrive },
   { id: "notificaciones", label: "Notificaciones", icon: Bell },
   { id: "correo", label: "Correo", icon: Mail },
   { id: "plantillas", label: "Plantillas", icon: FileText },
@@ -541,6 +544,8 @@ function SettingsPage() {
               )}
             </Card>
           )}
+
+          {tab === "google-drive" && <GoogleDriveSettings />}
 
           {tab === "notificaciones" && (
             <Card className="p-6">

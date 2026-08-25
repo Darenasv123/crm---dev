@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth-server";
 import { readServerRuntimeEnv } from "@/lib/server-runtime-env";
+import { DriveError, driveErrorFromPostgres, isDriveError } from "./drive-errors";
+import { getDriveFolder, listChildDriveFolders, type DriveFolder } from "./drive-folders";
+import { computeOnboardingPreview, matchClientToFolders } from "./client-folder-matching";
 
 /**
  * Fase 8B — fundación server-side de Google Drive.
@@ -59,6 +62,8 @@ type DriveConnection = {
   granted_scopes: string | null;
   root_folder_id: string | null;
   root_folder_name: string | null;
+  /** null => Mi unidad. Con valor => Unidad compartida (Fase 8C Sección 6). */
+  shared_drive_id: string | null;
   status: string;
   last_synced_at: string | null;
   last_error: string | null;
@@ -227,13 +232,34 @@ export function isGoogleDriveStaleProcessing(
  * Implementación propia de Drive (Fase 8B.1), equivalente a la de Calendar.
  */
 export function safeServerError(cause: unknown) {
+  // Fase 8C: los errores tipados de Drive llevan su propio código estable y
+  // su propio status. Se devuelve el `code` para que la UI pueda reaccionar
+  // (p. ej. ofrecer "revisar coincidencias" cuando falta la raíz) sin tener
+  // que interpretar el texto del mensaje.
+  if (isDriveError(cause)) {
+    return Response.json({ error: cause.message, code: cause.code }, { status: cause.status });
+  }
   const message = cause instanceof Error ? cause.message : "Solicitud no válida.";
-  const status = /sesión|permiso/i.test(message)
-    ? 403
-    : /falta|indica|inválid|expir|configurad/i.test(message)
-      ? 400
-      : 500;
+  // Status explícito cuando quien lanza el error ya sabe cuál corresponde,
+  // en vez de depender de que el texto case con la heurística de abajo.
+  const explicitStatus =
+    cause instanceof Error ? (cause as unknown as { httpStatus?: unknown }).httpStatus : undefined;
+  const explicit = typeof explicitStatus === "number" ? explicitStatus : null;
+  const status =
+    explicit ??
+    (/sesión|permiso/i.test(message)
+      ? 403
+      : /falta|indica|inválid|expir|configurad/i.test(message)
+        ? 400
+        : 500);
   return Response.json({ error: message }, { status });
+}
+
+/** Error de validación de entrada: 400 explícito, sin depender del texto. */
+function badRequest(message: string) {
+  const error = new Error(message);
+  Object.assign(error, { httpStatus: 400 });
+  return error;
 }
 
 function bearerToken(request: Request) {
@@ -483,6 +509,11 @@ export async function googleDriveConnectionStatus(request: Request) {
     connected: true,
     accountEmail: connection.google_account_email,
     rootFolderConfigured: Boolean(connection.root_folder_id),
+    // El nombre es lo que se muestra; el ID viaja solo porque el navegador
+    // de carpetas necesita saber en qué carpeta abrirse para re-seleccionar
+    // la raíz. La UI nunca lo imprime en pantalla (Fase 8C Sección 15).
+    rootFolderName: connection.root_folder_name,
+    rootFolderId: connection.root_folder_id,
     status: connection.status,
     lastSyncedAt: connection.last_synced_at,
     // Nunca el mensaje crudo de Google ni ningún dato técnico -- solo lo
@@ -639,4 +670,483 @@ export function buildDriveAppProperties(documentId: string, clientId: string) {
     crm_document_id: documentId,
     crm_client_id: clientId,
   };
+}
+
+// ── Fase 8C: navegación de carpetas, carpeta raíz y onboarding ───────────
+//
+// NO se usa Google Picker. Picker exige entregar al navegador un access
+// token de Drive (y además una API key de browser), y en esta arquitectura
+// la conexión representa a TODO el estudio, no al usuario que tiene el
+// navegador abierto: filtrar ese token al front daría acceso directo a todo
+// el Drive del estudio desde la consola del navegador, fuera de las
+// restricciones que aplican estos endpoints. Por eso el navegador de
+// carpetas es propio y 100% server-side; el token nunca sale del servidor.
+// Documentado en server-release/docs/GOOGLE_DRIVE_CONFIGURATION.md.
+
+/** Alias de Drive para la raíz de "Mi unidad": no es un folderId real. */
+const MY_DRIVE_ROOT_ALIAS = "root";
+const MY_DRIVE_ROOT_LABEL = "Mi unidad";
+
+/** Tope de vinculaciones por lote: evita un apply gigante que agote la cuota. */
+const MAX_ONBOARDING_MAPPINGS = 500;
+
+const APPLICABLE_MATCH_TYPES = ["exact", "normalized", "manual"] as const;
+export type ApplicableMatchType = (typeof APPLICABLE_MATCH_TYPES)[number];
+
+/**
+ * Valida un identificador de carpeta recibido del cliente. No comprueba que
+ * exista (eso lo hace Google), solo que sea un valor plausible: sin saltos
+ * de línea (que permitirían romper la query o inyectar cabeceras), sin
+ * espacios en los bordes y de longitud razonable.
+ */
+export function assertValidDriveFolderId(value: unknown): string {
+  if (typeof value !== "string") throw badRequest("Falta el identificador de la carpeta.");
+  // Se comprueba el valor CRUDO, antes de recortar: un "F_ANA\r\n" recortado
+  // pasaría inadvertido, y aceptar en silencio un valor con saltos de línea
+  // -- aunque aquí acabe siendo inofensivo -- normaliza justo lo que no se
+  // debe normalizar.
+  if (/[\r\n\t]/.test(value)) throw badRequest("El identificador de la carpeta no es válido.");
+  const folderId = value.trim();
+  if (!folderId) throw badRequest("Falta el identificador de la carpeta.");
+  if (folderId.length > 256) throw badRequest("El identificador de la carpeta no es válido.");
+  return folderId;
+}
+
+async function requireConnectedDrive(request: Request) {
+  await requireAdmin(request);
+  if (!isGoogleDriveConfigured()) throw new DriveError("DRIVE_NOT_CONFIGURED");
+  const connection = await activeDriveConnection();
+  if (!connection) throw new DriveError("DRIVE_NOT_CONNECTED");
+  const accessToken = await accessTokenForDrive(connection);
+  return { connection, accessToken, db: adminClient() };
+}
+
+function folderDto(folder: DriveFolder) {
+  // DTO explícito: nunca se reenvía la respuesta cruda de Google (que podría
+  // traer campos que no pedimos si la API cambia).
+  return { id: folder.id, name: folder.name, driveId: folder.driveId ?? null };
+}
+
+// ── navegador de carpetas ────────────────────────────────────────────────
+/**
+ * Lista las subcarpetas directas de `parentId` (o de "Mi unidad" si no se
+ * indica). Solo carpetas: este endpoint NO es un proxy genérico a Drive --
+ * el cliente no puede enviar `q`, `fields` ni ninguna URL; el servidor
+ * construye la consulta entera.
+ *
+ * `current.parentId` viene de la metadata real de Google y es la única
+ * autoridad para el botón "subir un nivel": nunca se acepta como autoridad
+ * un parentId enviado por el navegador (Fase 8C Sección 11).
+ */
+export async function browseGoogleDriveFolders(request: Request, rawParentId?: string | null) {
+  const { connection, accessToken } = await requireConnectedDrive(request);
+  const sharedDriveId = connection.shared_drive_id;
+  const parentId = rawParentId ? assertValidDriveFolderId(rawParentId) : MY_DRIVE_ROOT_ALIAS;
+
+  if (parentId === MY_DRIVE_ROOT_ALIAS) {
+    const folders = await listChildDriveFolders(accessToken, MY_DRIVE_ROOT_ALIAS, {
+      sharedDriveId,
+    });
+    return {
+      current: { id: MY_DRIVE_ROOT_ALIAS, name: MY_DRIVE_ROOT_LABEL, parentId: null },
+      folders: folders.map(folderDto),
+    };
+  }
+
+  const current = await getDriveFolder(accessToken, parentId, { sharedDriveId });
+  const folders = await listChildDriveFolders(accessToken, parentId, { sharedDriveId });
+  return {
+    current: {
+      id: current.id,
+      name: current.name,
+      parentId: current.parents?.[0] ?? null,
+    },
+    folders: folders.map(folderDto),
+  };
+}
+
+// ── carpeta raíz ─────────────────────────────────────────────────────────
+/**
+ * Fija la carpeta raíz de Clientes. El nombre SIEMPRE se toma de la
+ * metadata real de Google, nunca de lo que envíe el frontend: si se
+ * aceptara un nombre del cliente, la UI podría mostrar "Clientes" mientras
+ * la raíz real apunta a otra carpeta.
+ *
+ * Cambiar la raíz cuando ya existen vinculaciones queda bloqueado: esos
+ * clientes apuntan a carpetas que probablemente quedarían fuera del nuevo
+ * árbol, y resolver eso requiere una operación explícita de desvinculación
+ * o re-onboarding que esta fase no implementa.
+ *
+ * NO crea carpetas, NO importa documentos y NO arranca el changes feed.
+ *
+ * Fase 8C.1: la escritura ya no se hace con un UPDATE suelto desde aquí,
+ * sino con la RPC set_google_drive_root_folder, que toma FOR UPDATE sobre la
+ * fila de la conexión. Entre que se lee la conexión y se valida la carpeta
+ * en Google pasa una llamada de red entera; en esa ventana otra petición
+ * podía cambiar la raíz o insertar vinculaciones. Se envía la raíz que se
+ * leyó al empezar (expectedCurrentRootFolderId) para que la RPC rechace la
+ * operación si el estado se movió mientras tanto, en vez de pisarlo.
+ */
+export async function setGoogleDriveRootFolder(request: Request, rawFolderId: unknown) {
+  const folderId = assertValidDriveFolderId(rawFolderId);
+  const { connection, accessToken, db } = await requireConnectedDrive(request);
+
+  // Valida existencia, que sea carpeta y que no esté en la papelera.
+  const folder = await getDriveFolder(accessToken, folderId, {
+    sharedDriveId: connection.shared_drive_id,
+  });
+
+  const { data, error } = await db.rpc("set_google_drive_root_folder", {
+    p_connection_id: connection.id,
+    p_expected_current_root_folder_id: connection.root_folder_id,
+    p_new_root_folder_id: folder.id,
+    p_new_root_folder_name: folder.name,
+    // Si la carpeta vive en una Unidad compartida, Drive devuelve driveId;
+    // se persiste para que las llamadas siguientes usen los parámetros
+    // correctos. En Mi unidad no viene y se conserva null.
+    p_new_shared_drive_id: folder.driveId ?? null,
+  });
+  if (error) {
+    const driveError = driveErrorFromPostgres(error.message);
+    if (driveError) throw driveError;
+    throw new Error("No se pudo guardar la carpeta raíz.");
+  }
+
+  const result = (data ?? {}) as { unchanged?: boolean };
+  return {
+    rootFolderName: folder.name,
+    rootFolderId: folder.id,
+    unchanged: Boolean(result.unchanged),
+  };
+}
+
+// ── onboarding: preview (solo lectura) ───────────────────────────────────
+export interface OnboardingPreviewDto {
+  rootFolderName: string;
+  linked: Array<{ clientId: string; clientName: string; folderId: string; folderName: string }>;
+  suggested: Array<{
+    clientId: string;
+    clientName: string;
+    folderId: string;
+    folderName: string;
+    matchType: ApplicableMatchType;
+  }>;
+  ambiguous: Array<{
+    clientId: string;
+    clientName: string;
+    candidates: Array<{ id: string; name: string }>;
+  }>;
+  clientsWithoutFolder: Array<{ clientId: string; clientName: string }>;
+  foldersWithoutClient: Array<{ id: string; name: string }>;
+  /** Carpetas aún libres, para poblar el selector de los ambiguos. */
+  availableFolders: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Vista previa Cliente <-> Carpeta. Estrictamente de solo lectura: no
+ * escribe en Supabase ni en Drive.
+ *
+ * Reutiliza `computeOnboardingPreview` de Fase 8A sin reimplementar nada del
+ * matching. Un matiz importante: esa función mete en `linked` tanto los
+ * mappings YA persistidos como las coincidencias EXACTAS recién detectadas,
+ * porque en 8A ambas eran "el cliente tiene carpeta". Aquí no pueden
+ * mezclarse: mostrar una coincidencia exacta bajo "Ya vinculados" haría
+ * creer al Administrador que ya está guardada cuando no lo está, y esta
+ * fase exige que toda vinculación se confirme explícitamente. Se separan
+ * usando la única fuente fiable de lo que está persistido -- el conjunto de
+ * mappings leído de la base de datos -- sin tocar la lógica de matching.
+ */
+export async function googleDriveOnboardingPreview(
+  request: Request,
+): Promise<OnboardingPreviewDto> {
+  const { connection, accessToken, db } = await requireConnectedDrive(request);
+  if (!connection.root_folder_id) throw new DriveError("DRIVE_ROOT_NOT_CONFIGURED");
+
+  const folders = await listChildDriveFolders(accessToken, connection.root_folder_id, {
+    sharedDriveId: connection.shared_drive_id,
+  });
+
+  // Minimización de datos: al matching solo llegan id y nombre. Ni
+  // teléfonos, ni correos, ni documentos.
+  const { data: clientRows, error: clientsError } = await db
+    .from("clients")
+    .select("id, name")
+    .order("name");
+  if (clientsError) throw new Error(clientsError.message);
+
+  const { data: mappingRows, error: mappingsError } = await db
+    .from("google_drive_client_folders")
+    .select("client_id, drive_folder_id")
+    .eq("connection_id", connection.id);
+  if (mappingsError) throw new Error(mappingsError.message);
+
+  const persistedByClient = new Map<string, string>();
+  for (const row of mappingRows ?? []) {
+    persistedByClient.set(row.client_id, row.drive_folder_id);
+  }
+
+  const preview = computeOnboardingPreview(
+    (clientRows ?? []).map((client) => ({
+      id: client.id,
+      name: client.name,
+      driveFolderId: persistedByClient.get(client.id) ?? null,
+    })),
+    folders.map((folder) => ({ id: folder.id, name: folder.name })),
+  );
+
+  const linked: OnboardingPreviewDto["linked"] = [];
+  const suggested: OnboardingPreviewDto["suggested"] = [];
+  for (const entry of preview.linked) {
+    const target = {
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      folderId: entry.folder.id,
+      folderName: entry.folder.name,
+    };
+    if (persistedByClient.has(entry.clientId)) linked.push(target);
+    else suggested.push({ ...target, matchType: "exact" });
+  }
+  for (const entry of preview.suggested) {
+    suggested.push({
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      folderId: entry.folder.id,
+      folderName: entry.folder.name,
+      matchType: "normalized",
+    });
+  }
+
+  const takenFolderIds = new Set<string>([
+    ...linked.map((entry) => entry.folderId),
+    ...suggested.map((entry) => entry.folderId),
+  ]);
+
+  // `unclaimedFolders` de 8A solo descuenta las carpetas que esa función metió
+  // en `linked`; una carpeta que coincidió por nombre normalizado sigue
+  // apareciendo ahí. Presentada tal cual, la misma carpeta saldría a la vez
+  // como "coincidencia sugerida" y como "carpeta sin cliente", que es
+  // contradictorio para quien revisa. Aquí se descuentan también las
+  // sugeridas y las candidatas de un caso ambiguo: "sin cliente" debe
+  // significar que no coincidió con ningún cliente, no que aún no se ha
+  // confirmado.
+  const matchedFolderIds = new Set<string>([
+    ...takenFolderIds,
+    ...preview.ambiguous.flatMap((entry) => entry.candidates.map((candidate) => candidate.id)),
+  ]);
+
+  return {
+    rootFolderName: connection.root_folder_name ?? "",
+    linked,
+    suggested,
+    ambiguous: preview.ambiguous.map((entry) => ({
+      clientId: entry.clientId,
+      clientName: entry.clientName,
+      candidates: entry.candidates.map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+      })),
+    })),
+    clientsWithoutFolder: preview.withoutFolder,
+    foldersWithoutClient: preview.unclaimedFolders
+      .filter((folder) => !matchedFolderIds.has(folder.id))
+      .map((folder) => ({ id: folder.id, name: folder.name })),
+    availableFolders: folders
+      .filter((folder) => !takenFolderIds.has(folder.id))
+      .map((folder) => ({ id: folder.id, name: folder.name })),
+  };
+}
+
+// ── onboarding: apply (escritura atómica) ────────────────────────────────
+export interface OnboardingMappingInput {
+  clientId: string;
+  driveFolderId: string;
+  matchType: ApplicableMatchType;
+}
+
+export function parseOnboardingMappings(value: unknown): OnboardingMappingInput[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw badRequest("Indica al menos una vinculación.");
+  }
+  if (value.length > MAX_ONBOARDING_MAPPINGS) {
+    throw badRequest("Se enviaron demasiadas vinculaciones en una sola operación.");
+  }
+  const seenClients = new Set<string>();
+  const seenFolders = new Set<string>();
+  return value.map((raw) => {
+    const entry = (raw ?? {}) as Record<string, unknown>;
+    const clientId = typeof entry.clientId === "string" ? entry.clientId.trim() : "";
+    if (!clientId) throw badRequest("Falta el cliente de una de las vinculaciones.");
+    const driveFolderId = assertValidDriveFolderId(entry.driveFolderId);
+    const matchType = entry.matchType;
+    if (!APPLICABLE_MATCH_TYPES.includes(matchType as ApplicableMatchType)) {
+      // El tipo 'created' del schema se rechaza a propósito: esta fase nunca
+      // crea carpetas, así que ningún mapping puede declararse como creado.
+      throw badRequest("El tipo de coincidencia indicado no es válido.");
+    }
+    // Una carpeta no puede asignarse dos veces en la misma operación, ni un
+    // cliente recibir dos carpetas. La BD lo garantiza igualmente, pero
+    // detectarlo aquí da un mensaje entendible en vez de una violación de
+    // unicidad cruda.
+    if (seenClients.has(clientId)) {
+      throw badRequest("Hay un cliente repetido en la lista de vinculaciones.");
+    }
+    if (seenFolders.has(driveFolderId)) {
+      throw badRequest("Hay una carpeta repetida en la lista de vinculaciones.");
+    }
+    seenClients.add(clientId);
+    seenFolders.add(driveFolderId);
+    return { clientId, driveFolderId, matchType: matchType as ApplicableMatchType };
+  });
+}
+
+/**
+ * Determina el `match_type` que se va a PERSISTIR (Fase 8C.1).
+ *
+ * El valor que manda el navegador no se guarda tal cual. Se interpreta como
+ * intención:
+ *
+ *   - "manual": el Administrador eligió esa carpeta a mano. Es válido aunque
+ *     los nombres no se parezcan en nada -- pero no exime de ninguna
+ *     comprobación de integridad (cliente real, carpeta real, no en
+ *     papelera, hija directa de la raíz, ninguna de las dos ya vinculada).
+ *     Manual significa "lo decidió una persona", no "sáltate las reglas".
+ *
+ *   - "exact" / "normalized": está confirmando una sugerencia. La
+ *     clasificación se recalcula AHORA contra los datos actuales, con el
+ *     mismo clasificador puro de Fase 8A (no una tercera normalización). Si
+ *     sigue siendo una coincidencia segura, se guarda la categoría REAL
+ *     derivada -- que puede no ser la que decía el navegador, por ejemplo si
+ *     la carpeta se renombró de "Ana Torres" a "ana torres" entre la vista
+ *     previa y el guardado: ahí se guarda "normalized", nunca un "exact"
+ *     falso. Si dejó de ser segura (ahora es ambigua, o ya no coincide, o la
+ *     coincidencia apunta a otra carpeta), se rechaza con
+ *     MATCH_CHANGED_REVIEW para que el Administrador vuelva a mirarlo, en
+ *     vez de degradarlo a "manual" en silencio: él confirmó una sugerencia
+ *     concreta, no una decisión propia.
+ */
+function deriveMatchType(
+  mapping: OnboardingMappingInput,
+  clientName: string,
+  rootFolders: Array<{ id: string; name: string }>,
+): ApplicableMatchType {
+  if (mapping.matchType === "manual") return "manual";
+
+  const match = matchClientToFolders(clientName, rootFolders);
+  const isSafe = match.type === "EXACT_MATCH" || match.type === "NORMALIZED_MATCH";
+  if (!isSafe || match.candidates[0]?.id !== mapping.driveFolderId) {
+    throw new DriveError("MATCH_CHANGED_REVIEW");
+  }
+  return match.type === "EXACT_MATCH" ? "exact" : "normalized";
+}
+
+/**
+ * Persiste un lote de vinculaciones Cliente <-> Carpeta.
+ *
+ * Nada de lo que envía el frontend se toma como verdad: cada carpeta se
+ * vuelve a consultar en Google en este mismo instante (existe, es carpeta,
+ * no está en la papelera, y su padre es exactamente la raíz configurada) y
+ * el nombre que se guarda es el que devuelve Google, no el que envió el
+ * navegador. Que una carpeta apareciera en el preview hace cinco minutos no
+ * prueba nada: pudo borrarse, moverse fuera de la raíz o renombrarse.
+ *
+ * LIMITACIÓN INHERENTE, asumida a propósito: Drive es un sistema externo y
+ * no existe atomicidad distribuida entre Google y PostgreSQL. Entre la
+ * última validación contra Drive y el COMMIT de esta transacción queda una
+ * ventana en la que alguien puede mover la carpeta fuera de la raíz desde
+ * el propio Drive. Intentar cerrarla con una transacción distribuida sería
+ * peor que el problema. La respuesta correcta es detectarlo después: la
+ * sincronización de Fase 8F comparará el padre real con el esperado y
+ * marcará DRIVE_PARENT_MISMATCH como conflicto a resolver por una persona,
+ * sin reasignar nunca client_id automáticamente. Aquí no se implementa.
+ *
+ * La escritura va por una RPC que corre en UNA transacción de PostgreSQL:
+ * si cualquier vinculación del lote choca con una constraint, no se
+ * persiste ninguna. Esa misma RPC toma FOR UPDATE sobre la conexión y
+ * verifica que la raíz siga siendo la que se usó para validar (Fase 8C.1).
+ *
+ * El `matchType` que llega del navegador se trata como DECLARACIÓN DE
+ * INTENCIÓN, no como dato: "manual" significa que el Administrador eligió la
+ * carpeta a mano; "exact"/"normalized" significan que está confirmando una
+ * sugerencia. En el segundo caso la clasificación se vuelve a derivar aquí,
+ * con los datos actuales -- nunca se guarda un "exact" solo porque el
+ * navegador lo dijera.
+ */
+export async function applyGoogleDriveClientFolderMappings(request: Request, rawMappings: unknown) {
+  const mappings = parseOnboardingMappings(rawMappings);
+  const { user } = await requireAdmin(request);
+  const { connection, accessToken, db } = await requireConnectedDrive(request);
+  const rootFolderId = connection.root_folder_id;
+  if (!rootFolderId) throw new DriveError("DRIVE_ROOT_NOT_CONFIGURED");
+
+  // Los clientes deben existir todavía. Se comprueba antes de gastar
+  // llamadas a Google. Se pide `name` porque la clasificación se vuelve a
+  // derivar aquí; sigue siendo el mínimo (ni teléfono, ni correo).
+  const { data: clientRows, error: clientsError } = await db
+    .from("clients")
+    .select("id, name")
+    .in(
+      "id",
+      mappings.map((mapping) => mapping.clientId),
+    );
+  if (clientsError) throw new Error(clientsError.message);
+  const clientNameById = new Map<string, string>(
+    (clientRows ?? []).map((row) => [row.id, row.name]),
+  );
+  for (const mapping of mappings) {
+    if (!clientNameById.has(mapping.clientId)) {
+      throw badRequest("Uno de los clientes indicados ya no existe.");
+    }
+  }
+
+  // Para reclasificar una sugerencia hace falta el conjunto completo de
+  // carpetas hijas de la raíz: la ambigüedad solo es visible en el conjunto
+  // (dos carpetas que normalizan igual). Si el lote es todo manual no se
+  // pide -- ahí la clasificación no se deriva de los nombres.
+  const needsDerivation = mappings.some((mapping) => mapping.matchType !== "manual");
+  const rootFolders = needsDerivation
+    ? await listChildDriveFolders(accessToken, rootFolderId, {
+        sharedDriveId: connection.shared_drive_id,
+      })
+    : [];
+
+  const validated: Array<{
+    client_id: string;
+    drive_folder_id: string;
+    drive_folder_name_snapshot: string;
+    match_type: ApplicableMatchType;
+  }> = [];
+  for (const mapping of mappings) {
+    const folder = await getDriveFolder(accessToken, mapping.driveFolderId, {
+      sharedDriveId: connection.shared_drive_id,
+    });
+    if (!folder.parents?.includes(rootFolderId)) {
+      throw new DriveError("DRIVE_FOLDER_OUTSIDE_ROOT");
+    }
+    validated.push({
+      client_id: mapping.clientId,
+      drive_folder_id: folder.id,
+      drive_folder_name_snapshot: folder.name,
+      match_type: deriveMatchType(
+        mapping,
+        clientNameById.get(mapping.clientId) ?? "",
+        rootFolders.map((candidate) => ({ id: candidate.id, name: candidate.name })),
+      ),
+    });
+  }
+
+  const { data, error } = await db.rpc("apply_google_drive_client_folder_mappings", {
+    p_connection_id: connection.id,
+    p_linked_by: user.id,
+    p_expected_root_folder_id: rootFolderId,
+    p_mappings: validated,
+  });
+  if (error) {
+    const driveError = driveErrorFromPostgres(error.message);
+    if (driveError) throw driveError;
+    // Nunca se propaga el texto crudo de PostgreSQL al cliente.
+    throw new Error("No se pudieron guardar las vinculaciones.");
+  }
+
+  const summary = (data ?? {}) as { created?: number; unchanged?: number };
+  return { created: summary.created ?? 0, unchanged: summary.unchanged ?? 0 };
 }

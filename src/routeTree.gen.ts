@@ -28,6 +28,8 @@ import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.ind
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
 import { Route as ApiGoogleDriveStatusRouteImport } from './routes/api.google-drive.status'
+import { Route as ApiGoogleDriveRootFolderRouteImport } from './routes/api.google-drive.root-folder'
+import { Route as ApiGoogleDriveFoldersRouteImport } from './routes/api.google-drive.folders'
 import { Route as ApiGoogleDriveDisconnectRouteImport } from './routes/api.google-drive.disconnect'
 import { Route as ApiGoogleDriveConnectRouteImport } from './routes/api.google-drive.connect'
 import { Route as ApiGoogleDriveCallbackRouteImport } from './routes/api.google-drive.callback'
@@ -47,6 +49,8 @@ import { Route as AppTareasProximasRouteImport } from './routes/_app.tareas.prox
 import { Route as AppTareasMiasRouteImport } from './routes/_app.tareas.mias'
 import { Route as AppClientesIdRouteImport } from './routes/_app.clientes.$id'
 import { Route as AppCasosIdRouteImport } from './routes/_app.casos.$id'
+import { Route as ApiGoogleDriveOnboardingPreviewRouteImport } from './routes/api.google-drive.onboarding.preview'
+import { Route as ApiGoogleDriveOnboardingApplyRouteImport } from './routes/api.google-drive.onboarding.apply'
 import { Route as AppClientesIdTareasRouteImport } from './routes/_app.clientes.$id_.tareas'
 import { Route as AppClientesIdReportesRouteImport } from './routes/_app.clientes.$id_.reportes'
 import { Route as AppClientesIdExpedientesRouteImport } from './routes/_app.clientes.$id_.expedientes'
@@ -144,6 +148,17 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
 const ApiGoogleDriveStatusRoute = ApiGoogleDriveStatusRouteImport.update({
   id: '/api/google-drive/status',
   path: '/api/google-drive/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGoogleDriveRootFolderRoute =
+  ApiGoogleDriveRootFolderRouteImport.update({
+    id: '/api/google-drive/root-folder',
+    path: '/api/google-drive/root-folder',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDriveFoldersRoute = ApiGoogleDriveFoldersRouteImport.update({
+  id: '/api/google-drive/folders',
+  path: '/api/google-drive/folders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGoogleDriveDisconnectRoute =
@@ -248,6 +263,18 @@ const AppCasosIdRoute = AppCasosIdRouteImport.update({
   path: '/casos/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiGoogleDriveOnboardingPreviewRoute =
+  ApiGoogleDriveOnboardingPreviewRouteImport.update({
+    id: '/api/google-drive/onboarding/preview',
+    path: '/api/google-drive/onboarding/preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDriveOnboardingApplyRoute =
+  ApiGoogleDriveOnboardingApplyRouteImport.update({
+    id: '/api/google-drive/onboarding/apply',
+    path: '/api/google-drive/onboarding/apply',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppClientesIdTareasRoute = AppClientesIdTareasRouteImport.update({
   id: '/clientes/$id_/tareas',
   path: '/clientes/$id/tareas',
@@ -296,6 +323,8 @@ export interface FileRoutesByFullPath {
   '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
@@ -312,6 +341,8 @@ export interface FileRoutesByFullPath {
   '/clientes/$id/expedientes': typeof AppClientesIdExpedientesRoute
   '/clientes/$id/reportes': typeof AppClientesIdReportesRoute
   '/clientes/$id/tareas': typeof AppClientesIdTareasRoute
+  '/api/google-drive/onboarding/apply': typeof ApiGoogleDriveOnboardingApplyRoute
+  '/api/google-drive/onboarding/preview': typeof ApiGoogleDriveOnboardingPreviewRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -339,6 +370,8 @@ export interface FileRoutesByTo {
   '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
@@ -355,6 +388,8 @@ export interface FileRoutesByTo {
   '/clientes/$id/expedientes': typeof AppClientesIdExpedientesRoute
   '/clientes/$id/reportes': typeof AppClientesIdReportesRoute
   '/clientes/$id/tareas': typeof AppClientesIdTareasRoute
+  '/api/google-drive/onboarding/apply': typeof ApiGoogleDriveOnboardingApplyRoute
+  '/api/google-drive/onboarding/preview': typeof ApiGoogleDriveOnboardingPreviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -384,6 +419,8 @@ export interface FileRoutesById {
   '/api/google-drive/callback': typeof ApiGoogleDriveCallbackRoute
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
+  '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
@@ -400,6 +437,8 @@ export interface FileRoutesById {
   '/_app/clientes/$id_/expedientes': typeof AppClientesIdExpedientesRoute
   '/_app/clientes/$id_/reportes': typeof AppClientesIdReportesRoute
   '/_app/clientes/$id_/tareas': typeof AppClientesIdTareasRoute
+  '/api/google-drive/onboarding/apply': typeof ApiGoogleDriveOnboardingApplyRoute
+  '/api/google-drive/onboarding/preview': typeof ApiGoogleDriveOnboardingPreviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -429,6 +468,8 @@ export interface FileRouteTypes {
     | '/api/google-drive/callback'
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
+    | '/api/google-drive/folders'
+    | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
     | '/agenda/'
     | '/casos/'
@@ -445,6 +486,8 @@ export interface FileRouteTypes {
     | '/clientes/$id/expedientes'
     | '/clientes/$id/reportes'
     | '/clientes/$id/tareas'
+    | '/api/google-drive/onboarding/apply'
+    | '/api/google-drive/onboarding/preview'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -472,6 +515,8 @@ export interface FileRouteTypes {
     | '/api/google-drive/callback'
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
+    | '/api/google-drive/folders'
+    | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
     | '/agenda'
     | '/casos'
@@ -488,6 +533,8 @@ export interface FileRouteTypes {
     | '/clientes/$id/expedientes'
     | '/clientes/$id/reportes'
     | '/clientes/$id/tareas'
+    | '/api/google-drive/onboarding/apply'
+    | '/api/google-drive/onboarding/preview'
   id:
     | '__root__'
     | '/_app'
@@ -516,6 +563,8 @@ export interface FileRouteTypes {
     | '/api/google-drive/callback'
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
+    | '/api/google-drive/folders'
+    | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
     | '/_app/agenda/'
     | '/_app/casos/'
@@ -532,6 +581,8 @@ export interface FileRouteTypes {
     | '/_app/clientes/$id_/expedientes'
     | '/_app/clientes/$id_/reportes'
     | '/_app/clientes/$id_/tareas'
+    | '/api/google-drive/onboarding/apply'
+    | '/api/google-drive/onboarding/preview'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -554,7 +605,11 @@ export interface RootRouteChildren {
   ApiGoogleDriveCallbackRoute: typeof ApiGoogleDriveCallbackRoute
   ApiGoogleDriveConnectRoute: typeof ApiGoogleDriveConnectRoute
   ApiGoogleDriveDisconnectRoute: typeof ApiGoogleDriveDisconnectRoute
+  ApiGoogleDriveFoldersRoute: typeof ApiGoogleDriveFoldersRoute
+  ApiGoogleDriveRootFolderRoute: typeof ApiGoogleDriveRootFolderRoute
   ApiGoogleDriveStatusRoute: typeof ApiGoogleDriveStatusRoute
+  ApiGoogleDriveOnboardingApplyRoute: typeof ApiGoogleDriveOnboardingApplyRoute
+  ApiGoogleDriveOnboardingPreviewRoute: typeof ApiGoogleDriveOnboardingPreviewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -692,6 +747,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGoogleDriveStatusRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/google-drive/root-folder': {
+      id: '/api/google-drive/root-folder'
+      path: '/api/google-drive/root-folder'
+      fullPath: '/api/google-drive/root-folder'
+      preLoaderRoute: typeof ApiGoogleDriveRootFolderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/folders': {
+      id: '/api/google-drive/folders'
+      path: '/api/google-drive/folders'
+      fullPath: '/api/google-drive/folders'
+      preLoaderRoute: typeof ApiGoogleDriveFoldersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/google-drive/disconnect': {
       id: '/api/google-drive/disconnect'
       path: '/api/google-drive/disconnect'
@@ -825,6 +894,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCasosIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/google-drive/onboarding/preview': {
+      id: '/api/google-drive/onboarding/preview'
+      path: '/api/google-drive/onboarding/preview'
+      fullPath: '/api/google-drive/onboarding/preview'
+      preLoaderRoute: typeof ApiGoogleDriveOnboardingPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/onboarding/apply': {
+      id: '/api/google-drive/onboarding/apply'
+      path: '/api/google-drive/onboarding/apply'
+      fullPath: '/api/google-drive/onboarding/apply'
+      preLoaderRoute: typeof ApiGoogleDriveOnboardingApplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/clientes/$id_/tareas': {
       id: '/_app/clientes/$id_/tareas'
       path: '/clientes/$id/tareas'
@@ -928,7 +1011,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleDriveCallbackRoute: ApiGoogleDriveCallbackRoute,
   ApiGoogleDriveConnectRoute: ApiGoogleDriveConnectRoute,
   ApiGoogleDriveDisconnectRoute: ApiGoogleDriveDisconnectRoute,
+  ApiGoogleDriveFoldersRoute: ApiGoogleDriveFoldersRoute,
+  ApiGoogleDriveRootFolderRoute: ApiGoogleDriveRootFolderRoute,
   ApiGoogleDriveStatusRoute: ApiGoogleDriveStatusRoute,
+  ApiGoogleDriveOnboardingApplyRoute: ApiGoogleDriveOnboardingApplyRoute,
+  ApiGoogleDriveOnboardingPreviewRoute: ApiGoogleDriveOnboardingPreviewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

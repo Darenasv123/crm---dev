@@ -1,4 +1,4 @@
-# Configuración de Google Drive (Fase 8B)
+# Configuración de Google Drive (Fases 8B–8C)
 
 **GOOGLE CLOUD CONSOLE NO CONFIGURADA TODAVÍA.** Este documento describe la fundación server-side ya construida en el código y los pasos que faltarán *en el futuro* para activarla — no es una guía para conectar Drive hoy. Google Drive real permanece desconectado; no hay ninguna cuenta, carpeta ni archivo sincronizado.
 
@@ -6,7 +6,11 @@
 
 ## Estado de la integración
 
-**Fundación implementada** (Fase 8B): schema de base de datos, módulo OAuth server-side, cifrado de tokens, y 4 rutas de API (conectar, callback, estado, desconectar). **Nada de lo siguiente existe todavía**: listar carpetas de Drive, subir/descargar archivos, `changes.watch`, webhook, cola de sincronización procesando trabajos reales, UI de administración. Esas piezas llegan en fases posteriores (8C en adelante).
+**Fundación implementada** (Fase 8B): schema de base de datos, módulo OAuth server-side, cifrado de tokens, y 4 rutas de API (conectar, callback, estado, desconectar).
+
+**Añadido en Fase 8C**: lectura de carpetas de Drive (solo lectura), selección y persistencia de la carpeta raíz de Clientes, vista previa Cliente ↔ Carpeta, resolución manual de ambigüedades, persistencia atómica de las vinculaciones, y la sección **Configuración → Google Drive**.
+
+**Nada de lo siguiente existe todavía**: subir/descargar archivos, crear/renombrar/mover/eliminar en Drive, `changes.list`, `changes.watch`, webhook, ni cola de sincronización procesando trabajos reales. Esas piezas llegan en 8D en adelante.
 
 ---
 
@@ -85,7 +89,7 @@ El callback verifica que el scope efectivamente concedido por Google incluya `..
 
 ---
 
-## Rutas de la aplicación (fundación, Fase 8B)
+## Rutas de la aplicación
 
 | Ruta | Método | Descripción |
 |---|---|---|
@@ -94,7 +98,16 @@ El callback verifica que el scope efectivamente concedido por Google incluya `..
 | `/api/google-drive/status` | GET | Solo Administrador. Estado sanitizado — nunca tokens ni secretos. |
 | `/api/google-drive/disconnect` | POST | Solo Administrador. Desconexión **local**: destruye el refresh token cifrado. No llama a Google. |
 
-**No existen todavía** (llegan en fases posteriores): `/api/google-drive/sync-now`, `/api/google-drive/onboarding`, `/api/google-drive/webhook`, `/api/google-drive/maintenance`.
+Añadidas en **Fase 8C** (carpeta raíz y onboarding, todas solo Administrador):
+
+| Ruta | Método | Descripción |
+|---|---|---|
+| `/api/google-drive/folders` | GET | Lista las subcarpetas directas de `parentId` (o de Mi unidad). Solo acepta `parentId`. |
+| `/api/google-drive/root-folder` | POST | Fija la carpeta raíz de Clientes. Solo acepta `folderId`; el nombre lo obtiene el servidor de Google. |
+| `/api/google-drive/onboarding/preview` | GET | Vista previa Cliente ↔ Carpeta. Solo lectura: no escribe en Supabase ni en Drive. |
+| `/api/google-drive/onboarding/apply` | POST | Persiste un lote de vinculaciones, revalidado contra Google y aplicado de forma atómica. |
+
+**No existen todavía** (llegan en fases posteriores): `/api/google-drive/sync-now`, `/api/google-drive/webhook`, `/api/google-drive/maintenance`.
 
 ---
 
@@ -115,13 +128,36 @@ En un **proyecto de Google Cloud NUEVO y dedicado a Drive** (no el que usa Calen
 
 ---
 
-## Lo que NO hace esta fundación (todavía)
+## Por qué NO se usa Google Picker
 
-- No lista carpetas ni archivos de Drive.
+El selector de carpetas es propio (`/api/google-drive/folders` + un diálogo del CRM), **no** el Google Picker.
+
+Google Picker se ejecuta en el navegador y exige que la página le entregue un **access token de Drive** (y además una API key de navegador). En esta arquitectura la conexión de Drive representa a **todo el estudio**, no al usuario que tiene el navegador abierto: entregar ese token al front daría, desde la consola del navegador, acceso directo a todo el Drive del estudio, saltándose por completo las restricciones que aplican estos endpoints (solo carpetas, solo dentro de la raíz, solo Administrador).
+
+Consecuencias concretas de esta decisión:
+
+- el access token y el refresh token **nunca** salen del servidor;
+- no se carga ningún script de `apis.google.com`;
+- no hace falta crear ni exponer una API key de navegador;
+- el servidor construye íntegramente la consulta a Drive: el cliente solo puede enviar un `parentId`, nunca `q`, `fields` ni una URL.
+
+---
+
+## Limitación conocida: Drive puede cambiar fuera del CRM
+
+Drive es un sistema externo y **no existe atomicidad distribuida** entre Google y PostgreSQL. Al vincular un cliente, el servidor revalida la carpeta contra Drive (existe, es carpeta, no está en la papelera, cuelga de la raíz) inmediatamente antes de escribir, y la escritura es atómica y serializada — pero entre esa validación y el COMMIT queda una ventana en la que alguien con acceso al Drive puede mover o borrar la carpeta.
+
+Esto **no se intenta resolver con una transacción distribuida**: el remedio sería peor que el problema. Se asume como limitación conocida y se resuelve por detección posterior: la sincronización de **Fase 8F** comparará el padre real de cada carpeta con el esperado y marcará `DRIVE_PARENT_MISMATCH` como conflicto para que una persona lo resuelva. En ningún caso se reasignará `client_id` de forma automática — el CRM es la autoridad de la relación jurídica.
+
+---
+
+## Lo que NO hace todavía
+
 - No sube ni descarga contenido.
 - No crea `changes.watch` ni procesa webhooks.
 - No mueve, renombra ni elimina nada en Drive.
 - No importa nada de Drive al CRM.
+- No crea carpetas: un cliente sin carpeta se muestra como tal, sin ofrecer crearla.
 - La cola de sincronización existe en la base de datos pero nada la alimenta con trabajos reales todavía.
 
 ---

@@ -9,6 +9,7 @@ export const SECTIONS = [
   "backup",
   "herramientas",
   "google-calendar",
+  "google-drive",
   "notificaciones",
   "correo",
   "plantillas",
