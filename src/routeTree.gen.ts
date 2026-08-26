@@ -27,8 +27,12 @@ import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configu
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
+import { Route as ApiGoogleDriveSyncDocumentRouteImport } from './routes/api.google-drive.sync-document'
+import { Route as ApiGoogleDriveSyncClientRouteImport } from './routes/api.google-drive.sync-client'
 import { Route as ApiGoogleDriveStatusRouteImport } from './routes/api.google-drive.status'
 import { Route as ApiGoogleDriveRootFolderRouteImport } from './routes/api.google-drive.root-folder'
+import { Route as ApiGoogleDrivePrepareDocumentTrashRouteImport } from './routes/api.google-drive.prepare-document-trash'
+import { Route as ApiGoogleDriveMaintenanceRouteImport } from './routes/api.google-drive.maintenance'
 import { Route as ApiGoogleDriveFoldersRouteImport } from './routes/api.google-drive.folders'
 import { Route as ApiGoogleDriveDisconnectRouteImport } from './routes/api.google-drive.disconnect'
 import { Route as ApiGoogleDriveConnectRouteImport } from './routes/api.google-drive.connect'
@@ -145,6 +149,18 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
   path: '/agenda/',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiGoogleDriveSyncDocumentRoute =
+  ApiGoogleDriveSyncDocumentRouteImport.update({
+    id: '/api/google-drive/sync-document',
+    path: '/api/google-drive/sync-document',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDriveSyncClientRoute =
+  ApiGoogleDriveSyncClientRouteImport.update({
+    id: '/api/google-drive/sync-client',
+    path: '/api/google-drive/sync-client',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiGoogleDriveStatusRoute = ApiGoogleDriveStatusRouteImport.update({
   id: '/api/google-drive/status',
   path: '/api/google-drive/status',
@@ -154,6 +170,18 @@ const ApiGoogleDriveRootFolderRoute =
   ApiGoogleDriveRootFolderRouteImport.update({
     id: '/api/google-drive/root-folder',
     path: '/api/google-drive/root-folder',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDrivePrepareDocumentTrashRoute =
+  ApiGoogleDrivePrepareDocumentTrashRouteImport.update({
+    id: '/api/google-drive/prepare-document-trash',
+    path: '/api/google-drive/prepare-document-trash',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiGoogleDriveMaintenanceRoute =
+  ApiGoogleDriveMaintenanceRouteImport.update({
+    id: '/api/google-drive/maintenance',
+    path: '/api/google-drive/maintenance',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiGoogleDriveFoldersRoute = ApiGoogleDriveFoldersRouteImport.update({
@@ -324,8 +352,12 @@ export interface FileRoutesByFullPath {
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
   '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/maintenance': typeof ApiGoogleDriveMaintenanceRoute
+  '/api/google-drive/prepare-document-trash': typeof ApiGoogleDrivePrepareDocumentTrashRoute
   '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
+  '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
+  '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -371,8 +403,12 @@ export interface FileRoutesByTo {
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
   '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/maintenance': typeof ApiGoogleDriveMaintenanceRoute
+  '/api/google-drive/prepare-document-trash': typeof ApiGoogleDrivePrepareDocumentTrashRoute
   '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
+  '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
+  '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -420,8 +456,12 @@ export interface FileRoutesById {
   '/api/google-drive/connect': typeof ApiGoogleDriveConnectRoute
   '/api/google-drive/disconnect': typeof ApiGoogleDriveDisconnectRoute
   '/api/google-drive/folders': typeof ApiGoogleDriveFoldersRoute
+  '/api/google-drive/maintenance': typeof ApiGoogleDriveMaintenanceRoute
+  '/api/google-drive/prepare-document-trash': typeof ApiGoogleDrivePrepareDocumentTrashRoute
   '/api/google-drive/root-folder': typeof ApiGoogleDriveRootFolderRoute
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
+  '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
+  '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -469,8 +509,12 @@ export interface FileRouteTypes {
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
     | '/api/google-drive/folders'
+    | '/api/google-drive/maintenance'
+    | '/api/google-drive/prepare-document-trash'
     | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
+    | '/api/google-drive/sync-client'
+    | '/api/google-drive/sync-document'
     | '/agenda/'
     | '/casos/'
     | '/clientes/'
@@ -516,8 +560,12 @@ export interface FileRouteTypes {
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
     | '/api/google-drive/folders'
+    | '/api/google-drive/maintenance'
+    | '/api/google-drive/prepare-document-trash'
     | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
+    | '/api/google-drive/sync-client'
+    | '/api/google-drive/sync-document'
     | '/agenda'
     | '/casos'
     | '/clientes'
@@ -564,8 +612,12 @@ export interface FileRouteTypes {
     | '/api/google-drive/connect'
     | '/api/google-drive/disconnect'
     | '/api/google-drive/folders'
+    | '/api/google-drive/maintenance'
+    | '/api/google-drive/prepare-document-trash'
     | '/api/google-drive/root-folder'
     | '/api/google-drive/status'
+    | '/api/google-drive/sync-client'
+    | '/api/google-drive/sync-document'
     | '/_app/agenda/'
     | '/_app/casos/'
     | '/_app/clientes/'
@@ -606,8 +658,12 @@ export interface RootRouteChildren {
   ApiGoogleDriveConnectRoute: typeof ApiGoogleDriveConnectRoute
   ApiGoogleDriveDisconnectRoute: typeof ApiGoogleDriveDisconnectRoute
   ApiGoogleDriveFoldersRoute: typeof ApiGoogleDriveFoldersRoute
+  ApiGoogleDriveMaintenanceRoute: typeof ApiGoogleDriveMaintenanceRoute
+  ApiGoogleDrivePrepareDocumentTrashRoute: typeof ApiGoogleDrivePrepareDocumentTrashRoute
   ApiGoogleDriveRootFolderRoute: typeof ApiGoogleDriveRootFolderRoute
   ApiGoogleDriveStatusRoute: typeof ApiGoogleDriveStatusRoute
+  ApiGoogleDriveSyncClientRoute: typeof ApiGoogleDriveSyncClientRoute
+  ApiGoogleDriveSyncDocumentRoute: typeof ApiGoogleDriveSyncDocumentRoute
   ApiGoogleDriveOnboardingApplyRoute: typeof ApiGoogleDriveOnboardingApplyRoute
   ApiGoogleDriveOnboardingPreviewRoute: typeof ApiGoogleDriveOnboardingPreviewRoute
 }
@@ -740,6 +796,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAgendaIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/google-drive/sync-document': {
+      id: '/api/google-drive/sync-document'
+      path: '/api/google-drive/sync-document'
+      fullPath: '/api/google-drive/sync-document'
+      preLoaderRoute: typeof ApiGoogleDriveSyncDocumentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/sync-client': {
+      id: '/api/google-drive/sync-client'
+      path: '/api/google-drive/sync-client'
+      fullPath: '/api/google-drive/sync-client'
+      preLoaderRoute: typeof ApiGoogleDriveSyncClientRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/google-drive/status': {
       id: '/api/google-drive/status'
       path: '/api/google-drive/status'
@@ -752,6 +822,20 @@ declare module '@tanstack/react-router' {
       path: '/api/google-drive/root-folder'
       fullPath: '/api/google-drive/root-folder'
       preLoaderRoute: typeof ApiGoogleDriveRootFolderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/prepare-document-trash': {
+      id: '/api/google-drive/prepare-document-trash'
+      path: '/api/google-drive/prepare-document-trash'
+      fullPath: '/api/google-drive/prepare-document-trash'
+      preLoaderRoute: typeof ApiGoogleDrivePrepareDocumentTrashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/google-drive/maintenance': {
+      id: '/api/google-drive/maintenance'
+      path: '/api/google-drive/maintenance'
+      fullPath: '/api/google-drive/maintenance'
+      preLoaderRoute: typeof ApiGoogleDriveMaintenanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/google-drive/folders': {
@@ -1012,8 +1096,13 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleDriveConnectRoute: ApiGoogleDriveConnectRoute,
   ApiGoogleDriveDisconnectRoute: ApiGoogleDriveDisconnectRoute,
   ApiGoogleDriveFoldersRoute: ApiGoogleDriveFoldersRoute,
+  ApiGoogleDriveMaintenanceRoute: ApiGoogleDriveMaintenanceRoute,
+  ApiGoogleDrivePrepareDocumentTrashRoute:
+    ApiGoogleDrivePrepareDocumentTrashRoute,
   ApiGoogleDriveRootFolderRoute: ApiGoogleDriveRootFolderRoute,
   ApiGoogleDriveStatusRoute: ApiGoogleDriveStatusRoute,
+  ApiGoogleDriveSyncClientRoute: ApiGoogleDriveSyncClientRoute,
+  ApiGoogleDriveSyncDocumentRoute: ApiGoogleDriveSyncDocumentRoute,
   ApiGoogleDriveOnboardingApplyRoute: ApiGoogleDriveOnboardingApplyRoute,
   ApiGoogleDriveOnboardingPreviewRoute: ApiGoogleDriveOnboardingPreviewRoute,
 }

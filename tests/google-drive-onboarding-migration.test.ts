@@ -19,12 +19,15 @@ const folders = readFileSync("src/lib/google-drive/drive-folders.ts", "utf8");
 const foldersRoute = readFileSync("src/routes/api.google-drive.folders.ts", "utf8");
 
 describe("Fase 8C — migración incremental: no toca la de Fase 8B ni crea tablas", () => {
-  it("existe exactamente una migración nueva de Drive en esta fase", () => {
-    const driveMigrations = readdirSync("supabase/migrations").filter((name) =>
-      name.includes("google_drive"),
-    );
-    expect(driveMigrations.sort()).toEqual([
-      "20260824100000_google_drive_sync_foundation.sql",
+  // Fase 8D añadió su propia migración incremental; la de 8C sigue siendo
+  // única y sin tocar. Lo que esta prueba protege es que el onboarding no se
+  // reparta entre varios archivos, no que Drive deje de evolucionar.
+  it("el onboarding de 8C vive en una sola migración, y las anteriores siguen intactas", () => {
+    const driveMigrations = readdirSync("supabase/migrations")
+      .filter((name) => name.includes("google_drive"))
+      .sort();
+    expect(driveMigrations).toContain("20260824100000_google_drive_sync_foundation.sql");
+    expect(driveMigrations.filter((name) => name.includes("client_folder_onboarding"))).toEqual([
       "20260824110000_google_drive_client_folder_onboarding.sql",
     ]);
   });

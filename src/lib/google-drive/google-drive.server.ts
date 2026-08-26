@@ -53,7 +53,7 @@ export const GOOGLE_DRIVE_SCOPES = "openid email https://www.googleapis.com/auth
 
 const textEncoder = new TextEncoder();
 
-type DriveConnection = {
+export type DriveConnection = {
   id: string;
   connected_by: string;
   google_account_email: string | null;
@@ -94,7 +94,7 @@ function requireGoogleDriveConfigured() {
   }
 }
 
-function adminClient() {
+export function adminClient() {
   return createClient(serverSecret("SUPABASE_URL"), serverSecret("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -283,6 +283,29 @@ async function requireAdmin(request: Request) {
   return { user, db };
 }
 
+/**
+ * Fase 8D: resuelve al usuario autenticado y su rol SIN exigir que sea
+ * Administrador. Los productores de sincronización (subir un documento,
+ * crear un cliente) los usa también Personal, así que cada endpoint aplica
+ * el permiso real de la operación del CRM que está reflejando -- vía los
+ * resolvers de src/lib/permissions.ts, nunca comparando el string del rol.
+ */
+export async function requireActiveActor(request: Request) {
+  const accessToken = bearerToken(request);
+  if (!accessToken) throw new Error("Falta la sesión autenticada.");
+  const user = await requireUser(accessToken);
+  const db = adminClient();
+  const { data: profile, error } = await db
+    .from("profiles")
+    .select("role, status")
+    .eq("id", user.id)
+    .single();
+  if (error || !profile || profile.status !== "Activo") {
+    throw new Error("No tienes permiso para realizar esta acción.");
+  }
+  return { user, db, role: profile.role as string };
+}
+
 async function googleFetch<T>(
   url: string,
   options: RequestInit & { accessToken?: string } = {},
@@ -302,7 +325,7 @@ async function googleFetch<T>(
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
-async function activeDriveConnection() {
+export async function activeDriveConnection() {
   const db = adminClient();
   const { data, error } = await db
     .from("google_drive_connections")
@@ -321,7 +344,7 @@ async function activeDriveConnection() {
  * ciphertext se destruye, así que una conexión vieja nunca puede volver a
  * obtener acceso aunque alguien recupere su fila.
  */
-async function accessTokenForDrive(connection: DriveConnection) {
+export async function accessTokenForDrive(connection: DriveConnection) {
   if (connection.status !== "connected" || !connection.encrypted_refresh_token) {
     throw new Error("La conexión de Google Drive está desconectada.");
   }

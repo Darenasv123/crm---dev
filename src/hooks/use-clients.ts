@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAuthClient } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { invalidateCrmQueries } from "@/lib/query-invalidation";
+import { requestClientDriveFolderSync } from "@/lib/google-drive-sync-client";
 
 type Client = Database["public"]["Tables"]["clients"]["Row"];
 type ClientInsert = Database["public"]["Tables"]["clients"]["Insert"];
@@ -66,6 +67,14 @@ export function useCreateClient() {
       const db = await getAuthClient();
       const { data, error } = await db.from("clients").insert(payload).select().single();
       if (error) throw new Error(error.message);
+
+      // Fase 8D: pedir la carpeta de Drive del Cliente. Va DESPUÉS de que la
+      // creación haya terminado bien y deliberadamente sin `await` sobre su
+      // resultado ni propagación de errores: Google Drive es una integración
+      // secundaria y jamás puede hacer fallar la creación de un Cliente. Si
+      // no está configurado, el servidor responde con un no-op silencioso.
+      void requestClientDriveFolderSync(data.id);
+
       return data;
     },
     onSuccess: (data) => invalidateCrmQueries(queryClient, { clientId: data?.id }),

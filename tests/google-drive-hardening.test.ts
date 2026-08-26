@@ -226,11 +226,17 @@ describe("Fase 8B.1 — schema: encrypted_refresh_token nullable + invariante po
     );
     const foundations = driveMigrations.filter((file) => file.includes("sync_foundation"));
     expect(foundations).toEqual(["20260824100000_google_drive_sync_foundation.sql"]);
+    // Ninguna migración posterior re-crea ni destruye la estructura de la
+    // fundación. Evolucionar el esquema sí está permitido -- Fase 8D cambia
+    // deliberadamente la FK de la cola a ON DELETE SET NULL para que el
+    // trabajo de papelera sobreviva al borrado del documento -- pero volver
+    // a crear una tabla de la fundación o eliminarla no lo está.
     for (const file of driveMigrations) {
       if (file.includes("sync_foundation")) continue;
       const source = read(`supabase/migrations/${file}`);
-      expect(source).not.toMatch(/alter table[\s\S]{0,120}google_drive/i);
-      expect(source).not.toMatch(/drop (table|constraint|index)[\s\S]{0,120}google_drive/i);
+      expect(source).not.toMatch(/create table[\s\S]{0,80}google_drive/i);
+      expect(source).not.toMatch(/drop table[\s\S]{0,80}google_drive/i);
+      expect(source).not.toMatch(/drop index[\s\S]{0,80}google_drive/i);
     }
   });
 });

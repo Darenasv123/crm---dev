@@ -3,6 +3,10 @@ import { getAuthClient, supabase } from "@/lib/supabase";
 import type { Database } from "@/lib/database.types";
 import { isMissingSchemaFieldError } from "@/lib/supabase-errors";
 import { invalidateCrmQueries } from "@/lib/query-invalidation";
+import {
+  prepareDocumentDriveTrash,
+  requestDocumentDriveSync,
+} from "@/lib/google-drive-sync-client";
 
 type Document = Database["public"]["Tables"]["documents"]["Row"];
 type DocumentUpdate = Database["public"]["Tables"]["documents"]["Update"];
@@ -159,6 +163,14 @@ export function useUploadDocument() {
         throw new Error("Supabase no devolvió el registro del documento subido.");
       }
 
+      // Fase 8D: el documento ya está guardado en Supabase Storage y en la
+      // base de datos. Pedir su copia en Drive es un extra: sin `await` y
+      // sin propagar errores, para que una caída de Google no convierta en
+      // fallo una subida que sí funcionó. Nótese que va después del bloque
+      // que sí revierte el Storage (cuando el INSERT falla): ahí no hay
+      // documento que sincronizar.
+      void requestDocumentDriveSync(data.id);
+
       return data as DocumentWithClient;
     },
     onSuccess: (data) =>
@@ -170,6 +182,14 @@ export function useDeleteDocument() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, storagePath }: { id: string; storagePath: string }) => {
+      // Fase 8D: se encola ANTES del borrado, con un margen, porque después
+      // el mapping Documento<->Drive habrá desaparecido y ya no se sabría
+      // qué archivo retirar. El worker comprueba luego que el borrado
+      // realmente ocurrió: si este DELETE falla, la copia en Drive NO se
+      // mueve a la papelera. Y si este encolado falla, el borrado sigue
+      // adelante igual -- Drive nunca bloquea una operación del CRM.
+      await prepareDocumentDriveTrash(id);
+
       await supabase.storage.from("documents").remove([storagePath]);
       const db = await getAuthClient();
       const { error } = await db.from("documents").delete().eq("id", id);
@@ -209,6 +229,12 @@ export function useUpdateDocument() {
       }
 
       if (error) throw new Error(error.message);
+
+      // Fase 8D: si cambió el nombre, Drive debe reflejarlo. El servidor
+      // compara el nombre actual con el del último sync y decide si hace
+      // falta renombrar -- aquí no se adivina. Best-effort, como el resto.
+      if (updates.name !== undefined) void requestDocumentDriveSync(id);
+
       return data as DocumentWithClient;
     },
     onSuccess: (data) =>

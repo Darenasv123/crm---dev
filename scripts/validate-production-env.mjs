@@ -86,6 +86,11 @@ const OPTIONAL = [
     description:
       "URI de redirección OAuth de Drive: https://abogado.consoldi.com/api/google-drive/callback",
   },
+  {
+    name: "GOOGLE_DRIVE_MAINTENANCE_SECRET",
+    description:
+      "Secreto del cron que procesa la cola CRM -> Drive. Pasa a ser REQUERIDO si Drive está configurado.",
+  },
   // Correo (Fase 5): deliberadamente OPCIONAL, no REQUIRED. El CRM debe
   // poder arrancar en producción sin Correo configurado -- de hecho, el
   // propio SMTP de GoTrue (recuperación de contraseña) ya está deshabilitado
@@ -139,6 +144,34 @@ for (const { name, description, default: def } of OPTIONAL) {
   } else {
     const preview = value.length > 6 ? `${value.slice(0, 6)}…` : "***";
     console.log(`  ✓ ${name} = ${preview}`);
+  }
+}
+
+// ── Requeridas CONDICIONALMENTE (Fase 8D) ──────────────────────────────
+// Google Drive sigue siendo opcional en su conjunto: el CRM arranca sin él.
+// Pero si el estudio SÍ configuró las credenciales de Drive, la cola de
+// sincronización necesita quien la procese, y eso lo hace el cron a través
+// de /api/google-drive/maintenance. Sin el secreto ese endpoint responde 503
+// y los documentos se quedarían encolados para siempre, en silencio.
+// Por eso: Drive configurado -> el secreto pasa a ser requerido.
+console.log("\n── Requeridas si Google Drive está configurado ──────────────");
+const driveConfigured = ["GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_DRIVE_CLIENT_SECRET"].every(
+  (name) => (process.env[name] ?? "").trim() !== "",
+);
+if (!driveConfigured) {
+  console.log("  ○ Google Drive no está configurado; no se exige nada adicional.");
+} else {
+  const maintenanceSecret = (process.env.GOOGLE_DRIVE_MAINTENANCE_SECRET ?? "").trim();
+  if (!maintenanceSecret) {
+    console.error("  ✗ FALTA: GOOGLE_DRIVE_MAINTENANCE_SECRET");
+    console.error(
+      "          Google Drive está configurado, así que el cron necesita este secreto " +
+        "para procesar la cola de sincronización. Sin él, /api/google-drive/maintenance " +
+        "responde 503 y nada se sincroniza.",
+    );
+    hasErrors = true;
+  } else {
+    console.log("  ✓ GOOGLE_DRIVE_MAINTENANCE_SECRET presente");
   }
 }
 
