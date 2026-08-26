@@ -1,4 +1,4 @@
-# Configuración de Google Drive (Fases 8B–8D)
+# Configuración de Google Drive (Fases 8B–8E)
 
 **GOOGLE CLOUD CONSOLE NO CONFIGURADA TODAVÍA.** Este documento describe la fundación server-side ya construida en el código y los pasos que faltarán *en el futuro* para activarla — no es una guía para conectar Drive hoy. Google Drive real permanece desconectado; no hay ninguna cuenta, carpeta ni archivo sincronizado.
 
@@ -12,7 +12,9 @@
 
 **Añadido en Fase 8D (CRM -> Drive)**: creación automática de la carpeta de un Cliente, subida de documentos, propagación del renombrado y traslado a la papelera, todo a través de una cola procesada por un cron.
 
-**Nada de lo siguiente existe todavía**: leer cambios hechos directamente en Drive (`changes.list`, `changes.watch`, webhook), reconciliación completa, ni reemplazo de contenido de un documento. Esas piezas llegan en 8E/8F.
+**Añadido en Fase 8E (Drive -> CRM, consumidor)**: importación de un archivo añadido manualmente en una carpeta de Cliente ya vinculada, como un documento real del CRM (`import_drive_file`). Es exclusivamente el **consumidor**: nada en esta fase detecta ni produce ese evento por sí solo.
+
+**Nada de lo siguiente existe todavía**: descubrimiento automático de archivos nuevos (`changes.list`, `changes.watch`, webhook), reconciliación completa, exportación de archivos nativos de Google Workspace, ni reemplazo de contenido de un documento. Esas piezas llegan en 8F (descubrimiento/reconciliación) o quedan explícitamente diferidas sin fecha (Workspace export, reemplazo de contenido).
 
 ---
 
@@ -118,7 +120,9 @@ Añadidas en **Fase 8D** (CRM -> Drive):
 | `/api/google-drive/prepare-document-trash` | POST | Productor: encola el traslado a la papelera antes de borrar. Exige permiso de eliminar documentos. |
 | `/api/google-drive/maintenance` | POST | Máquina a máquina: procesa la cola. Secreto dedicado, nunca sesión de Administrador. |
 
-**No existen todavía** (llegan en 8E/8F): `/api/google-drive/webhook` y el sondeo de cambios.
+**Fase 8E deliberadamente NO añade ninguna ruta.** El consumidor de `import_drive_file` (`enqueueGoogleDriveImportFile`) es server-only: no existe -- ni existirá con esa forma -- un `POST /api/google-drive/import-file` que acepte un `driveFileId` del navegador. Ver "Cómo funciona Drive -> CRM" más abajo.
+
+**No existen todavía** (llegan en 8F): `/api/google-drive/webhook` y el sondeo de cambios.
 
 ---
 
@@ -220,6 +224,53 @@ Los reintentos usan `available_at` con un backoff acotado (30 s, 2 min, 5 min, 1
 
 ---
 
+## Cómo funciona Drive -> CRM (Fase 8E, solo consumidor)
+
+Fase 8E construye únicamente el **importador**: dado un `drive_file_id` que alguien ya identificó como "archivo nuevo", lo convierte en un documento real del CRM de forma segura e idempotente. Nada en esta fase detecta ese archivo por su cuenta -- ni `changes.list`, ni `changes.watch`, ni ningún webhook. El helper `enqueueGoogleDriveImportFile` (server-only, sin endpoint HTTP: ver más abajo) es exactamente lo que **Fase 8F** invocará cuando implemente el descubrimiento automático.
+
+### Alcance V1: solo hijos directos, solo blobs
+
+Solo se importan archivos cuyo padre **directo** sea la carpeta de un Cliente ya vinculada y sincronizada. Un archivo dentro de una subcarpeta ("Expediente 2025/demanda.pdf") **nunca** se interpreta automáticamente -- eso sería inferencia jurídica sobre qué expediente corresponde, y esta integración no toma esa decisión por nadie. Igualmente, `case_id` siempre queda `NULL` y `type`/`document_type` siempre `'Otros'`: ningún nombre de archivo, subcarpeta o convención se usa para adivinar el expediente o el tipo de documento.
+
+Solo se importan **blob files** -- PDF, DOCX, imágenes, hojas de cálculo de Office, cualquier cosa con bytes reales. Los tipos nativos de Google Workspace (Docs, Sheets, Slides, Drawings, Forms, Apps Script, Sites, Jamboard...) se rechazan con `GOOGLE_WORKSPACE_FILE_UNSUPPORTED`; carpetas y accesos directos con `DRIVE_ENTRY_NOT_IMPORTABLE`. Ninguno de los dos casos llama nunca a `files.export` -- convertir un Doc nativo a DOCX/PDF automáticamente cambiaría su representación, generaría una copia-snapshot fuera de nuestro control y complicaría cualquier edición futura. Queda deliberadamente diferido a una fase posterior, con una política explícita que decida el formato de exportación -- no forma parte de este release.
+
+### Nunca resucitar lo que el CRM ya gestiona o ya borró
+
+Antes de tratar un archivo como "nuevo", se leen sus `appProperties`. Si contienen `crm_entity="document"` (la misma marca que Fase 8D escribe al subir), el archivo **no** es un documento inbound: es una subida outbound existente, o el rastro de un documento que el CRM ya eliminó.
+
+- El documento referenciado existe y su mapping coincide con este archivo -> ya gestionado, no-op.
+- El documento existe pero el mapping no coincide o falta -> `OUTBOUND_MAPPING_REPAIR_REQUIRED`; Fase 8F reconciliará, aquí nunca se crea un segundo documento.
+- **El documento ya NO existe en el CRM -> `OUTBOUND_ORPHAN_REVIEW_REQUIRED`. Nunca se reimporta.** Este es exactamente el caso de un `prepare-document-trash` que se perdió y un borrado que sí se ejecutó (ver la limitación de reconciliación de borrado más abajo): el archivo huérfano en Drive jamás vuelve a convertirse en un documento del CRM por su cuenta.
+- `appProperties` con `crm_entity` presente pero con una forma irreconocible (falta algún campo, o el entity no es uno conocido) -> `DRIVE_APP_PROPERTY_CONFLICT`. Nunca se ignora en silencio.
+
+### Doble comprobación: Drive puede cambiar entre validar y descargar
+
+Entre confirmar que un archivo es válido y terminar de descargarlo, Drive -- un sistema externo -- puede cambiar: alguien lo renombra, lo mueve a otra carpeta (incluso la de otro Cliente), lo actualiza, o lo manda a la papelera. Por eso se toman dos fotos de metadata (M1 antes de descargar, M2 después) y se comparan id, versión, `modifiedTime`, padres, papelera, nombre y checksum. Cualquier diferencia -> `DRIVE_FILE_CHANGED_RETRY`, sin escribir nada: ni Storage ni base de datos. Un archivo movido de la carpeta del Cliente A a la del Cliente B a mitad de la descarga **no** se importa a A ni a B en ese intento -- el próximo ciclo lo reprocesará contra el estado ya estable.
+
+También se verifica el tamaño real descargado (nunca solo `metadata.size`, que puede faltar o estar desactualizado) con un tope duro durante la propia lectura del stream, y -- cuando Drive lo reporta -- el MD5 de los bytes descargados contra `md5Checksum`. El SHA-256 local sigue siendo el baseline propio del CRM; ninguno sustituye al otro.
+
+**Añadido en Fase 8E.1** -- la descarga es estrictamente streaming, sin ninguna ruta de recuperación con `arrayBuffer()`: si `response.body` no llega como stream, se falla de forma clasificable (transitorio) en vez de materializar la respuesta completa en memoria antes de poder acotarla. Y antes de siquiera pedir `alt=media`, `metadata.size` se valida con un parseo seguro (formato decimal, comparación por `BigInt` contra el límite real): si falta o tiene un formato que no se puede confiar, se rechaza con `DRIVE_FILE_SIZE_UNKNOWN` sin descargar nada -- nunca se procede a ciegas solo porque el tope real de bytes durante el stream seguiría acotando la respuesta. Al terminar de leer el stream, el total de bytes real se compara contra `metadata.size`; si no coincide, `DRIVE_DOWNLOAD_SIZE_MISMATCH` (reintentable) -- otra verificación barata de la misma clase de problema que M1/M2 detecta.
+
+### Idempotencia ante un crash
+
+Igual que el flujo outbound, la identidad se reserva ANTES de escribir en Storage: `target_document_id` y `storage_path` se persisten en el `payload` de la propia fila de la cola la primera vez, y cualquier reintento los reutiliza tal cual. Si el proceso muere entre "subí a Storage" y "finalicé el documento en la base de datos", el reintento encuentra el mismo path ya ocupado, compara su SHA-256 y -- si coincide -- lo reutiliza sin escribir un segundo blob. Si no coincide (otra identidad ocupa ese path), `STORAGE_IMPORT_IDENTITY_CONFLICT`, nunca un `overwrite`.
+
+La finalización (creación de `documents` + `google_drive_document_files`) corre en una única transacción de PostgreSQL. Repetir exactamente el mismo import es idempotente; si el mismo `drive_file_id` ya fue importado por otro proceso con un `target_document_id` distinto, nunca se crea un segundo documento.
+
+### Compensación de Storage cuando se pierde la carrera permanentemente
+
+**Añadido en Fase 8E.1.** Si la finalización responde `DRIVE_FILE_ALREADY_IMPORTED` o `IMPORT_IDENTITY_CONFLICT` -- otro proceso ganó de forma permanente, la RPC es atómica y nuestro `target_document_id` nunca llegó a insertarse --, el blob que este intento escribió (o reutilizó de un crash previo -- ambos casos por igual) queda huérfano. Antes de borrarlo se consulta la propia base de datos: si algún `documents.storage_path` coincide con la ruta reservada, **no se borra**, sin importar si fue este intento quien la creó. Solo cuando ningún documento la referencia se intenta un `remove` best-effort; un fallo ahí no cambia el resultado de la finalización (el objetivo de sincronización ya está cumplido por el ganador) ni se reintenta indefinidamente dentro de este worker. Ante cualquier otro error -- transitorio, de conexión, de base de datos -- el blob se conserva siempre para que el reintento lo reutilice; el cleanup solo actúa ante un conflicto permanente confirmado. Este cleanup best-effort no garantiza cero objetos huérfanos en absoluto: una reconciliación operativa futura (8F o posterior) puede detectar y resolver los residuos excepcionales que queden.
+
+### No hay endpoint HTTP de importación
+
+Deliberadamente no existe ningún `POST /api/google-drive/import-file` que acepte un `driveFileId` del navegador -- convertiría al CRM en un proxy para importar cualquier archivo cuyo identificador alguien conociera. `enqueueGoogleDriveImportFile` es server-only: solo código de servidor de confianza puede invocarlo (hoy, los tests; en Fase 8F, el propio consumidor de `changes.list`).
+
+### Atribución honesta
+
+Un documento importado automáticamente no lo subió ninguna sesión interactiva del CRM, así que `documents.created_by` queda `NULL` -- atribuirlo a un Administrador concreto sería una atribución falsa. La columna ya era nullable en el esquema base.
+
+---
+
 ## Limitación conocida: Drive puede cambiar fuera del CRM
 
 Drive es un sistema externo y **no existe atomicidad distribuida** entre Google y PostgreSQL. Al vincular un cliente, el servidor revalida la carpeta contra Drive (existe, es carpeta, no está en la papelera, cuelga de la raíz) inmediatamente antes de escribir, y la escritura es atómica y serializada — pero entre esa validación y el COMMIT queda una ventana en la que alguien con acceso al Drive puede mover o borrar la carpeta.
@@ -230,10 +281,11 @@ Esto **no se intenta resolver con una transacción distribuida**: el remedio ser
 
 ## Lo que NO hace todavía
 
-- No lee cambios hechos directamente en Drive: sin `changes.list`, `changes.watch` ni webhooks.
+- No detecta cambios hechos directamente en Drive: sin `changes.list`, `changes.watch` ni webhooks -- Fase 8E solo consume un `drive_file_id` que ya le llega, nunca lo descubre por su cuenta.
 - No reemplaza el contenido de un documento ya subido (el CRM tampoco lo ofrece).
-- No reconcilia eventos perdidos: eso llega en 8F.
-- No importa nada de Drive al CRM.
+- No reconcilia eventos perdidos -- ni los de creación/subida perdida (recuperables desde el propio CRM) ni, sobre todo, los de un borrado perdido que deja un archivo huérfano en Drive sin ningún rastro en la base de datos del CRM: eso exige un escaneo del lado de Drive vía `appProperties`, no solo del lado de la base de datos, y llega en 8F.
+- No exporta archivos nativos de Google Workspace (Docs/Sheets/Slides/...); los rechaza explícitamente.
+- No importa archivos fuera de una carpeta de Cliente vinculada, ni desde subcarpetas internas.
 - No mueve a la papelera la carpeta de un Cliente eliminado.
 
 ---

@@ -4,11 +4,16 @@ import {
   classifyDriveFailure,
   createDriveFileWithContent,
   createDriveFolder,
+  downloadDriveFileBounded,
   DRIVE_RESUMABLE_THRESHOLD_BYTES,
+  DriveDownloadSizeMismatchError,
+  DriveDownloadStreamUnavailableError,
+  DriveDownloadTooLargeError,
   DriveHttpError,
   generateDriveIds,
   getDriveFile,
   isRetryableDriveFailure,
+  parseDriveDeclaredSize,
   queryResumableUploadStatus,
   renameDriveFile,
   trashDriveFile,
@@ -573,5 +578,165 @@ describe("Fase 8D.1 — recuperación de una subida resumable interrumpida", () 
     }).catch((cause) => cause);
     expect(String(failure?.message ?? "")).not.toContain("SECRET-SESSION-TOKEN");
     expect(String(failure?.stack ?? "")).not.toContain("SECRET-SESSION-TOKEN");
+  });
+});
+
+// ── Fase 8E.1 — metadata.size: parseo seguro ──────────────────────────────
+describe("Fase 8E.1 — parseDriveDeclaredSize: nunca Number() a ciegas", () => {
+  const MAX = 10 * 1024 * 1024;
+
+  it("ausente -> unknown", () => {
+    expect(parseDriveDeclaredSize(undefined, MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("vacío -> unknown", () => {
+    expect(parseDriveDeclaredSize("", MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("no numérico -> unknown", () => {
+    expect(parseDriveDeclaredSize("not-a-number", MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("negativo -> unknown (nunca se interpreta el signo)", () => {
+    expect(parseDriveDeclaredSize("-5", MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("decimal (con punto) -> unknown", () => {
+    expect(parseDriveDeclaredSize("12.5", MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("notación científica -> unknown", () => {
+    expect(parseDriveDeclaredSize("1e10", MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("desbordamiento de dígitos (19+) -> unknown, nunca se intenta convertir", () => {
+    expect(parseDriveDeclaredSize("1".repeat(19), MAX)).toEqual({ kind: "unknown" });
+  });
+
+  it("dentro del límite -> ok con el valor exacto", () => {
+    expect(parseDriveDeclaredSize("1024", MAX)).toEqual({ kind: "ok", bytes: 1024 });
+  });
+
+  it("justo en el límite -> ok", () => {
+    expect(parseDriveDeclaredSize(String(MAX), MAX)).toEqual({ kind: "ok", bytes: MAX });
+  });
+
+  it("un byte por encima del límite -> too_large, comparado con BigInt (sin perder precisión)", () => {
+    expect(parseDriveDeclaredSize(String(MAX + 1), MAX)).toEqual({ kind: "too_large" });
+  });
+
+  it("archivo enorme (mucho más allá de Number.MAX_SAFE_INTEGER) -> too_large, no explota", () => {
+    expect(parseDriveDeclaredSize("9".repeat(18), MAX)).toEqual({ kind: "too_large" });
+  });
+});
+
+// ── Fase 8E.1 — downloadDriveFileBounded: stream real, nunca arrayBuffer() ─
+describe("Fase 8E.1 — downloadDriveFileBounded: streaming acotado real", () => {
+  function streamResponse(
+    chunks: Uint8Array[],
+    options: { headers?: Record<string, string> } = {},
+  ) {
+    let index = 0;
+    let cancelled = false;
+    let reads = 0;
+    const arrayBufferSpy = vi.fn(async () => {
+      throw new Error("arrayBuffer() NUNCA debe invocarse en la descarga inbound de Drive.");
+    });
+    const bodyCancel = vi.fn(async () => {
+      cancelled = true;
+    });
+    const resp = {
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => (options.headers ?? {})[name.toLowerCase()] ?? null },
+      body: {
+        cancel: bodyCancel,
+        getReader: () => ({
+          read: async () => {
+            reads += 1;
+            if (index >= chunks.length) return { done: true, value: undefined };
+            const value = chunks[index];
+            index += 1;
+            return { done: false, value };
+          },
+          cancel: bodyCancel,
+        }),
+      },
+      arrayBuffer: arrayBufferSpy,
+      text: async () => "",
+    } as unknown as Response;
+    return { resp, arrayBufferSpy, wasCancelled: () => cancelled, readCount: () => reads };
+  }
+
+  function streamlessResponse(options: { headers?: Record<string, string> } = {}) {
+    const arrayBufferSpy = vi.fn(async () => {
+      throw new Error("arrayBuffer() NUNCA debe invocarse en la descarga inbound de Drive.");
+    });
+    const resp = {
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => (options.headers ?? {})[name.toLowerCase()] ?? null },
+      body: null,
+      arrayBuffer: arrayBufferSpy,
+      text: async () => "",
+    } as unknown as Response;
+    return { resp, arrayBufferSpy };
+  }
+
+  it("archivo válido: stream normal produce exactamente los bytes esperados", async () => {
+    const content = new Uint8Array([1, 2, 3, 4]);
+    const { resp, arrayBufferSpy } = streamResponse([content]);
+    mockSequence(resp);
+    const bytes = await downloadDriveFileBounded(TOKEN, "F1", 1024, {}, content.length);
+    expect(bytes).toEqual(content);
+    expect(arrayBufferSpy).not.toHaveBeenCalled();
+  });
+
+  it("C: response.body=null -> DriveDownloadStreamUnavailableError, jamás arrayBuffer()", async () => {
+    const { resp, arrayBufferSpy } = streamlessResponse();
+    mockSequence(resp);
+    const failure = await downloadDriveFileBounded(TOKEN, "F1", 1024).catch((cause) => cause);
+    expect(failure).toBeInstanceOf(DriveDownloadStreamUnavailableError);
+    expect(arrayBufferSpy).not.toHaveBeenCalled();
+  });
+
+  it("D: un segundo chunk hace que el total supere el máximo -> aborta temprano, cancela, no lee un tercer chunk", async () => {
+    const chunkA = new Uint8Array(6);
+    const chunkB = new Uint8Array(6); // 6 + 6 = 12 > maxBytes (10)
+    const chunkC = new Uint8Array(6); // nunca debería llegar a leerse
+    const { resp, wasCancelled, readCount } = streamResponse([chunkA, chunkB, chunkC]);
+    mockSequence(resp);
+    const failure = await downloadDriveFileBounded(TOKEN, "F1", 10).catch((cause) => cause);
+    expect(failure).toBeInstanceOf(DriveDownloadTooLargeError);
+    expect(wasCancelled()).toBe(true);
+    // 2 lecturas (chunkA que no excede, chunkB que sí) -- nunca una tercera.
+    expect(readCount()).toBe(2);
+  });
+
+  it("Content-Length ya excede el máximo -> aborta ANTES de pedir el reader, nunca lee el cuerpo", async () => {
+    const chunk = new Uint8Array(4);
+    const { resp, readCount } = streamResponse([chunk], { headers: { "content-length": "999" } });
+    mockSequence(resp);
+    const failure = await downloadDriveFileBounded(TOKEN, "F1", 10).catch((cause) => cause);
+    expect(failure).toBeInstanceOf(DriveDownloadTooLargeError);
+    expect(readCount()).toBe(0);
+  });
+
+  it("F: el total descargado no coincide con expectedSize -> DriveDownloadSizeMismatchError", async () => {
+    const content = new Uint8Array([1, 2, 3]);
+    const { resp } = streamResponse([content]);
+    mockSequence(resp);
+    const failure = await downloadDriveFileBounded(TOKEN, "F1", 1024, {}, 999).catch(
+      (cause) => cause,
+    );
+    expect(failure).toBeInstanceOf(DriveDownloadSizeMismatchError);
+  });
+
+  it("sin expectedSize, no se exige coincidencia de tamaño", async () => {
+    const content = new Uint8Array([1, 2, 3]);
+    const { resp } = streamResponse([content]);
+    mockSequence(resp);
+    const bytes = await downloadDriveFileBounded(TOKEN, "F1", 1024);
+    expect(bytes).toEqual(content);
   });
 });

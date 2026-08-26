@@ -37,22 +37,37 @@ import { DriveError } from "./drive-errors";
 import {
   buildDriveClientFolderAppProperties,
   buildDriveDocumentAppProperties,
+  classifyAppPropertiesOwnership,
   matchesClientFolderIdentity,
   matchesDocumentIdentity,
 } from "./drive-app-properties";
 import {
+  classifyUnsupportedDriveEntry,
   createDriveFileWithContent,
   createDriveFolder,
+  downloadDriveFileBounded,
+  DriveDownloadSizeMismatchError,
+  DriveDownloadStreamUnavailableError,
+  DriveDownloadTooLargeError,
+  driveFileMetadataUnchanged,
   generateDriveIds,
   getDriveFile,
+  getDriveFileMetadata,
   isDriveHttpError,
   isRetryableDriveFailure,
+  parseDriveDeclaredSize,
   renameDriveFile,
   trashDriveFile,
   type DriveFileResource,
 } from "./drive-files";
-import { listChildDriveFolders } from "./drive-folders";
-import { readDocumentContent } from "./drive-storage.server";
+import { DRIVE_FOLDER_MIME_TYPE, listChildDriveFolders } from "./drive-folders";
+import {
+  formatDocumentSizeLabel,
+  md5Hex,
+  readDocumentContent,
+  sha256Hex,
+  writeDocumentToStorageIdempotent,
+} from "./drive-storage.server";
 import {
   accessTokenForDrive,
   activeDriveConnection,
@@ -61,6 +76,7 @@ import {
   requireActiveActor,
   type DriveConnection,
 } from "./google-drive.server";
+import { MAX_DOCUMENT_SIZE_BYTES, validateDocumentFile } from "@/hooks/use-documents";
 
 // ── constantes ───────────────────────────────────────────────────────────
 
@@ -337,6 +353,36 @@ function requireUuid(value: unknown, label: string): string {
   return id;
 }
 
+// ── PRODUCTOR (server-only): archivo descubierto en Drive -> CRM ─────────
+export interface EnqueueImportInput {
+  connectionId: string;
+  driveFileId: string;
+}
+
+/**
+ * Encola la importación de un archivo de Drive a documento del CRM.
+ *
+ * SERVER-ONLY a propósito (Fase 8E Sección 3): no existe ningún endpoint
+ * HTTP que acepte un `driveFileId` escrito por el navegador. Convertir esto
+ * en una API administrativa general sería, en la práctica, un proxy para
+ * importar cualquier archivo cuyo ID alguien conociera. Quien puede llamar
+ * a esta función es exclusivamente código de servidor de confianza: hoy,
+ * los propios tests; en Fase 8F, el consumidor de `changes.list`.
+ *
+ * No recibe `clientId`: el worker lo resuelve desde el padre REAL del
+ * archivo en Drive en el momento de procesar el trabajo, nunca de un valor
+ * que el llamante ya hubiera adivinado (Fase 8E Sección 35) -- Drive pudo
+ * cambiar entre que algo detectó este archivo y que el worker lo procesa.
+ */
+export async function enqueueGoogleDriveImportFile(input: EnqueueImportInput): Promise<boolean> {
+  return enqueue({
+    connectionId: input.connectionId,
+    operation: "import_drive_file",
+    dedupeKey: driveDedupeKey("import_drive_file", input.connectionId, input.driveFileId),
+    driveFileId: input.driveFileId,
+  });
+}
+
 // ── WORKERS ──────────────────────────────────────────────────────────────
 
 export interface QueueJob {
@@ -347,6 +393,14 @@ export interface QueueJob {
   document_id: string | null;
   drive_file_id: string | null;
   attempt_count: number;
+  /**
+   * Reserva durable del trabajo (Fase 8E Sección 22). `import_drive_file`
+   * la usa para persistir `target_document_id`/`storage_path` la primera
+   * vez que se procesa, y reutilizarlos en cualquier reintento -- así un
+   * crash entre "subí a Storage" y "finalicé en la base de datos" no genera
+   * un segundo UUID ni un segundo blob.
+   */
+  payload: Record<string, unknown>;
 }
 
 type JobOutcome =
@@ -788,6 +842,344 @@ async function handleTrashDocument(
   return { status: "completed" };
 }
 
+// ── import_drive_file (Drive -> CRM, Fase 8E) ────────────────────────────
+/**
+ * Importa un archivo descubierto manualmente en Drive como un documento del
+ * CRM.
+ *
+ * Nada en esta fase PRODUCE el trabajo que llega aquí -- ningún
+ * `changes.list`, `changes.watch` ni reconciliación: eso es Fase 8F. Este
+ * worker es el consumidor seguro que 8F invocará; hoy solo lo alimentan
+ * `enqueueGoogleDriveImportFile` (server-only) y los propios tests.
+ *
+ * Algoritmo completo, en orden (cada paso puede terminar el trabajo):
+ *   0. ¿Ya está mapeado por drive_file_id? -> no-op (Sección 38).
+ *   1. Metadata M1.
+ *   2. ¿Trashed? -> no importar.
+ *   3. ¿Blob soportado? (no carpeta/atajo/nativo de Workspace).
+ *   4. ¿appProperties ya indican que esto lo gestiona el CRM? (Sección 12).
+ *   5. ¿canDownload?
+ *   6. Preflight de tamaño con metadata.size (nunca definitivo).
+ *   7. Resolver Cliente por el padre DIRECTO (Sección 7/15).
+ *   8. Validar que esa carpeta de Cliente siga siendo real en Drive
+ *      (Sección 16).
+ *   9. Descargar bytes con tope real de bytes (Sección 19).
+ *  10. Metadata M2 y comparación contra M1 (Sección 17).
+ *  11. Verificar MD5 de Drive si existe; calcular SHA-256 propio.
+ *  12. Revalidar con las MISMAS reglas que una subida manual (Sección 20).
+ *  13. Reservar target_document_id + storage_path en el payload de la cola
+ *      (una sola vez; los reintentos reutilizan lo ya reservado).
+ *  14. Escribir en Storage de forma idempotente.
+ *  15. Finalizar con la RPC atómica.
+ */
+async function handleImportDriveFile(
+  job: QueueJob,
+  context: DriveContext,
+  accessToken: string,
+): Promise<JobOutcome> {
+  if (!job.drive_file_id) return { status: "failed", reason: "MISSING_DRIVE_FILE_ID" };
+  const db = adminClient();
+  const { connection, rootFolderId } = context;
+  const scope = driveScope(connection);
+
+  // 0. Ya mapeado -- no crear una segunda copia nunca (Sección 38).
+  const { data: existingByFile } = await db
+    .from("google_drive_document_files")
+    .select("document_id")
+    .eq("connection_id", connection.id)
+    .eq("drive_file_id", job.drive_file_id)
+    .maybeSingle();
+  if (existingByFile) return { status: "completed" };
+
+  // 1. Metadata M1.
+  const m1 = await getDriveFileMetadata(accessToken, job.drive_file_id, scope);
+  if (!m1) return { status: "failed", reason: "DRIVE_FILE_NOT_FOUND" };
+
+  // 2. Trashed: no se importa un archivo que ya está en la papelera.
+  if (m1.trashed) return { status: "failed", reason: "DRIVE_FILE_TRASHED" };
+
+  // 3. Solo blob files (Sección 10/42). Nunca files.export en V1: convertir
+  // un Doc nativo a DOCX/PDF automáticamente cambiaría su representación y
+  // crearía una copia-snapshot fuera de nuestro control -- decisión
+  // deliberadamente diferida a una fase futura con política explícita.
+  const unsupported = classifyUnsupportedDriveEntry(m1.mimeType);
+  if (unsupported) return { status: "failed", reason: unsupported };
+
+  // 4. ¿Ya lo gestiona el CRM? (Sección 12 -- regla crítica). Un archivo con
+  // appProperties.crm_entity="document" NUNCA es un documento inbound
+  // nuevo: es una subida outbound existente, o el rastro de un documento
+  // que el CRM ya borró (y entonces NO se resucita).
+  const ownership = classifyAppPropertiesOwnership(m1.appProperties);
+  if (ownership.kind === "conflict") {
+    return { status: "failed", reason: "DRIVE_APP_PROPERTY_CONFLICT" };
+  }
+  if (ownership.kind === "known_document") {
+    const { data: ownedDocument } = await db
+      .from("documents")
+      .select("id, client_id")
+      .eq("id", ownership.documentId)
+      .maybeSingle();
+    if (!ownedDocument) {
+      // Caso C: el documento ya no existe en el CRM. Puede ser exactamente
+      // el rastro de un borrado cuyo prepare-trash se perdió (ver el
+      // contrato de reconciliación en la documentación operativa). NUNCA
+      // se reimporta: 0 Storage, 0 documents, 0 mapping.
+      return { status: "failed", reason: "OUTBOUND_ORPHAN_REVIEW_REQUIRED" };
+    }
+    const { data: ownedMapping } = await db
+      .from("google_drive_document_files")
+      .select("drive_file_id")
+      .eq("document_id", ownership.documentId)
+      .maybeSingle();
+    if (ownedMapping?.drive_file_id === job.drive_file_id) {
+      // Caso A: ya gestionado, coincide. No-op.
+      return { status: "completed" };
+    }
+    // Caso B: el documento existe pero el mapping no coincide (o falta).
+    // 8F reconciliará; aquí nunca se crea un segundo documento.
+    return { status: "failed", reason: "OUTBOUND_MAPPING_REPAIR_REQUIRED" };
+  }
+
+  // 5. canDownload.
+  if (m1.capabilities?.canDownload !== true) {
+    return { status: "failed", reason: "DRIVE_DOWNLOAD_NOT_ALLOWED" };
+  }
+
+  // 6. Preflight de tamaño OBLIGATORIO (Fase 8E.1 Sección 3). Un candidato a
+  // blob sin `size` válido NUNCA procede a `alt=media`: el tope real de
+  // bytes del paso 9 sigue acotando cualquier descarga que sí se intente,
+  // pero eso no es excusa para lanzar una descarga cuyo tamaño declarado no
+  // podemos siquiera confiar de antemano.
+  const declaredSize = parseDriveDeclaredSize(m1.size, MAX_DOCUMENT_SIZE_BYTES);
+  if (declaredSize.kind === "unknown") {
+    return { status: "failed", reason: "DRIVE_FILE_SIZE_UNKNOWN" };
+  }
+  if (declaredSize.kind === "too_large") {
+    return { status: "failed", reason: "DOCUMENT_TOO_LARGE" };
+  }
+
+  // 7. Resolver Cliente por el padre DIRECTO. Solo hijos directos de una
+  // carpeta de Cliente vinculada son candidatos en V1 (Sección 7): una
+  // subcarpeta interna ("Expediente 2025/demanda.pdf") NUNCA se interpreta
+  // automáticamente, porque eso sería inferencia jurídica.
+  const parents = m1.parents ?? [];
+  const { data: candidateFolders } = parents.length
+    ? await db
+        .from("google_drive_client_folders")
+        .select("client_id, drive_folder_id")
+        .eq("connection_id", connection.id)
+        .eq("sync_status", "synced")
+        .in("drive_folder_id", parents)
+    : { data: [] as Array<{ client_id: string; drive_folder_id: string }> };
+  const matches = candidateFolders ?? [];
+  if (matches.length === 0) return { status: "failed", reason: "DRIVE_PARENT_UNLINKED" };
+  if (matches.length > 1) return { status: "failed", reason: "DRIVE_PARENT_AMBIGUOUS" };
+  const { client_id: clientId, drive_folder_id: parentFolderId } = matches[0];
+
+  // 8. La carpeta del Cliente pudo haberse movido externamente desde que se
+  // vinculó. Se revalida en vivo: sigue siendo carpeta, no está en la
+  // papelera, y su padre sigue siendo la raíz configurada (Sección 16 --
+  // la misma regla que 8F usará para DRIVE_PARENT_MISMATCH).
+  const folderMeta = await getDriveFile(accessToken, parentFolderId, scope);
+  if (
+    !folderMeta ||
+    folderMeta.mimeType !== DRIVE_FOLDER_MIME_TYPE ||
+    folderMeta.trashed ||
+    !folderMeta.parents?.includes(rootFolderId)
+  ) {
+    return { status: "failed", reason: "DRIVE_PARENT_MISMATCH" };
+  }
+
+  // 9. Descarga con tope REAL de bytes -- nunca confiar solo en
+  // metadata.size (Sección 19).
+  let bytes: Uint8Array;
+  try {
+    bytes = await downloadDriveFileBounded(
+      accessToken,
+      job.drive_file_id,
+      MAX_DOCUMENT_SIZE_BYTES,
+      scope,
+      declaredSize.bytes,
+    );
+  } catch (cause) {
+    if (cause instanceof DriveDownloadTooLargeError) {
+      return { status: "failed", reason: "DOCUMENT_TOO_LARGE" };
+    }
+    if (cause instanceof DriveDownloadStreamUnavailableError) {
+      // Sin stream no hay forma segura de acotar: nunca se cae a
+      // arrayBuffer(). Se trata como transitorio -- el siguiente intento
+      // vuelve a pedir metadata fresca y a intentar la descarga en
+      // streaming (Fase 8E.1 Sección 4).
+      return { status: "retry", reason: "DRIVE_DOWNLOAD_STREAM_UNAVAILABLE" };
+    }
+    if (cause instanceof DriveDownloadSizeMismatchError) {
+      // Los bytes reales no coinciden con metadata.size: la misma clase de
+      // problema que M1/M2 detecta, visto más temprano (Sección 5).
+      return { status: "retry", reason: "DRIVE_DOWNLOAD_SIZE_MISMATCH" };
+    }
+    const reason = sanitizeReason(String((cause as Error)?.message ?? "drive_error"));
+    return isRetryableDriveFailure(cause)
+      ? { status: "retry", reason }
+      : { status: "failed", reason };
+  }
+
+  // 10. Drive es externo: puede cambiar entre "voy a descargar" y "ya
+  // descargué" (Sección 17). Si M2 difiere de M1 en cualquier campo
+  // relevante, NO se escribe nada -- se reintenta contra el estado actual.
+  const m2 = await getDriveFileMetadata(accessToken, job.drive_file_id, scope);
+  if (!m2 || !driveFileMetadataUnchanged(m1, m2)) {
+    return { status: "retry", reason: "DRIVE_FILE_CHANGED_RETRY" };
+  }
+
+  // 11. Integridad: MD5 de Drive verifica la descarga; SHA-256 es el
+  // baseline propio del CRM. Nunca se sustituye uno por otro (Sección 21).
+  if (m2.md5Checksum && md5Hex(bytes) !== m2.md5Checksum) {
+    return { status: "retry", reason: "DRIVE_DOWNLOAD_CHECKSUM_MISMATCH" };
+  }
+  const contentHash = await sha256Hex(bytes);
+
+  // 12. Mismas reglas documentales que una subida manual -- ni una
+  // allowlist paralela para Drive (Sección 20). Un archivo que una subida
+  // manual equivalente rechazaría tampoco entra por aquí.
+  try {
+    validateDocumentFile({ name: m2.name, size: bytes.length, type: m2.mimeType ?? "" });
+  } catch (cause) {
+    return { status: "failed", reason: sanitizeReason(String((cause as Error)?.message ?? "")) };
+  }
+
+  // 13. Reserva durable (Sección 22/23): se persiste UNA sola vez en el
+  // payload de la propia fila de la cola. Un reintento tras un crash lee
+  // exactamente el mismo target_document_id y el mismo storage_path --
+  // nunca genera un UUID nuevo ni cambia el path por un posible renombrado
+  // de Drive detectado mientras tanto (eso ya habría disparado
+  // DRIVE_FILE_CHANGED_RETRY en el paso 10 de ESTE intento).
+  let targetDocumentId = job.payload?.target_document_id as string | undefined;
+  let storagePath = job.payload?.storage_path as string | undefined;
+  if (!targetDocumentId || !storagePath) {
+    targetDocumentId = crypto.randomUUID();
+    const safeName = m2.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    storagePath = `google-drive/${clientId}/${targetDocumentId}_${safeName}`;
+    const { error: payloadError } = await db
+      .from("google_drive_sync_queue")
+      .update({ payload: { target_document_id: targetDocumentId, storage_path: storagePath } })
+      .eq("id", job.id);
+    if (payloadError) return { status: "retry", reason: sanitizeReason(payloadError.message) };
+  }
+
+  // 14. Storage: `upsert:false` siempre. Si el path reservado ya tiene un
+  // objeto (crash previo entre Storage y la finalización en BD), se
+  // reutiliza solo si el hash coincide -- nunca se sobrescribe en silencio
+  // (Sección 24/25).
+  let storageOutcome;
+  try {
+    storageOutcome = await writeDocumentToStorageIdempotent(
+      db as never,
+      storagePath,
+      bytes,
+      m2.mimeType ?? "application/octet-stream",
+      contentHash,
+    );
+  } catch (cause) {
+    return { status: "retry", reason: sanitizeReason(String((cause as Error)?.message ?? "")) };
+  }
+  if (storageOutcome.kind === "conflict") {
+    return { status: "failed", reason: "STORAGE_IMPORT_IDENTITY_CONFLICT" };
+  }
+
+  // 15. Finalización atómica (documents + google_drive_document_files en
+  // UNA transacción -- Sección 27/28).
+  const { data, error } = await db.rpc("finalize_google_drive_import", {
+    p_connection_id: connection.id,
+    p_expected_root_folder_id: rootFolderId,
+    p_client_id: clientId,
+    p_target_document_id: targetDocumentId,
+    p_drive_file_id: job.drive_file_id,
+    p_drive_parent_id: parentFolderId,
+    p_storage_path: storagePath,
+    p_name: m2.name,
+    p_mime_type: m2.mimeType ?? "application/octet-stream",
+    p_size_label: formatDocumentSizeLabel(bytes.length),
+    p_file_size: bytes.length,
+    p_content_hash: contentHash,
+    p_web_view_link: m2.webViewLink ?? null,
+    p_drive_modified_time: m2.modifiedTime ?? null,
+    p_drive_version: m2.version ? Number(m2.version) : null,
+    p_drive_md5: m2.md5Checksum ?? null,
+  });
+
+  if (error) {
+    const message = error.message;
+    if (
+      message.includes("DRIVE_FILE_ALREADY_IMPORTED") ||
+      message.includes("IMPORT_IDENTITY_CONFLICT")
+    ) {
+      // Otro worker ganó la carrera de forma PERMANENTE (no es un error
+      // transitorio/de BD, que en cambio debe conservar el blob para el
+      // reintento -- Sección 17): nuestro target_document_id NUNCA llegó a
+      // insertarse (la RPC es atómica), así que la reserva de Storage de
+      // ESTE intento -- recién escrita o reutilizada de un crash previo por
+      // igual, Sección 12 -- quedó huérfana. Se compensa best-effort, pero
+      // solo tras confirmar contra la propia base de datos que ningún
+      // documento la referencia (Sección 11/13): la condición de seguridad
+      // nunca depende de si fuimos nosotros quienes la creamos.
+      await cleanupOrphanedStorageObject(db, storagePath);
+      // El archivo YA está importado (por otro worker): el objetivo de
+      // sincronización está cumplido, no es un fallo que requiera revisión.
+      return { status: "completed" };
+    }
+    if (message.includes("DRIVE_NOT_CONNECTED")) {
+      return { status: "retry", reason: "DRIVE_NOT_CONNECTED" };
+    }
+    if (message.includes("DRIVE_ROOT_CHANGED_RETRY")) {
+      return { status: "retry", reason: "DRIVE_ROOT_CHANGED_RETRY" };
+    }
+    if (message.includes("CLIENT_FOLDER_CHANGED_RETRY")) {
+      return { status: "retry", reason: "CLIENT_FOLDER_CHANGED_RETRY" };
+    }
+    // Error de BD desconocido: nunca se propaga el texto crudo de
+    // PostgreSQL, y el blob de Storage se conserva para el reintento.
+    return { status: "retry", reason: sanitizeReason(message) };
+  }
+
+  void data;
+  return { status: "completed" };
+}
+
+/**
+ * Compensación de Storage para una reserva que perdió PERMANENTEMENTE la
+ * carrera de finalización (Fase 8E.1 Sección 8-16).
+ *
+ * Nunca se borra a ciegas. Antes de intentar `remove`, se pregunta a la
+ * propia base de datos si algún documento real ya referencia ese
+ * `storage_path` -- da igual si fuimos nosotros quienes lo creamos en este
+ * intento o si lo reutilizamos de un crash anterior (Sección 12): la única
+ * garantía válida es "¿algo lo referencia ahora mismo?", nunca una bandera
+ * derivada de qué hizo ESTE intento. Si hay cualquier referencia, no se
+ * toca -- podría ser evidencia jurídica real de otro documento.
+ *
+ * El propio `remove` es best-effort: un fallo aquí no cambia el resultado
+ * semántico de la finalización (el import ya terminó como `completed`
+ * porque el objetivo -- que el archivo esté sincronizado -- está cumplido
+ * por el ganador) ni se reintenta dentro de este worker. Puede quedar un
+ * objeto huérfano ocasional; una reconciliación operativa futura (Fase 8F o
+ * posterior) puede detectarlo, este worker no lo persigue indefinidamente.
+ */
+async function cleanupOrphanedStorageObject(
+  db: ReturnType<typeof adminClient>,
+  storagePath: string,
+): Promise<void> {
+  const { data: referencing } = await db
+    .from("documents")
+    .select("id")
+    .eq("storage_path", storagePath)
+    .maybeSingle();
+  if (referencing) return;
+  await db.storage
+    .from("documents")
+    .remove([storagePath])
+    .catch(() => {});
+}
+
 // ── procesador ───────────────────────────────────────────────────────────
 /** Nunca se propaga texto crudo de Google ni de PostgreSQL. */
 function sanitizeReason(message: string): string {
@@ -879,8 +1271,10 @@ async function dispatch(
       // El helper de Drive existe, pero el CRM todavía no permite reemplazar
       // el contenido de un documento, así que nada puede encolar esto.
       return { status: "failed", reason: "OPERATION_NOT_IMPLEMENTED" };
+    case "import_drive_file":
+      return handleImportDriveFile(job, context, accessToken);
     default:
-      // poll_changes / import_drive_file: Drive -> CRM, Fases 8E/8F.
+      // poll_changes: descubrimiento automático Drive -> CRM, Fase 8F.
       return { status: "failed", reason: "OPERATION_NOT_IMPLEMENTED" };
   }
 }

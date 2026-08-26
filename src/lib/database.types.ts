@@ -2170,6 +2170,27 @@ export type Database = {
         };
         Returns: Json;
       };
+      finalize_google_drive_import: {
+        Args: {
+          p_connection_id: string;
+          p_expected_root_folder_id: string;
+          p_client_id: string;
+          p_target_document_id: string;
+          p_drive_file_id: string;
+          p_drive_parent_id: string;
+          p_storage_path: string;
+          p_name: string;
+          p_mime_type: string;
+          p_size_label: string;
+          p_file_size: number;
+          p_content_hash: string;
+          p_web_view_link: string | null;
+          p_drive_modified_time: string | null;
+          p_drive_version: number | null;
+          p_drive_md5: string | null;
+        };
+        Returns: Json;
+      };
       set_google_drive_root_folder: {
         Args: {
           p_connection_id: string;

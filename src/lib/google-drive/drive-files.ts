@@ -48,6 +48,10 @@ export interface DriveFileResource {
   trashed?: boolean;
   appProperties?: Record<string, string>;
   driveId?: string;
+  /** Solo poblado por getDriveFileMetadata (Fase 8E). Drive lo da como string. */
+  size?: string;
+  /** Solo poblado por getDriveFileMetadata (Fase 8E). */
+  capabilities?: { canDownload?: boolean };
 }
 
 export interface DriveScope {
@@ -138,6 +142,231 @@ export async function getDriveFile(
     if (isDriveHttpError(cause) && cause.status === 404) return null;
     throw cause;
   }
+}
+
+// ── metadata inbound (Fase 8E) ────────────────────────────────────────────
+/**
+ * Campos para leer un archivo DESCUBIERTO en Drive (Drive -> CRM), no uno
+ * que el CRM haya creado. Extiende `DRIVE_FILE_FIELDS` con `size` (para
+ * rechazar por tamaño antes de descargar) y `capabilities/canDownload` (para
+ * no intentar `alt=media` sobre algo que Drive ya sabe que no se puede
+ * descargar). Sin `owners`, `permissions` completas, `description` ni
+ * `contentHints`/`sharingUser`: minimización de datos, igual criterio que el
+ * resto del módulo.
+ */
+export const DRIVE_INBOUND_FILE_FIELDS = `${DRIVE_FILE_FIELDS},size,capabilities(canDownload)`;
+
+/** Igual que getDriveFile, pero pidiendo los campos adicionales de inbound. */
+export async function getDriveFileMetadata(
+  accessToken: string,
+  fileId: string,
+  scope: DriveScope = {},
+): Promise<DriveFileResource | null> {
+  const params = scopedParams({ fields: DRIVE_INBOUND_FILE_FIELDS }, scope);
+  try {
+    return await driveJson<DriveFileResource>(
+      `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params}`,
+      accessToken,
+    );
+  } catch (cause) {
+    if (isDriveHttpError(cause) && cause.status === 404) return null;
+    throw cause;
+  }
+}
+
+/**
+ * ¿Estos dos snapshots de metadata describen el mismo estado del archivo?
+ * (Fase 8E Sección 17 -- doble comprobación entre "voy a descargar" y "ya
+ * descargué", porque Drive es externo y puede cambiar entre medias.)
+ *
+ * Compara identidad, versión, momento de modificación, padres, papelera,
+ * nombre y -- cuando existe -- el checksum. Cualquier diferencia significa
+ * que no es seguro escribir lo que se descargó: hay que reintentar contra el
+ * estado actual, nunca guardar un snapshot incoherente.
+ */
+export function driveFileMetadataUnchanged(
+  before: DriveFileResource,
+  after: DriveFileResource,
+): boolean {
+  return (
+    before.id === after.id &&
+    before.version === after.version &&
+    before.modifiedTime === after.modifiedTime &&
+    before.trashed === after.trashed &&
+    before.name === after.name &&
+    JSON.stringify(before.parents ?? []) === JSON.stringify(after.parents ?? []) &&
+    (!before.md5Checksum || before.md5Checksum === after.md5Checksum)
+  );
+}
+
+// ── clasificación de tipo (Fase 8E) ───────────────────────────────────────
+const GOOGLE_APPS_MIME_PREFIX = "application/vnd.google-apps.";
+export const DRIVE_SHORTCUT_MIME_TYPE = "application/vnd.google-apps.shortcut";
+
+export type UnsupportedDriveEntryReason =
+  "GOOGLE_WORKSPACE_FILE_UNSUPPORTED" | "DRIVE_ENTRY_NOT_IMPORTABLE";
+
+/**
+ * V1 solo importa "blob files" (PDF, DOCX, imágenes, hojas de cálculo de
+ * Office, etc. -- cualquier cosa con bytes reales descargables tal cual).
+ * Los tipos nativos de Google Workspace (Docs/Sheets/Slides/Drawings/
+ * Forms/Scripts/Sites/Jam...) no tienen bytes propios: requerirían
+ * `files.export` para convertirlos a un formato de blob, lo que implica
+ * decisiones de formato y una copia-snapshot que esta fase delibera-
+ * damente NO toma (ver documentación operativa). Carpetas y accesos
+ * directos tampoco son documentos importables.
+ *
+ * Devuelve `null` cuando el tipo SÍ es un blob importable.
+ */
+export function classifyUnsupportedDriveEntry(
+  mimeType: string | undefined,
+): UnsupportedDriveEntryReason | null {
+  if (!mimeType) return null;
+  if (mimeType === DRIVE_FOLDER_MIME_TYPE || mimeType === DRIVE_SHORTCUT_MIME_TYPE) {
+    return "DRIVE_ENTRY_NOT_IMPORTABLE";
+  }
+  if (mimeType.startsWith(GOOGLE_APPS_MIME_PREFIX)) return "GOOGLE_WORKSPACE_FILE_UNSUPPORTED";
+  return null;
+}
+
+// ── tamaño declarado (Fase 8E.1) ────────────────────────────────────────────
+export type DriveDeclaredSize =
+  { kind: "ok"; bytes: number } | { kind: "unknown" } | { kind: "too_large" };
+
+/** Solo dígitos decimales, sin signo -- el formato real que devuelve Drive. */
+const DRIVE_SIZE_PATTERN = /^\d{1,18}$/;
+
+/**
+ * Parsea `metadata.size` de forma segura ANTES de gastar una petición de
+ * descarga (Fase 8E.1 Sección 3). `size` es un string en la respuesta de
+ * Drive: convertirlo con `Number(...)` sin validar el formato admitiría
+ * basura (vacío, negativo, notación científica, `NaN`) como si fuera un
+ * tamaño válido. Se usa `BigInt` para comparar contra `maxBytes` sin riesgo
+ * de overflow de precisión de `Number` en archivos absurdamente grandes,
+ * volviendo a `Number` solo una vez confirmado que el valor cabe dentro del
+ * límite real del CRM (unos pocos MB).
+ *
+ * `unknown` cubre tanto "no vino `size`" como "vino con un formato que no
+ * podemos confiar": en ambos casos el llamador debe rechazar el archivo
+ * ANTES de intentar `alt=media`, nunca proceder a una descarga cuyo tamaño
+ * real desconocemos de antemano.
+ */
+export function parseDriveDeclaredSize(
+  size: string | undefined,
+  maxBytes: number,
+): DriveDeclaredSize {
+  if (!size || !DRIVE_SIZE_PATTERN.test(size)) return { kind: "unknown" };
+  const asBigInt = BigInt(size);
+  if (asBigInt > BigInt(maxBytes)) return { kind: "too_large" };
+  return { kind: "ok", bytes: Number(asBigInt) };
+}
+
+// ── descarga acotada (Fase 8E) ─────────────────────────────────────────────
+export class DriveDownloadTooLargeError extends Error {
+  constructor() {
+    super("El archivo de Drive supera el límite permitido de tamaño.");
+    this.name = "DriveDownloadTooLargeError";
+  }
+}
+
+/**
+ * El cuerpo de la respuesta no llegó como stream (Fase 8E.1 Sección 4).
+ *
+ * Deliberadamente NO existe una ruta de recuperación con `arrayBuffer()`:
+ * eso materializaría la respuesta completa en memoria ANTES de poder
+ * comprobar ningún tope, exactamente lo que el streaming acotado existe para
+ * evitar. Sin `response.body`, no hay forma segura de acotar la descarga --
+ * se falla de forma clasificable (normalmente transitorio: un runtime/fetch
+ * que en ese momento no expone streaming).
+ */
+export class DriveDownloadStreamUnavailableError extends Error {
+  constructor() {
+    super("La respuesta de Drive no llegó como stream.");
+    this.name = "DriveDownloadStreamUnavailableError";
+  }
+}
+
+/**
+ * Los bytes realmente descargados no coinciden con `metadata.size`
+ * (Fase 8E.1 Sección 5). No sustituye a la doble comprobación M1/M2: es una
+ * verificación adicional barata que puede detectar antes la misma clase de
+ * problema (el archivo cambió mientras se descargaba).
+ */
+export class DriveDownloadSizeMismatchError extends Error {
+  constructor() {
+    super("El tamaño descargado no coincide con el tamaño declarado por Drive.");
+    this.name = "DriveDownloadSizeMismatchError";
+  }
+}
+
+/**
+ * Descarga el contenido de un blob, con un tope REAL de bytes -- nunca se
+ * confía solo en `metadata.size` (puede faltar, o estar desactualizado si el
+ * archivo cambió). Se lee el cuerpo como stream y se cuenta cada chunk; en
+ * cuanto se supera `maxBytes` se aborta la lectura sin haber acumulado el
+ * archivo completo en memoria y sin escribir nada en Storage.
+ *
+ * `expectedSize`, cuando se pasa, es el `metadata.size` ya validado por el
+ * llamador (Sección 3): si los bytes reales no coinciden al terminar, se
+ * lanza `DriveDownloadSizeMismatchError` en vez de devolver un contenido que
+ * no es el que Drive anunció.
+ *
+ * No usa `webContentLink` (requiere flujo de navegador) ni ninguna URL
+ * firmada de Google: la autorización va siempre en la cabecera
+ * `Authorization`, resuelta server-side.
+ */
+export async function downloadDriveFileBounded(
+  accessToken: string,
+  fileId: string,
+  maxBytes: number,
+  scope: DriveScope = {},
+  expectedSize?: number,
+): Promise<Uint8Array> {
+  const params = scopedParams({ alt: "media" }, scope);
+  const response = await fetch(`${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?${params}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    await response.text().catch(() => "");
+    throw new DriveHttpError(response.status);
+  }
+
+  // Defensa adicional barata (Sección 6): si Google manda Content-Length y
+  // YA excede el tope, ni siquiera hace falta empezar a leer el cuerpo. No
+  // es obligatoria -- si falta o no es numérica, se ignora y el contador de
+  // stream real (abajo) sigue siendo la autoridad.
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw new DriveDownloadTooLargeError();
+  }
+
+  if (!response.body) throw new DriveDownloadStreamUnavailableError();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new DriveDownloadTooLargeError();
+    }
+    chunks.push(value);
+  }
+  if (expectedSize !== undefined && total !== expectedSize) {
+    throw new DriveDownloadSizeMismatchError();
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }
 
 // ── create folder ────────────────────────────────────────────────────────

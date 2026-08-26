@@ -23,6 +23,9 @@ const doc = read("server-release/docs/GOOGLE_DRIVE_CONFIGURATION.md");
 
 // ── migración ────────────────────────────────────────────────────────────
 describe("Fase 8D — migración incremental", () => {
+  // Fase 8E añadió su propia migración incremental (20260825110000); las
+  // tres anteriores siguen intactas -- este test protege eso, no un
+  // recuento cerrado que nunca pueda crecer.
   it("las migraciones de Drive ya commiteadas no se tocan", () => {
     const driveMigrations = readdirSync("supabase/migrations")
       .filter((name) => name.includes("google_drive"))
@@ -31,6 +34,7 @@ describe("Fase 8D — migración incremental", () => {
       "20260824100000_google_drive_sync_foundation.sql",
       "20260824110000_google_drive_client_folder_onboarding.sql",
       "20260825100000_google_drive_crm_to_drive.sql",
+      "20260825110000_google_drive_drive_to_crm_import.sql",
     ]);
   });
 
@@ -247,7 +251,7 @@ describe("Fase 8D — Drive -> CRM sigue sin implementarse", () => {
     }
   });
 
-  it("el procesador rechaza de forma segura las operaciones de las fases siguientes", () => {
+  it("el procesador rechaza de forma segura la operación que sigue perteneciendo a una fase futura", () => {
     expect(sync).toContain("OPERATION_NOT_IMPLEMENTED");
     const start = sync.indexOf("async function dispatch");
     const body = sync.slice(start, sync.indexOf("\nasync function requeue", start));
@@ -255,9 +259,12 @@ describe("Fase 8D — Drive -> CRM sigue sin implementarse", () => {
     expect(body).toContain('case "upload_document"');
     expect(body).toContain('case "rename_document"');
     expect(body).toContain('case "trash_document"');
-    // poll_changes / import_drive_file caen en el default sin tocar Google.
+    // Fase 8E implementó el consumidor de import_drive_file (ver
+    // tests/google-drive-inbound-import.test.ts). poll_changes (el
+    // descubrimiento automático que lo alimentaría) sigue siendo Fase 8F y
+    // cae en el default sin tocar Google.
+    expect(body).toContain('case "import_drive_file"');
     expect(body).not.toContain('case "poll_changes"');
-    expect(body).not.toContain('case "import_drive_file"');
   });
 
   it("update_document no tiene productor porque el CRM no ofrece reemplazar contenido", () => {

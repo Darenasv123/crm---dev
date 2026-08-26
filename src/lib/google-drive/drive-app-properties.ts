@@ -82,3 +82,45 @@ export function matchesDocumentIdentity(
     appProperties?.crm_client_id === clientId
   );
 }
+
+// ── Fase 8E: clasificación de propiedad para archivos descubiertos en Drive
+/**
+ * Al importar un archivo que apareció manualmente en Drive, lo primero que
+ * hay que descartar es que en realidad NO sea manual: pudo haberlo creado el
+ * propio CRM (una subida outbound) o pudo ser el rastro de un documento que
+ * el CRM ya borró. Tratar cualquiera de esos casos como "documento nuevo"
+ * sería gravísimo -- en el segundo caso, literalmente resucitaría un
+ * documento que alguien eliminó a propósito.
+ *
+ * "unmanaged": sin `crm_entity`. Candidato normal a import.
+ * "known_document": `crm_entity="document"` con forma reconocible. El
+ *   llamador debe cruzar `documentId` contra la tabla `documents` del CRM
+ *   para decidir entre "ya gestionado" (existe) o "huérfano" (no existe) --
+ *   esta función es pura y no consulta la base de datos.
+ * "conflict": existe `crm_entity` pero con una forma que no reconocemos
+ *   (falta algún campo, o el valor de `crm_entity` no es ninguno de los
+ *   conocidos). Nunca se ignora en silencio: se trata como un archivo
+ *   posiblemente gestionado por el CRM hasta que una persona lo revise.
+ */
+export type DriveAppPropertyOwnership =
+  | { kind: "unmanaged" }
+  | { kind: "known_document"; documentId: string; clientId: string }
+  | { kind: "conflict" };
+
+export function classifyAppPropertiesOwnership(
+  appProperties: Record<string, string> | undefined,
+): DriveAppPropertyOwnership {
+  const entity = appProperties?.crm_entity;
+  if (entity === undefined) return { kind: "unmanaged" };
+
+  if (entity === DRIVE_ENTITY_DOCUMENT) {
+    const documentId = appProperties?.crm_document_id;
+    const clientId = appProperties?.crm_client_id;
+    if (documentId && clientId) return { kind: "known_document", documentId, clientId };
+    return { kind: "conflict" };
+  }
+
+  // crm_entity="client_folder" (o cualquier otro valor futuro) no es una
+  // forma que un ARCHIVO (no carpeta) deba tener nunca. También conflicto.
+  return { kind: "conflict" };
+}
