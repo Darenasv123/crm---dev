@@ -89,7 +89,14 @@ const OPTIONAL = [
   {
     name: "GOOGLE_DRIVE_MAINTENANCE_SECRET",
     description:
-      "Secreto del cron que procesa la cola CRM -> Drive. Pasa a ser REQUERIDO si Drive está configurado.",
+      "Secreto del cron que procesa la cola CRM -> Drive. Pasa a ser REQUERIDO si Drive está habilitado.",
+  },
+  {
+    name: "GOOGLE_DRIVE_WEBHOOK_URL",
+    description:
+      "URL HTTPS pública del webhook de Drive (Fase 8F). SIEMPRE opcional, incluso con Drive " +
+      "habilitado: sin ella el watch queda deshabilitado y Drive sigue sincronizando por " +
+      "polling periódico (page token + mantenimiento ya cubren la durabilidad).",
   },
   // Correo (Fase 5): deliberadamente OPCIONAL, no REQUIRED. El CRM debe
   // poder arrancar en producción sin Correo configurado -- de hecho, el
@@ -147,31 +154,65 @@ for (const { name, description, default: def } of OPTIONAL) {
   }
 }
 
-// ── Requeridas CONDICIONALMENTE (Fase 8D) ──────────────────────────────
+// ── Requeridas CONDICIONALMENTE (Fase 8I-A.1 — hardening fail-fast) ────
 // Google Drive sigue siendo opcional en su conjunto: el CRM arranca sin él.
-// Pero si el estudio SÍ configuró las credenciales de Drive, la cola de
-// sincronización necesita quien la procese, y eso lo hace el cron a través
-// de /api/google-drive/maintenance. Sin el secreto ese endpoint responde 503
-// y los documentos se quedarían encolados para siempre, en silencio.
-// Por eso: Drive configurado -> el secreto pasa a ser requerido.
-console.log("\n── Requeridas si Google Drive está configurado ──────────────");
-const driveConfigured = ["GOOGLE_DRIVE_CLIENT_ID", "GOOGLE_DRIVE_CLIENT_SECRET"].every(
+// Pero la versión anterior de este bloque solo activaba la comprobación
+// cuando CLIENT_ID Y CLIENT_SECRET estaban AMBOS presentes, lo que dejaba
+// pasar en silencio combinaciones parciales -- por ejemplo, solo CLIENT_ID
+// definida, o CLIENT_ID+SECRET sin REDIRECT_URI -- que arrancarían el
+// servidor con Drive a medio configurar, fallando recién en runtime de
+// forma opaca en vez de fallar aquí, explícito, al arrancar.
+//
+// Regla corregida: CUALQUIERA de las tres variables de OAuth propias de
+// Drive presente ya se interpreta como una señal deliberada de que el
+// estudio empezó a configurarlo -- y en ese caso, las 6 variables núcleo
+// son obligatorias, no un subconjunto. Los secretos compartidos con
+// Calendar (GOOGLE_OAUTH_STATE_SECRET, GOOGLE_TOKEN_ENCRYPTION_KEY) ya son
+// REQUIRED arriba de forma incondicional porque Calendar los exige hoy;
+// se re-verifican aquí explícitamente para que la exigencia de Drive no
+// dependa silenciosamente de que Calendar siga siendo obligatorio en el
+// futuro -- si Calendar alguna vez se vuelve opcional, esta comprobación
+// sigue protegiendo a Drive por sí sola.
+//
+// GOOGLE_DRIVE_WEBHOOK_URL NUNCA se exige aquí, ni siquiera con Drive
+// plenamente habilitado: el watch (Fase 8F) es una optimización de
+// latencia, no la garantía de durabilidad -- esa la dan el page token
+// persistente y este mismo mantenimiento periódico.
+console.log("\n── Requeridas si Google Drive está habilitado ───────────────");
+const DRIVE_ENABLEMENT_SIGNALS = [
+  "GOOGLE_DRIVE_CLIENT_ID",
+  "GOOGLE_DRIVE_CLIENT_SECRET",
+  "GOOGLE_DRIVE_REDIRECT_URI",
+];
+const DRIVE_CORE_VARS = [
+  "GOOGLE_DRIVE_CLIENT_ID",
+  "GOOGLE_DRIVE_CLIENT_SECRET",
+  "GOOGLE_DRIVE_REDIRECT_URI",
+  "GOOGLE_OAUTH_STATE_SECRET",
+  "GOOGLE_TOKEN_ENCRYPTION_KEY",
+  "GOOGLE_DRIVE_MAINTENANCE_SECRET",
+];
+const driveEnabled = DRIVE_ENABLEMENT_SIGNALS.some(
   (name) => (process.env[name] ?? "").trim() !== "",
 );
-if (!driveConfigured) {
-  console.log("  ○ Google Drive no está configurado; no se exige nada adicional.");
+if (!driveEnabled) {
+  console.log("  ○ Google Drive no está habilitado; no se exige nada adicional.");
 } else {
-  const maintenanceSecret = (process.env.GOOGLE_DRIVE_MAINTENANCE_SECRET ?? "").trim();
-  if (!maintenanceSecret) {
-    console.error("  ✗ FALTA: GOOGLE_DRIVE_MAINTENANCE_SECRET");
+  const missingDriveVars = DRIVE_CORE_VARS.filter(
+    (name) => (process.env[name] ?? "").trim() === "",
+  );
+  if (missingDriveVars.length > 0) {
     console.error(
-      "          Google Drive está configurado, así que el cron necesita este secreto " +
-        "para procesar la cola de sincronización. Sin él, /api/google-drive/maintenance " +
-        "responde 503 y nada se sincroniza.",
+      `  ✗ Google Drive configuration is incomplete: missing ${missingDriveVars.join(", ")}`,
+    );
+    console.error(
+      "          Se detectó al menos una variable de OAuth de Drive definida, lo que activa " +
+        "la integración -- en ese estado las 6 variables núcleo son obligatorias " +
+        "(GOOGLE_DRIVE_WEBHOOK_URL es la única excepción y sigue siendo siempre opcional).",
     );
     hasErrors = true;
   } else {
-    console.log("  ✓ GOOGLE_DRIVE_MAINTENANCE_SECRET presente");
+    console.log("  ✓ Google Drive habilitado: las 6 variables núcleo están presentes");
   }
 }
 

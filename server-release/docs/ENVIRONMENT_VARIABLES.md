@@ -1,6 +1,6 @@
 # Variables de Entorno — advocate-nest
 
-**Versión:** 2026-08-01  
+**Versión:** 2026-08-27 (Fase 8I-A: añadidas las variables de Google Drive, ausentes desde su introducción en Fase 8B)  
 **Aplicación:** CRM Jurídico Estudio Arenas
 
 ---
@@ -18,11 +18,19 @@
 | `GOOGLE_CLIENT_ID` | Semipública | Runtime | Sí (si Google Cal.) |
 | `GOOGLE_CLIENT_SECRET` | **PRIVADA** | Runtime | Sí (si Google Cal.) |
 | `GOOGLE_OAUTH_REDIRECT_URI` | Pública | Runtime | Sí (si Google Cal.) |
-| `GOOGLE_OAUTH_STATE_SECRET` | **PRIVADA** | Runtime | Sí (si Google Cal.) |
-| `GOOGLE_TOKEN_ENCRYPTION_KEY` | **PRIVADA** | Runtime | Sí (si Google Cal.) |
+| `GOOGLE_OAUTH_STATE_SECRET` | **PRIVADA** | Runtime | Sí (si Google Cal. **o** Drive) |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | **PRIVADA** | Runtime | Sí (si Google Cal. **o** Drive) |
 | `GOOGLE_CALENDAR_WEBHOOK_URL` | Pública | Runtime | Sí (si Google Cal.) |
 | `GOOGLE_SHARED_CALENDAR_ID` | Pública | Runtime | No |
+| `GOOGLE_DRIVE_CLIENT_ID` | Semipública | Runtime | No, salvo que Drive esté habilitado (ver regla abajo) |
+| `GOOGLE_DRIVE_CLIENT_SECRET` | **PRIVADA** | Runtime | No, salvo que Drive esté habilitado (ídem) |
+| `GOOGLE_DRIVE_REDIRECT_URI` | Pública | Runtime | No, salvo que Drive esté habilitado (ídem) |
+| `GOOGLE_DRIVE_MAINTENANCE_SECRET` | **PRIVADA** | Runtime | No, salvo que Drive esté habilitado (ídem) |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Pública | Runtime | No, **siempre** — incluso con Drive plenamente habilitado (ver regla abajo) |
 | `GROQ_API_KEY` | **PRIVADA** | Runtime | No (si chatbot Lex) |
+
+> **Regla de habilitación de Google Drive** (aplicada literalmente por `scripts/validate-production-env.mjs`, Fase 8I-A.1):
+> si **cualquiera** de `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` está presente, Drive se considera **intencionalmente habilitado** y entonces las **6 variables núcleo** son obligatorias: esas tres más `GOOGLE_OAUTH_STATE_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY` y `GOOGLE_DRIVE_MAINTENANCE_SECRET`. Si **ninguna** de las tres está presente, Drive se considera deshabilitado y no se exige nada adicional. `GOOGLE_DRIVE_WEBHOOK_URL` queda **siempre** fuera de esta regla — el page token persistente más el polling de mantenimiento ya garantizan la durabilidad; el webhook (watch) es solo una optimización de latencia. La mera presencia de los secretos compartidos con Calendar (`GOOGLE_OAUTH_STATE_SECRET`/`GOOGLE_TOKEN_ENCRYPTION_KEY`) **nunca** se interpreta como señal de que Drive está habilitado — solo cuentan las tres variables de OAuth propias de Drive.
 | `VITE_SUPABASE_URL` | Pública | **Build time** | Sí |
 | `VITE_SUPABASE_ANON_KEY` | Pública | **Build time** | Sí |
 | `VITE_GOOGLE_CLIENT_ID` | Pública | **Build time** | No |
@@ -101,16 +109,40 @@ Estas variables son leídas por el servidor Node **en tiempo de ejecución**. Se
 - **Requisito:** Debe estar registrado en Google Cloud Console como "URI de redirección autorizado".
 
 ### `GOOGLE_OAUTH_STATE_SECRET` ⚠️ SECRETO
-- **Uso:** Firmar el parámetro `state` del flujo OAuth (protección CSRF).
+- **Uso:** Firmar el parámetro `state` del flujo OAuth (protección CSRF). **Compartida entre Calendar y Drive** (Fase 8B): es una primitiva criptográfica genérica de firma HMAC, NO una credencial OAuth — Calendar y Drive mantienen `CLIENT_ID`/`CLIENT_SECRET` completamente separados e independientes; solo reutilizan este secreto de firma. Si Drive se conecta antes que Calendar (o viceversa), esta variable ya debe estar presente para cualquiera de los dos.
 - **Generación:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- **⚠️ No rotar sin plan:** cambiar este valor invalida cualquier `state` OAuth en tránsito (ventana de 10 min) para AMBAS integraciones simultáneamente. No genera un valor nuevo salvo incidente de seguridad explícito.
 
 ### `GOOGLE_TOKEN_ENCRYPTION_KEY` ⚠️ SECRETO
-- **Uso:** Cifrar refresh tokens de Google con AES-256-GCM antes de guardarlos en Supabase.
+- **Uso:** Cifrar refresh tokens de Google (Calendar y Drive) con AES-256-GCM antes de guardarlos en Supabase. **Compartida entre Calendar y Drive** por el mismo motivo que la anterior — es una clave de cifrado genérica, no un secreto de un OAuth Client concreto.
 - **Generación:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- **⚠️ No rotar sin plan de migración:** cambiar este valor deja **ilegibles** todos los `encrypted_refresh_token` ya guardados en `google_calendar_connections` y `google_drive_connections` — de las DOS integraciones a la vez, incluso si el incidente solo afectó a una. Rotarla exige reconectar Calendar y Drive por separado después del cambio.
 
 ### `GOOGLE_CALENDAR_WEBHOOK_URL`
 - **Valor:** `https://abogado.consoldi.com/api/google-calendar/webhook`
 - **Requisito:** Debe ser accesible públicamente por los servidores de Google.
+
+### `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` ⚠️ SECRETO (la segunda)
+- **Uso:** OAuth Client de Google **dedicado a Drive**, en un proyecto de Google Cloud separado del de Calendar (ver `GOOGLE_DRIVE_CONFIGURATION.md`, sección de arquitectura de proyecto). Nunca debe coincidir con `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` de Calendar.
+- **Obligatoriedad real (verificada, no asumida — `scripts/validate-production-env.mjs`, hardening Fase 8I-A.1):** ambas son OPCIONALES a nivel de script salvo que Drive esté habilitado. Drive se considera **habilitado** en cuanto **cualquiera** de `GOOGLE_DRIVE_CLIENT_ID` / `GOOGLE_DRIVE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` está presente — no hace falta que las tres lo estén para activar la exigencia. (Antes de este hardening, el script solo activaba la comprobación cuando `CLIENT_ID` y `CLIENT_SECRET` estaban AMBAS presentes, dejando pasar en silencio combinaciones parciales como solo `CLIENT_ID` definida; confirmado como bug real y corregido.)
+
+### `GOOGLE_DRIVE_REDIRECT_URI`
+- **Valor exacto esperado:** `https://abogado.consoldi.com/api/google-drive/callback` (confirmado contra el route real `src/routes/api.google-drive.callback.ts` y la documentación operativa — no asumido).
+- **Requisito:** Debe coincidir EXACTAMENTE (Google exige coincidencia literal, no solo de dominio) con un "Authorized redirect URI" del OAuth Client de Drive en Google Cloud Console.
+
+### `GOOGLE_DRIVE_MAINTENANCE_SECRET` ⚠️ SECRETO
+- **Uso:** Autentica `POST /api/google-drive/maintenance` (header `X-Maintenance-Secret`, comparación en tiempo constante). Es un secreto de máquina-a-máquina, independiente del de Calendar (`GOOGLE_CALENDAR_MAINTENANCE_SECRET`) y del modelo de confianza del webhook (que no usa ningún secreto de mantenimiento, ver más abajo).
+- **Generación:** `openssl rand -hex 32` (mismo criterio que el de Calendar).
+
+**Regla de habilitación de Drive (verificada empíricamente contra el script real, Fase 8I-A.1 — matriz de 7 escenarios A–G):**
+- Ninguna variable de OAuth de Drive presente → Drive deshabilitado → **exit 0**, no se exige nada adicional.
+- Cualquier subconjunto parcial de las 6 variables núcleo (`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REDIRECT_URI`, `GOOGLE_OAUTH_STATE_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY`, `GOOGLE_DRIVE_MAINTENANCE_SECRET`) con al menos una señal de OAuth de Drive presente → **exit 1**, mensaje `Google Drive configuration is incomplete: missing <NOMBRES>` (solo nombres de variables, nunca valores).
+- Las 6 variables núcleo presentes → **exit 0**, con o sin `GOOGLE_DRIVE_WEBHOOK_URL`.
+- Drive deshabilitado pero los secretos compartidos de Calendar (`GOOGLE_OAUTH_STATE_SECRET`/`GOOGLE_TOKEN_ENCRYPTION_KEY`) presentes → **exit 0**: su sola presencia nunca se interpreta como Drive habilitado.
+
+### `GOOGLE_DRIVE_WEBHOOK_URL`
+- **Valor esperado (cuando se use de verdad):** `https://abogado.consoldi.com/api/google-drive/webhook` — HTTPS con certificado válido, nunca `localhost` en producción (Google rechaza/ignora webhooks no verificables).
+- **Obligatoriedad real (verificada):** NUNCA la exige `validate-production-env.mjs`, ni siquiera con las 6 variables núcleo de Drive presentes — comportamiento correcto por diseño, no un descuido: sin ella, `ensureGoogleDriveWatch()` simplemente no crea ningún canal y el polling periódico de mantenimiento seguiría siendo la vía de durabilidad real (ver `GOOGLE_DRIVE_CONFIGURATION.md`).
 
 ### `GROQ_API_KEY` ⚠️ SECRETO
 - **Uso:** API del chatbot Lex. Si no se configura, el chatbot mostrará error.

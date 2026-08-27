@@ -240,11 +240,41 @@ describe("Fase 8D — endpoint de mantenimiento", () => {
     expect(maintenanceRoute).not.toContain("googleapis.com");
   });
 
-  it("el secreto está en .env.example y es requerido solo si Drive está configurado", () => {
+  it("el secreto está en .env.example y es requerido solo si Drive está habilitado", () => {
     expect(envExample).toContain("GOOGLE_DRIVE_MAINTENANCE_SECRET=");
-    expect(validateEnv).toContain("Requeridas si Google Drive está configurado");
-    expect(validateEnv).toContain("driveConfigured");
+    expect(validateEnv).toContain("Requeridas si Google Drive está habilitado");
+    expect(validateEnv).toContain("driveEnabled");
     expect(validateEnv).toContain("GOOGLE_DRIVE_MAINTENANCE_SECRET");
+  });
+
+  it("Fase 8I-A.1: CUALQUIER variable de OAuth de Drive presente activa la exigencia, no solo CLIENT_ID+CLIENT_SECRET juntas", () => {
+    // Bug real corregido: antes solo CLIENT_ID+CLIENT_SECRET (ambas)
+    // activaban la comprobación, dejando pasar en silencio combinaciones
+    // parciales como solo CLIENT_ID definida.
+    expect(validateEnv).toContain("DRIVE_ENABLEMENT_SIGNALS");
+    expect(validateEnv).toMatch(
+      /DRIVE_ENABLEMENT_SIGNALS = \[[\s\S]*GOOGLE_DRIVE_CLIENT_ID[\s\S]*GOOGLE_DRIVE_CLIENT_SECRET[\s\S]*GOOGLE_DRIVE_REDIRECT_URI[\s\S]*\]/,
+    );
+    expect(validateEnv).toContain(".some(");
+  });
+
+  it("Fase 8I-A.1: Drive habilitado exige las 6 variables núcleo, incluyendo los secretos compartidos con Calendar", () => {
+    expect(validateEnv).toMatch(
+      /DRIVE_CORE_VARS = \[[\s\S]*GOOGLE_DRIVE_CLIENT_ID[\s\S]*GOOGLE_DRIVE_CLIENT_SECRET[\s\S]*GOOGLE_DRIVE_REDIRECT_URI[\s\S]*GOOGLE_OAUTH_STATE_SECRET[\s\S]*GOOGLE_TOKEN_ENCRYPTION_KEY[\s\S]*GOOGLE_DRIVE_MAINTENANCE_SECRET[\s\S]*\]/,
+    );
+  });
+
+  it("Fase 8I-A.1: GOOGLE_DRIVE_WEBHOOK_URL nunca forma parte de las variables núcleo exigidas", () => {
+    const coreVarsBlock = validateEnv.slice(
+      validateEnv.indexOf("const DRIVE_CORE_VARS"),
+      validateEnv.indexOf("];", validateEnv.indexOf("const DRIVE_CORE_VARS")),
+    );
+    expect(coreVarsBlock).not.toContain("GOOGLE_DRIVE_WEBHOOK_URL");
+  });
+
+  it("Fase 8I-A.1: el mensaje de error de Drive incompleto solo enumera nombres, nunca valores", () => {
+    expect(validateEnv).toContain("Google Drive configuration is incomplete: missing");
+    expect(validateEnv).toContain('missingDriveVars.join(", ")');
   });
 });
 
