@@ -1150,9 +1150,12 @@ describe("Fase 8D — papelera segura", () => {
 // ── procesador ───────────────────────────────────────────────────────────
 describe("Fase 8D — procesador de la cola", () => {
   // Fase 8E implementó import_drive_file (ver tests/google-drive-inbound-import.test.ts);
-  // poll_changes (descubrimiento automático) sigue siendo Fase 8F.
+  // Fase 8F implementó poll_changes (ver
+  // tests/google-drive-automatic-sync-*.test.ts). Solo update_document
+  // sigue sin productor real -- el CRM no ofrece reemplazar el contenido
+  // de un documento.
   it("las operaciones que siguen sin implementarse no se procesan y no llaman a Google", async () => {
-    for (const operation of ["poll_changes", "update_document"]) {
+    for (const operation of ["update_document"]) {
       tables.google_drive_sync_queue = [
         {
           id: 1,

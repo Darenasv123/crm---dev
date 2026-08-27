@@ -229,13 +229,18 @@ describe("Fase 8B.1 — schema: encrypted_refresh_token nullable + invariante po
     // Ninguna migración posterior re-crea ni destruye la estructura de la
     // fundación. Evolucionar el esquema sí está permitido -- Fase 8D cambia
     // deliberadamente la FK de la cola a ON DELETE SET NULL para que el
-    // trabajo de papelera sobreviva al borrado del documento -- pero volver
-    // a crear una tabla de la fundación o eliminarla no lo está.
+    // trabajo de papelera sobreviva al borrado del documento, y Fase 8F
+    // sustituye el índice único de "un solo canal activo" por uno que
+    // admite el solapamiento controlado de la renovación (Sección 67/68:
+    // el índice original impedía crear el canal nuevo antes de detener el
+    // viejo) -- pero volver a crear una tabla de la fundación o eliminarla
+    // no lo está.
     for (const file of driveMigrations) {
       if (file.includes("sync_foundation")) continue;
       const source = read(`supabase/migrations/${file}`);
       expect(source).not.toMatch(/create table[\s\S]{0,80}google_drive/i);
       expect(source).not.toMatch(/drop table[\s\S]{0,80}google_drive/i);
+      if (file.includes("automatic_sync")) continue;
       expect(source).not.toMatch(/drop index[\s\S]{0,80}google_drive/i);
     }
   });

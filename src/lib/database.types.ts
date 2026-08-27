@@ -1133,6 +1133,7 @@ export type Database = {
           last_message_number: number | null;
           resource_id: string;
           stopped_at: string | null;
+          superseded_at: string | null;
           updated_at: string;
         };
         Insert: {
@@ -1145,6 +1146,7 @@ export type Database = {
           last_message_number?: number | null;
           resource_id: string;
           stopped_at?: string | null;
+          superseded_at?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -1157,6 +1159,7 @@ export type Database = {
           last_message_number?: number | null;
           resource_id?: string;
           stopped_at?: string | null;
+          superseded_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -1366,6 +1369,7 @@ export type Database = {
           last_message_number: number | null;
           resource_id: string;
           stopped_at: string | null;
+          superseded_at: string | null;
           updated_at: string;
         };
         Insert: {
@@ -1378,6 +1382,7 @@ export type Database = {
           last_message_number?: number | null;
           resource_id: string;
           stopped_at?: string | null;
+          superseded_at?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -1390,6 +1395,7 @@ export type Database = {
           last_message_number?: number | null;
           resource_id?: string;
           stopped_at?: string | null;
+          superseded_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -1475,6 +1481,7 @@ export type Database = {
       google_drive_connections: {
         Row: {
           access_token_expires_at: string | null;
+          changes_initialized_at: string | null;
           changes_page_token: string | null;
           connected_by: string;
           created_at: string;
@@ -1482,8 +1489,11 @@ export type Database = {
           google_account_email: string | null;
           granted_scopes: string | null;
           id: string;
+          last_changes_polled_at: string | null;
           last_error: string | null;
+          last_reconciled_at: string | null;
           last_synced_at: string | null;
+          reconciliation_claimed_at: string | null;
           root_folder_id: string | null;
           root_folder_name: string | null;
           shared_drive_id: string | null;
@@ -1492,6 +1502,7 @@ export type Database = {
         };
         Insert: {
           access_token_expires_at?: string | null;
+          changes_initialized_at?: string | null;
           changes_page_token?: string | null;
           connected_by: string;
           created_at?: string;
@@ -1499,8 +1510,11 @@ export type Database = {
           google_account_email?: string | null;
           granted_scopes?: string | null;
           id?: string;
+          last_changes_polled_at?: string | null;
           last_error?: string | null;
+          last_reconciled_at?: string | null;
           last_synced_at?: string | null;
+          reconciliation_claimed_at?: string | null;
           root_folder_id?: string | null;
           root_folder_name?: string | null;
           shared_drive_id?: string | null;
@@ -1509,6 +1523,7 @@ export type Database = {
         };
         Update: {
           access_token_expires_at?: string | null;
+          changes_initialized_at?: string | null;
           changes_page_token?: string | null;
           connected_by?: string;
           created_at?: string;
@@ -1516,8 +1531,11 @@ export type Database = {
           google_account_email?: string | null;
           granted_scopes?: string | null;
           id?: string;
+          last_changes_polled_at?: string | null;
           last_error?: string | null;
+          last_reconciled_at?: string | null;
           last_synced_at?: string | null;
+          reconciliation_claimed_at?: string | null;
           root_folder_id?: string | null;
           root_folder_name?: string | null;
           shared_drive_id?: string | null;
@@ -2191,6 +2209,66 @@ export type Database = {
         };
         Returns: Json;
       };
+      initialize_google_drive_change_token: {
+        Args: { p_connection_id: string; p_start_page_token: string };
+        Returns: Json;
+      };
+      advance_google_drive_change_token: {
+        Args: {
+          p_connection_id: string;
+          p_expected_current_token: string | null;
+          p_new_token: string;
+        };
+        Returns: Json;
+      };
+      claim_google_drive_reconciliation: {
+        Args: { p_connection_id: string; p_stale_after_seconds?: number };
+        Returns: Json;
+      };
+      complete_google_drive_reconciliation: {
+        Args: { p_connection_id: string };
+        Returns: undefined;
+      };
+      rotate_google_drive_channel: {
+        Args: {
+          p_connection_id: string;
+          p_old_channel_id: string | null;
+          p_new_channel_id: string;
+          p_new_resource_id: string;
+          p_new_channel_token_hash: string;
+          p_new_expires_at: string;
+        };
+        Returns: {
+          channel_id: string;
+          channel_token_hash: string;
+          connection_id: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          last_message_number: number | null;
+          resource_id: string;
+          stopped_at: string | null;
+          superseded_at: string | null;
+          updated_at: string;
+        };
+      };
+      repair_google_drive_document_mapping: {
+        Args: {
+          p_connection_id: string;
+          p_expected_root_folder_id: string;
+          p_document_id: string;
+          p_client_id: string;
+          p_drive_file_id: string;
+          p_drive_parent_id: string;
+          p_name: string;
+          p_web_view_link: string | null;
+          p_drive_modified_time: string | null;
+          p_drive_version: number | null;
+          p_drive_md5: string | null;
+          p_content_hash: string | null;
+        };
+        Returns: Json;
+      };
       set_google_drive_root_folder: {
         Args: {
           p_connection_id: string;
@@ -2211,6 +2289,7 @@ export type Database = {
         };
         Returns: {
           access_token_expires_at: string | null;
+          changes_initialized_at: string | null;
           changes_page_token: string | null;
           connected_by: string;
           created_at: string;
@@ -2218,8 +2297,11 @@ export type Database = {
           google_account_email: string | null;
           granted_scopes: string | null;
           id: string;
+          last_changes_polled_at: string | null;
           last_error: string | null;
+          last_reconciled_at: string | null;
           last_synced_at: string | null;
+          reconciliation_claimed_at: string | null;
           root_folder_id: string | null;
           root_folder_name: string | null;
           shared_drive_id: string | null;
@@ -2231,6 +2313,7 @@ export type Database = {
         Args: never;
         Returns: {
           access_token_expires_at: string | null;
+          changes_initialized_at: string | null;
           changes_page_token: string | null;
           connected_by: string;
           created_at: string;
@@ -2238,8 +2321,11 @@ export type Database = {
           google_account_email: string | null;
           granted_scopes: string | null;
           id: string;
+          last_changes_polled_at: string | null;
           last_error: string | null;
+          last_reconciled_at: string | null;
           last_synced_at: string | null;
+          reconciliation_claimed_at: string | null;
           root_folder_id: string | null;
           root_folder_name: string | null;
           shared_drive_id: string | null;

@@ -69,14 +69,30 @@ import {
   writeDocumentToStorageIdempotent,
 } from "./drive-storage.server";
 import {
+  generateGoogleDriveChannelToken,
+  getGoogleDriveStartPageToken,
+  GOOGLE_DRIVE_WATCH_MAX_DURATION_MS,
+  GOOGLE_DRIVE_WATCH_RENEWAL_WINDOW_MS,
+  hashGoogleDriveChannelToken,
+  listGoogleDriveChangesPage,
+  listGoogleDriveFolderChildren,
+  searchGoogleDriveManagedFiles,
+  stopGoogleDriveChannel,
+  watchGoogleDriveChanges,
+  type DriveChangeEntry,
+  type DriveChangeFileResource,
+} from "./drive-changes";
+import {
   accessTokenForDrive,
   activeDriveConnection,
   adminClient,
   isGoogleDriveConfigured,
   requireActiveActor,
+  timingSafeEqual,
   type DriveConnection,
 } from "./google-drive.server";
 import { MAX_DOCUMENT_SIZE_BYTES, validateDocumentFile } from "@/hooks/use-documents";
+import { readServerRuntimeEnv } from "@/lib/server-runtime-env";
 
 // ── constantes ───────────────────────────────────────────────────────────
 
@@ -104,6 +120,30 @@ export function driveRetryDelayMs(attempt: number): number {
   const index = Math.min(Math.max(attempt, 1), RETRY_DELAYS_MS.length) - 1;
   return RETRY_DELAYS_MS[index];
 }
+
+/**
+ * Tope defensivo de páginas del feed de cambios DENTRO de una sola
+ * ejecución de `poll_changes` (Fase 8F Sección 8). No es un límite de
+ * cuántos cambios puede haber en total -- si se agota sin llegar a
+ * `newStartPageToken`, el trabajo se reintenta (Sección 9: reanudar desde
+ * el mismo `changes_page_token` persistido es siempre seguro, nunca se
+ * avanza el cursor a mitad de una paginación incompleta).
+ */
+const MAX_DRIVE_CHANGE_POLL_PAGES = 200;
+
+/**
+ * Ventana por defecto para considerar "abandonada" una reconciliación
+ * reclamada (Fase 8F Sección 47): un proceso que murió a mitad de un
+ * escaneo no debe bloquear reconciliaciones futuras para siempre.
+ */
+export const GOOGLE_DRIVE_RECONCILIATION_STALE_SECONDS = 60 * 60;
+
+/**
+ * Cada cuánto se considera "hora de reconciliar" (Fase 8F Sección 39): la
+ * reconciliación es una red de seguridad, no la ruta principal -- no tiene
+ * sentido ejecutarla en cada llamada de mantenimiento.
+ */
+export const GOOGLE_DRIVE_RECONCILIATION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export type DriveSyncSkipReason =
   | "not_configured"
@@ -380,6 +420,24 @@ export async function enqueueGoogleDriveImportFile(input: EnqueueImportInput): P
     operation: "import_drive_file",
     dedupeKey: driveDedupeKey("import_drive_file", input.connectionId, input.driveFileId),
     driveFileId: input.driveFileId,
+  });
+}
+
+// ── PRODUCTOR (server-only): sondear el feed de cambios (Fase 8F) ───────
+/**
+ * Encola `poll_changes`. Server-only, sin permisos de usuario: solo lo
+ * invocan el webhook (Sección 33: "solo enqueue, deduped") y el propio
+ * mantenimiento periódico (Sección 49: la durabilidad real). El dedupe usa
+ * una clave fija por conexión ("tracking") -- nunca puede haber más de un
+ * `poll_changes` pendiente o en curso a la vez para la misma conexión,
+ * exactamente lo que Sección 68 exige para absorber notificaciones
+ * duplicadas de dos canales solapados sin duplicar trabajo.
+ */
+export async function enqueueGoogleDrivePollChanges(connectionId: string): Promise<boolean> {
+  return enqueue({
+    connectionId,
+    operation: "poll_changes",
+    dedupeKey: driveDedupeKey("poll_changes", connectionId, "tracking"),
   });
 }
 
@@ -1180,6 +1238,915 @@ async function cleanupOrphanedStorageObject(
     .catch(() => {});
 }
 
+// ── poll_changes: descubrimiento automático Drive -> CRM (Fase 8F) ──────
+
+/**
+ * Bootstrap de UNA sola vez (Sección 5): si la conexión ya tiene un
+ * cursor, es un no-op -- nunca se sobrescribe con un T0 más nuevo, porque
+ * eso perdería exactamente los cambios ocurridos entre el T0 original y
+ * este segundo intento. Solo el mantenimiento la invoca; el propio poll
+ * jamás inventa un token si falta (Sección 11).
+ */
+export async function bootstrapGoogleDriveChangeTracking(
+  context: DriveContext,
+  accessToken: string,
+): Promise<void> {
+  const { connection } = context;
+  if (connection.changes_page_token) return;
+  const db = adminClient();
+  const startPageToken = await getGoogleDriveStartPageToken(accessToken, driveScope(connection));
+  const { error } = await db.rpc("initialize_google_drive_change_token", {
+    p_connection_id: connection.id,
+    p_start_page_token: startPageToken,
+  });
+  // Nunca se descarta el error en silencio: si la RPC falla, el llamador
+  // (runGoogleDriveMaintenance) NO debe reportar `changeTrackingBootstrapped:
+  // true` cuando en realidad no se persistió nada.
+  if (error) throw new Error(error.message);
+}
+
+/** Forma mínima común a DriveFileResource (8D/8E) y DriveChangeFileResource
+ *  (8F): lo único que la clasificación de abajo necesita leer, para no
+ *  atarse a un solo origen de metadata (change feed vs. `files.get` directo
+ *  de la verificación de mapeados). */
+interface DriveKnownFileSnapshot {
+  name: string;
+  parents?: string[];
+  trashed?: boolean;
+  md5Checksum?: string;
+  version?: string;
+}
+
+interface DriveKnownDocumentBaseline {
+  last_synced_file_name: string | null;
+  last_synced_drive_parent_id: string | null;
+  last_synced_drive_md5_checksum: string | null;
+  last_synced_drive_version: number | null;
+}
+
+export type DriveKnownEntityAction =
+  | { kind: "unchanged" }
+  | { kind: "missing"; reason: "DRIVE_FILE_TRASHED" | "DRIVE_FILE_REMOVED_OR_ACCESS_LOST" }
+  | {
+      kind: "conflict";
+      reason: "DRIVE_NAME_CHANGED" | "DRIVE_CONTENT_CHANGED" | "DRIVE_PARENT_MISMATCH";
+    };
+
+/**
+ * Función PURA (Fase 8F Sección 17-22): dado el baseline persistido
+ * (`last_synced_*`) y lo que Drive reporta AHORA para un archivo ya
+ * mapeado, decide qué corresponde -- nunca toca la base de datos ni Drive.
+ * La reutilizan tanto el procesador del change feed como la verificación
+ * de mapeados de la reconciliación (Sección 42): "¿este archivo mapeado
+ * sigue como lo dejamos?" tiene una sola respuesta en todo el sistema.
+ *
+ * Comparar contra el BASELINE (`last_synced_*`), nunca contra
+ * `drive_parent_id` a secas -- ese es el fundamento documentado en la
+ * cabecera de la migración de 8B para poder distinguir "cambió Drive" de
+ * "cambiamos ambos".
+ *
+ * Orden de prioridad cuando varias cosas cambiaron a la vez (el pedido no
+ * fija uno, y solo puede persistirse un código a la vez en `sync_error`):
+ * parent primero (lo más estructural: ¿sigue siendo del mismo Cliente?),
+ * luego contenido, luego nombre.
+ */
+export function evaluateKnownDriveDocumentState(
+  baseline: DriveKnownDocumentBaseline,
+  removed: boolean,
+  file: DriveKnownFileSnapshot | undefined,
+): DriveKnownEntityAction {
+  if (removed) return { kind: "missing", reason: "DRIVE_FILE_REMOVED_OR_ACCESS_LOST" };
+  if (!file || file.trashed) return { kind: "missing", reason: "DRIVE_FILE_TRASHED" };
+
+  const parentUnchanged =
+    !baseline.last_synced_drive_parent_id ||
+    (file.parents ?? []).includes(baseline.last_synced_drive_parent_id);
+  if (!parentUnchanged) return { kind: "conflict", reason: "DRIVE_PARENT_MISMATCH" };
+
+  const md5Unchanged =
+    !baseline.last_synced_drive_md5_checksum ||
+    !file.md5Checksum ||
+    file.md5Checksum === baseline.last_synced_drive_md5_checksum;
+  const versionUnchanged =
+    !baseline.last_synced_drive_version ||
+    !file.version ||
+    Number(file.version) === baseline.last_synced_drive_version;
+  if (!md5Unchanged || !versionUnchanged)
+    return { kind: "conflict", reason: "DRIVE_CONTENT_CHANGED" };
+
+  const nameUnchanged =
+    !baseline.last_synced_file_name || file.name === baseline.last_synced_file_name;
+  if (!nameUnchanged) return { kind: "conflict", reason: "DRIVE_NAME_CHANGED" };
+
+  return { kind: "unchanged" };
+}
+
+/**
+ * Fase 8F.1 Sección 6-13 (bloqueador crítico): toda lectura/escritura que
+ * participa en decidir si un cambio del feed quedó procesado DEBE lanzar
+ * ante un error de Postgres/Supabase -- nunca tratarlo como "la fila no
+ * existe" o "la actualización tuvo éxito". Sin esto, un fallo TRANSITORIO
+ * en un solo `change` (por ejemplo, la conexión a Postgres se corta justo
+ * al marcar un conflicto) se interpretaría como "ya se procesó", y el
+ * `poll_changes` seguiría hasta la página final y avanzaría el cursor
+ * durable -- perdiendo ese cambio para siempre, porque el próximo poll ya
+ * partiría de un cursor posterior a él.
+ *
+ * Al lanzar aquí, la excepción sube sin capturarse por
+ * `processDriveChangeEntry`/`processDriveClientFolderChange`/
+ * `handlePollGoogleDriveChanges` (ninguno de los tres la atrapa) hasta el
+ * `try/catch` de `processGoogleDriveSyncQueue` alrededor de `dispatch()`,
+ * que la convierte en `retry`/`failed` -- y crucialmente, eso ocurre ANTES
+ * de llegar nunca a `advance_google_drive_change_token`.
+ */
+function unwrap<T>(result: { data: T; error: { message: string } | null }): T {
+  if (result.error) throw new Error(result.error.message);
+  return result.data;
+}
+
+/**
+ * Códigos de negocio con los que `repair_google_drive_document_mapping`
+ * rechaza reparar por un invariante DEFINITIVO sobre este documento en
+ * particular (Sección 16) -- deferirlo a un ciclo futuro (reconciliación u
+ * otro `poll_changes`) es seguro, así que son los ÚNICOS que
+ * `attemptDriveDocumentMappingRepair` puede tratar como "no reparado" sin
+ * relanzar.
+ *
+ * Deliberadamente NO incluye `CLIENT_FOLDER_CHANGED_RETRY`,
+ * `DRIVE_ROOT_CHANGED_RETRY` ni `DRIVE_NOT_CONNECTED`: esos nombres ya
+ * indican "el estado de la conexión/carpeta cambió mientras procesábamos",
+ * una señal de que el CONTEXTO de todo este poll puede estar obsoleto --
+ * más seguro relanzar y abortar el lote entero (Sección 9: "cualquier
+ * excepción inesperada -> abortar poll -> no avanzar token") que continuar
+ * silenciosamente con un contexto potencialmente ya inválido.
+ */
+const REPAIR_MAPPING_KNOWN_REJECTIONS = [
+  "DOCUMENT_NOT_FOUND",
+  "DOCUMENT_CLIENT_MISMATCH",
+  "DOCUMENT_ALREADY_MAPPED",
+  "DRIVE_FILE_ALREADY_IMPORTED",
+];
+
+/**
+ * Repara automáticamente el mapping de un documento outbound existente
+ * cuyo `google_drive_document_files` se perdió (Fase 8F Sección 16). SOLO
+ * si TODOS los invariantes coinciden exactamente -- nunca descarga ni
+ * recrea el documento; la RPC (`repair_google_drive_document_mapping`)
+ * hace la validación final y atómica. Cualquier discrepancia se resuelve
+ * como "no reparado" en silencio: la reconciliación volverá a intentarlo
+ * en su próximo ciclo, y el lost-delete scan (Sección 43) sigue cubriendo
+ * el caso de que el documento en realidad ya no exista.
+ */
+async function attemptDriveDocumentMappingRepair(
+  db: ReturnType<typeof adminClient>,
+  context: DriveContext,
+  documentId: string,
+  clientId: string,
+  contentHash: string | null,
+  file: DriveKnownFileSnapshot & { id: string; webViewLink?: string; modifiedTime?: string },
+): Promise<boolean> {
+  const { connection, rootFolderId } = context;
+  const parents = file.parents ?? [];
+  // Identidad inequívoca exigida por la Sección 16: si el archivo cuelga de
+  // más de un padre (posible en Unidades compartidas), no hay un ÚNICO
+  // Cliente al que atribuirlo automáticamente.
+  if (parents.length !== 1) return false;
+
+  const folder = unwrap(
+    await db
+      .from("google_drive_client_folders")
+      .select("drive_folder_id, sync_status")
+      .eq("connection_id", connection.id)
+      .eq("client_id", clientId)
+      .maybeSingle(),
+  );
+  if (!folder || folder.drive_folder_id !== parents[0] || folder.sync_status !== "synced") {
+    return false;
+  }
+
+  const { error } = await db.rpc("repair_google_drive_document_mapping", {
+    p_connection_id: connection.id,
+    p_expected_root_folder_id: rootFolderId,
+    p_document_id: documentId,
+    p_client_id: clientId,
+    p_drive_file_id: file.id,
+    p_drive_parent_id: parents[0],
+    p_name: file.name,
+    p_web_view_link: file.webViewLink ?? null,
+    p_drive_modified_time: file.modifiedTime ?? null,
+    p_drive_version: file.version ? Number(file.version) : null,
+    p_drive_md5: file.md5Checksum ?? null,
+    p_content_hash: contentHash,
+  });
+  if (!error) return true;
+  // Códigos de negocio conocidos (Sección 16 del pedido de 8F): la RPC
+  // rechazó reparar por un invariante real -- es un resultado seguro y
+  // esperado, no un fallo. Cualquier OTRO error (transitorio, de conexión,
+  // desconocido) se propaga: nunca se trata en silencio como "no reparado".
+  const knownRejection = REPAIR_MAPPING_KNOWN_REJECTIONS.some((code) =>
+    error.message.includes(code),
+  );
+  if (knownRejection) return false;
+  throw new Error(error.message);
+}
+
+/**
+ * Procesa un cambio reportado sobre un `drive_file_id` que YA es la carpeta
+ * de un Cliente vinculado (Fase 8F Sección 23). Nunca reasigna el mapping
+ * documental del Cliente ni mueve nada -- solo marca el estado para
+ * revisión humana.
+ */
+async function processDriveClientFolderChange(
+  db: ReturnType<typeof adminClient>,
+  context: DriveContext,
+  folderRow: { id: string; sync_status: string },
+  removed: boolean,
+  file: DriveKnownFileSnapshot | undefined,
+): Promise<void> {
+  const markFolder = async (status: "missing" | "conflict", reason: string) =>
+    unwrap(
+      await db
+        .from("google_drive_client_folders")
+        .update({ sync_status: status, sync_error: reason })
+        .eq("id", folderRow.id),
+    );
+
+  if (removed || !file || file.trashed) {
+    await markFolder("missing", "CLIENT_DRIVE_FOLDER_MISSING");
+    return;
+  }
+  if (!(file.parents ?? []).includes(context.rootFolderId)) {
+    await markFolder("conflict", "DRIVE_PARENT_MISMATCH");
+    return;
+  }
+  // Sigue todo correcto: no se auto-repara desde 'conflict'/'missing' de
+  // vuelta a 'synced' -- ninguna sección lo pide, y decidirlo sin
+  // intervención humana sería inventar una política no especificada.
+}
+
+/**
+ * Procesa UNA entrada del change feed (Fase 8F Sección 13-15/17-22).
+ * Nunca llama a Google ni descarga nada -- solo lee/actualiza filas ya
+ * mapeadas o encola trabajo que 8E (import) / el propio worker de
+ * reparación ya validan a fondo.
+ */
+async function processDriveChangeEntry(
+  db: ReturnType<typeof adminClient>,
+  context: DriveContext,
+  entry: DriveChangeEntry,
+): Promise<void> {
+  // Sección 13: en V1 solo se procesan cambios de tipo 'file' -- el resto se
+  // ignora salvo observabilidad, que no forma parte de este alcance.
+  if (entry.changeType && entry.changeType !== "file") return;
+
+  const { connection } = context;
+
+  const folderRow = unwrap(
+    await db
+      .from("google_drive_client_folders")
+      .select("id, sync_status")
+      .eq("connection_id", connection.id)
+      .eq("drive_folder_id", entry.fileId)
+      .maybeSingle(),
+  );
+  if (folderRow) {
+    await processDriveClientFolderChange(db, context, folderRow, entry.removed, entry.file);
+    return;
+  }
+
+  const mapping = unwrap(
+    await db
+      .from("google_drive_document_files")
+      .select(
+        "id, last_synced_file_name, last_synced_drive_parent_id, last_synced_drive_md5_checksum, last_synced_drive_version",
+      )
+      .eq("connection_id", connection.id)
+      .eq("drive_file_id", entry.fileId)
+      .maybeSingle(),
+  );
+  if (mapping) {
+    const action = evaluateKnownDriveDocumentState(mapping, entry.removed, entry.file);
+    if (action.kind === "unchanged") return; // Sección 17: absorbe el eco de nuestras propias operaciones.
+    unwrap(
+      await db
+        .from("google_drive_document_files")
+        .update({
+          sync_status: action.kind === "missing" ? "missing" : "conflict",
+          sync_error: action.reason,
+        })
+        .eq("id", mapping.id),
+    );
+    return;
+  }
+
+  // Desconocido para nosotros. "removed" sobre algo que nunca supimos no es
+  // accionable (Sección 22 solo aplica a archivos YA conocidos).
+  if (entry.removed) return;
+  const file = entry.file;
+  if (!file || file.trashed) return;
+  if (classifyUnsupportedDriveEntry(file.mimeType) !== null) return;
+
+  const ownership = classifyAppPropertiesOwnership(file.appProperties);
+  if (ownership.kind === "conflict") return; // sin fila que marcar; la reconciliación lo revisa (Sección 38).
+
+  if (ownership.kind === "known_document") {
+    const document = unwrap(
+      await db
+        .from("documents")
+        .select("id, client_id, content_hash")
+        .eq("id", ownership.documentId)
+        .maybeSingle(),
+    );
+    // Documento inexistente o Cliente discrepante: NUNCA se resucita ni se
+    // repara aquí -- el lost-delete scan de la reconciliación (Sección 43)
+    // es la ruta pensada para el primer caso.
+    if (!document || document.client_id !== ownership.clientId) return;
+    const existingMapping = unwrap(
+      await db
+        .from("google_drive_document_files")
+        .select("id")
+        .eq("document_id", document.id)
+        .maybeSingle(),
+    );
+    if (existingMapping) return; // ya reparado por otra vía.
+    await attemptDriveDocumentMappingRepair(
+      db,
+      context,
+      document.id,
+      document.client_id,
+      document.content_hash,
+      file,
+    );
+    return;
+  }
+
+  // unmanaged: candidato normal a import (Sección 14). Solo hijos DIRECTOS
+  // de exactamente una carpeta de Cliente vinculada+sincronizada -- 8E hace
+  // TODA la validación real (M1/M2, tamaño, integridad); aquí solo se
+  // decide si vale la pena encolarlo. Nunca se importa "todo My Drive".
+  const parents = file.parents ?? [];
+  const candidateFolders = parents.length
+    ? unwrap(
+        await db
+          .from("google_drive_client_folders")
+          .select("client_id")
+          .eq("connection_id", connection.id)
+          .eq("sync_status", "synced")
+          .in("drive_folder_id", parents),
+      )
+    : ([] as Array<{ client_id: string }>);
+  if ((candidateFolders ?? []).length === 1) {
+    await enqueueGoogleDriveImportFile({ connectionId: connection.id, driveFileId: entry.fileId });
+  }
+}
+
+/**
+ * Worker de `poll_changes` (Fase 8F Sección 8/9/11). Sigue el algoritmo
+ * exacto del pedido: pide páginas una a una, procesa cada una de inmediato,
+ * y SOLO al llegar a la página final (la que trae `newStartPageToken`)
+ * intenta avanzar el cursor durable -- nunca antes. Si el proceso muere a
+ * mitad de la paginación, el cursor en base de datos sigue siendo el
+ * anterior; el reintento vuelve a pedir desde ahí y reprocesa lo mismo,
+ * seguro porque todo lo que este código produce (enqueues) es idempotente
+ * por dedupe_key.
+ */
+async function handlePollGoogleDriveChanges(
+  job: QueueJob,
+  context: DriveContext,
+  accessToken: string,
+): Promise<JobOutcome> {
+  void job;
+  const { connection } = context;
+  if (!connection.changes_page_token) {
+    // Nunca se inventa un token (Sección 11): se reintenta hasta que el
+    // mantenimiento complete el bootstrap.
+    return { status: "retry", reason: "DRIVE_CHANGE_TOKEN_NOT_INITIALIZED" };
+  }
+
+  const db = adminClient();
+  const scope = driveScope(connection);
+  let currentToken = connection.changes_page_token;
+  let finalToken: string | null = null;
+
+  for (let page = 0; page < MAX_DRIVE_CHANGE_POLL_PAGES; page += 1) {
+    let pageResult;
+    try {
+      pageResult = await listGoogleDriveChangesPage(accessToken, currentToken, scope);
+    } catch (cause) {
+      const reason = sanitizeReason(String((cause as Error)?.message ?? "drive_error"));
+      return isRetryableDriveFailure(cause)
+        ? { status: "retry", reason }
+        : { status: "failed", reason };
+    }
+    for (const change of pageResult.changes) {
+      try {
+        await processDriveChangeEntry(db, context, change);
+      } catch (cause) {
+        // Fase 8F.1 Sección 6-13 (bloqueador crítico): CUALQUIER fallo al
+        // procesar un solo change -- transitorio o no, en la página que sea
+        // -- aborta el poll ENTERO sin avanzar el cursor, en vez de
+        // continuar con los cambios restantes. `unwrap()` ya garantiza que
+        // un error real de Postgres/Supabase llega aquí como excepción en
+        // vez de leerse como "la fila no existe"/"la actualización tuvo
+        // éxito"; este catch es lo que impide que esa excepción se trate
+        // como si el change se hubiera procesado. El reintento vuelve a
+        // pedir `changes.list` desde el MISMO `changes_page_token`
+        // persistido -- nunca desde `finalToken` ni desde `currentToken` de
+        // esta página -- y reprocesa TODO el tramo; los cambios ya
+        // aplicados antes del fallo son seguros de repetir porque cada
+        // efecto (enqueue, update de conflicto) es idempotente por
+        // dedupe_key o por ser una escritura que fija el mismo valor.
+        return {
+          status: "retry",
+          reason: sanitizeReason(
+            `DRIVE_CHANGE_PROCESSING_FAILED: ${String((cause as Error)?.message ?? cause)}`,
+          ),
+        };
+      }
+    }
+    if (pageResult.newStartPageToken) {
+      finalToken = pageResult.newStartPageToken;
+      break;
+    }
+    if (!pageResult.nextPageToken) {
+      return { status: "retry", reason: "DRIVE_CHANGES_PAGE_TOKEN_MISSING" };
+    }
+    currentToken = pageResult.nextPageToken;
+  }
+  if (!finalToken) return { status: "retry", reason: "DRIVE_CHANGES_TOO_MANY_PAGES" };
+
+  const { error } = await db.rpc("advance_google_drive_change_token", {
+    p_connection_id: connection.id,
+    p_expected_current_token: connection.changes_page_token,
+    p_new_token: finalToken,
+  });
+  if (error) {
+    if (error.message.includes("DRIVE_CHANGE_TOKEN_CHANGED_RETRY")) {
+      // Otro poller ya avanzó el cursor: como ambos partieron del MISMO
+      // token, procesamos el mismo tramo de cambios -- el trabajo ya quedó
+      // hecho (los enqueues son idempotentes), no es un fallo (Sección 10).
+      return { status: "completed" };
+    }
+    return { status: "retry", reason: sanitizeReason(error.message) };
+  }
+  return { status: "completed" };
+}
+
+// ── watch / renovación de canal (Fase 8F Sección 25/26/34-36) ───────────
+/**
+ * Crea o renueva el canal de notificación si hay webhook configurado. Sin
+ * `GOOGLE_DRIVE_WEBHOOK_URL`, el watch queda deliberadamente deshabilitado
+ * (Sección 26: "Opcional mientras Drive no esté configurado... No inventar
+ * localhost para producción") -- el poll periódico sigue siendo la vía de
+ * durabilidad real (Sección 49).
+ */
+export async function ensureGoogleDriveWatch(
+  context: DriveContext,
+  accessToken: string,
+): Promise<void> {
+  const webhookUrl = readServerRuntimeEnv("GOOGLE_DRIVE_WEBHOOK_URL");
+  if (!webhookUrl) return;
+  const { connection } = context;
+  if (!connection.changes_page_token) return; // sin cursor todavía, nada que vigilar.
+
+  const db = adminClient();
+  const current = unwrap(
+    await db
+      .from("google_drive_channels")
+      .select("channel_id, resource_id, expires_at, stopped_at")
+      .eq("connection_id", connection.id)
+      .is("superseded_at", null)
+      .maybeSingle(),
+  );
+
+  // Fase 8F.1 Sección 14-16: "needsNew" no puede depender solo de
+  // `expires_at`. Un canal ya `stopped_at` (parado local/explícitamente,
+  // pero todavía no superseded por ningún otro) sigue sin servir para
+  // nada aunque falten días para su expiración -- sin este chequeo, el
+  // sistema se quedaría sin watch funcional hasta que ese canal expirase
+  // por sí solo.
+  const needsNew =
+    !current ||
+    Boolean(current.stopped_at) ||
+    new Date(current.expires_at).getTime() - Date.now() <= GOOGLE_DRIVE_WATCH_RENEWAL_WINDOW_MS;
+  if (!needsNew) return;
+
+  const channelToken = generateGoogleDriveChannelToken();
+  const channelTokenHash = await hashGoogleDriveChannelToken(channelToken);
+  const newChannelId = crypto.randomUUID();
+  const expiresAtMs = Date.now() + GOOGLE_DRIVE_WATCH_MAX_DURATION_MS;
+
+  const watchResult = await watchGoogleDriveChanges(
+    accessToken,
+    {
+      pageToken: connection.changes_page_token,
+      channelId: newChannelId,
+      channelToken,
+      webhookUrl,
+      expiresAtMs,
+    },
+    driveScope(connection),
+  );
+
+  // Fase 8F.1 Sección 20 (bloqueador crítico): si la rotación en base de
+  // datos falla -- por lo que sea, incluido un fallo transitorio de
+  // Postgres --, el canal `current` (si todavía estaba activo) NUNCA debe
+  // detenerse: seguiría siendo el único canal funcional que tenemos. Se
+  // relanza para que el llamador (`runGoogleDriveMaintenance`, que ya trata
+  // el watch como best-effort) lo capture sin tocar `current` -- el
+  // siguiente ciclo de mantenimiento reintentará la rotación completa desde
+  // cero, con el MISMO canal `current` todavía usable mientras tanto. B
+  // puede quedar como un canal remoto huérfano en Google hasta entonces:
+  // aceptable, documentado, y sin corromper el estado local.
+  const { error: rotateError } = await db.rpc("rotate_google_drive_channel", {
+    p_connection_id: connection.id,
+    p_old_channel_id: current?.channel_id ?? null,
+    p_new_channel_id: newChannelId,
+    p_new_resource_id: watchResult.resourceId,
+    p_new_channel_token_hash: channelTokenHash,
+    p_new_expires_at: new Date(
+      watchResult.expiration ? Number(watchResult.expiration) : expiresAtMs,
+    ).toISOString(),
+  });
+  if (rotateError) throw new Error(rotateError.message);
+
+  // channels.stop remoto: best-effort, NUNCA invalida el canal nuevo ya
+  // persistido localmente (Sección 35/68 -- el solapamiento es un resultado
+  // aceptado, no un error).
+  if (current) {
+    await stopGoogleDriveChannel(accessToken, {
+      channelId: current.channel_id,
+      resourceId: current.resource_id,
+    }).catch(() => {});
+  }
+}
+
+// ── webhook: validación ligera, sin llamar a Google (Fase 8F Sección
+// 28-33/58/61) ────────────────────────────────────────────────────────────
+export type GoogleDriveWebhookAction =
+  { kind: "ignore" } | { kind: "reject" } | { kind: "enqueue_poll" };
+
+export interface GoogleDriveWebhookHeaders {
+  channelId: string | null;
+  channelToken: string | null;
+  resourceId: string | null;
+  resourceState: string | null;
+}
+
+/**
+ * Decide qué hacer con una notificación entrante SIN llamar nunca a
+ * Google: toda autoridad real está en `changes.list`, que el `poll_changes`
+ * encolado aquí ejecutará por separado (Sección 12/33).
+ *
+ * Un `channelId` desconocido se ignora, nunca se rechaza con error: Google
+ * puede mandar el mensaje `sync` antes de que la respuesta de
+ * `changes.watch` haya terminado de persistirse (Sección 28/61) -- un
+ * canal que "todavía no existe" desde nuestro punto de vista no implica
+ * nada malicioso.
+ */
+export async function handleGoogleDriveWebhookNotification(
+  headers: GoogleDriveWebhookHeaders,
+): Promise<GoogleDriveWebhookAction> {
+  if (!headers.channelId || !headers.channelToken) return { kind: "ignore" };
+
+  const db = adminClient();
+  const { data: channel } = await db
+    .from("google_drive_channels")
+    .select("connection_id, resource_id, channel_token_hash, expires_at, stopped_at")
+    .eq("channel_id", headers.channelId)
+    .maybeSingle();
+  if (!channel) return { kind: "ignore" };
+  if (channel.stopped_at) return { kind: "ignore" };
+  if (new Date(channel.expires_at).getTime() < Date.now()) return { kind: "ignore" };
+
+  const providedHash = await hashGoogleDriveChannelToken(headers.channelToken);
+  if (!(await timingSafeEqual(providedHash, channel.channel_token_hash))) {
+    return { kind: "reject" };
+  }
+  if (headers.resourceId && headers.resourceId !== channel.resource_id) {
+    return { kind: "reject" };
+  }
+
+  // Sección 31/58: solo 'change' encola; 'sync' y cualquier estado futuro
+  // desconocido se ignoran de forma segura, nunca un 500.
+  if (headers.resourceState === "change") {
+    await enqueueGoogleDrivePollChanges(channel.connection_id);
+    return { kind: "enqueue_poll" };
+  }
+  return { kind: "ignore" };
+}
+
+// ── reconciliación (Fase 8F Sección 38-48) ──────────────────────────────
+export interface GoogleDriveReconciliationSummary {
+  claimed: boolean;
+  clientFoldersEnsured: number;
+  documentsUploaded: number;
+  mappingsRepaired: number;
+  filesImported: number;
+  /** Nunca se auto-resuelve (Sección 44): solo review humano. */
+  orphanDriveFileIds: string[];
+}
+
+const EMPTY_RECONCILIATION_SUMMARY: GoogleDriveReconciliationSummary = {
+  claimed: false,
+  clientFoldersEnsured: 0,
+  documentsUploaded: 0,
+  mappingsRepaired: 0,
+  filesImported: 0,
+  orphanDriveFileIds: [],
+};
+
+/**
+ * Pagina cualquier lectura de la propia base de datos con un tope
+ * defensivo (Fase 8F Sección 46: "Nunca asumir: 100 archivos. 100
+ * clientes."). No es paginación de Drive -- eso ya lo hacen
+ * `listGoogleDriveFolderChildren`/`searchGoogleDriveManagedFiles`.
+ */
+async function selectAllRows<T>(
+  build: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const pageSize = 1000;
+  const rows: T[] = [];
+  for (let page = 0; page < 500; page += 1) {
+    const from = page * pageSize;
+    const { data, error } = await build(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < pageSize) return rows;
+  }
+  throw new Error("Demasiadas páginas al leer de la base de datos durante la reconciliación.");
+}
+
+/**
+ * Red de seguridad periódica (Fase 8F Sección 38-48), NO la ruta principal.
+ * Un solo reconciliation activo por conexión (CAS vía
+ * `claim_google_drive_reconciliation`); nunca toca `changes_page_token`
+ * (Sección 48: son mecanismos independientes).
+ *
+ * Si algo catastrófico impide completar el pase (p. ej. no se pudo
+ * refrescar el access token), deliberadamente NO se llama a
+ * `complete_google_drive_reconciliation`: el claim expira solo por
+ * staleness y una futura ejecución lo reintenta desde cero, en vez de
+ * marcar como "reconciliado" un pase que en realidad no corrió.
+ */
+export async function runGoogleDriveReconciliation(): Promise<GoogleDriveReconciliationSummary> {
+  const resolved = await resolveDriveContext();
+  if (!resolved.ok) return EMPTY_RECONCILIATION_SUMMARY;
+  const context = resolved.context;
+  const { connection, rootFolderId } = context;
+  const db = adminClient();
+
+  const { data: claimResult, error: claimError } = await db.rpc(
+    "claim_google_drive_reconciliation",
+    {
+      p_connection_id: connection.id,
+      p_stale_after_seconds: GOOGLE_DRIVE_RECONCILIATION_STALE_SECONDS,
+    },
+  );
+  if (claimError || !(claimResult as { claimed?: boolean } | null)?.claimed) {
+    return EMPTY_RECONCILIATION_SUMMARY;
+  }
+
+  const summary: GoogleDriveReconciliationSummary = {
+    ...EMPTY_RECONCILIATION_SUMMARY,
+    claimed: true,
+  };
+
+  try {
+    const accessToken = await accessTokenForDrive(connection);
+    const scope = driveScope(connection);
+
+    // 1. Clientes sin carpeta de Drive (Sección 40).
+    const clients = await selectAllRows<{ id: string }>((from, to) =>
+      db.from("clients").select("id").range(from, to),
+    );
+    const clientFolderRows = await selectAllRows<{
+      id: string;
+      client_id: string;
+      drive_folder_id: string;
+      sync_status: string;
+    }>((from, to) =>
+      db
+        .from("google_drive_client_folders")
+        .select("id, client_id, drive_folder_id, sync_status")
+        .eq("connection_id", connection.id)
+        .range(from, to),
+    );
+    const mappedClientIds = new Set(clientFolderRows.map((row) => row.client_id));
+    for (const client of clients) {
+      if (mappedClientIds.has(client.id)) continue;
+      await enqueue({
+        connectionId: connection.id,
+        operation: "ensure_client_folder",
+        dedupeKey: driveDedupeKey("ensure_client_folder", connection.id, client.id),
+        clientId: client.id,
+      });
+      summary.clientFoldersEnsured += 1;
+    }
+
+    // 2. Documentos con Cliente pero sin mapping (Sección 40). Los de
+    // procedencia Drive NUNCA generan un upload outbound duplicado --
+    // se intenta reparar identidad si el drive_file_id sigue siendo válido.
+    const documents = await selectAllRows<{
+      id: string;
+      client_id: string | null;
+      source_provider: string | null;
+      external_file_id: string | null;
+      content_hash: string | null;
+    }>((from, to) =>
+      db
+        .from("documents")
+        .select("id, client_id, source_provider, external_file_id, content_hash")
+        .not("client_id", "is", null)
+        .range(from, to),
+    );
+    const documentMappingRows = await selectAllRows<{ document_id: string }>((from, to) =>
+      db
+        .from("google_drive_document_files")
+        .select("document_id")
+        .eq("connection_id", connection.id)
+        .range(from, to),
+    );
+    const mappedDocumentIds = new Set(documentMappingRows.map((row) => row.document_id));
+    for (const document of documents) {
+      if (!document.client_id || mappedDocumentIds.has(document.id)) continue;
+      if (document.source_provider === "google_drive") {
+        if (!document.external_file_id) continue;
+        let file: DriveFileResource | null;
+        try {
+          file = await getDriveFile(accessToken, document.external_file_id, scope);
+        } catch {
+          continue; // fallo transitorio: se reintenta en el próximo ciclo, nunca se marca nada.
+        }
+        if (!file || file.trashed) continue; // el lost-delete scan (paso 5) cubre esto si corresponde.
+        const repaired = await attemptDriveDocumentMappingRepair(
+          db,
+          context,
+          document.id,
+          document.client_id,
+          document.content_hash,
+          file,
+        );
+        if (repaired) summary.mappingsRepaired += 1;
+        continue;
+      }
+      await enqueue({
+        connectionId: connection.id,
+        operation: "upload_document",
+        dedupeKey: driveDedupeKey("upload_document", connection.id, document.id),
+        clientId: document.client_id,
+        documentId: document.id,
+      });
+      summary.documentsUploaded += 1;
+    }
+
+    // 3. Por cada carpeta de Cliente: revalidar la carpeta en sí (mismo
+    // criterio que el change feed, Sección 23) y escanear sus hijos
+    // DIRECTOS -- nunca recursivo (Sección 41/46/47).
+    for (const folder of clientFolderRows) {
+      let liveFolder: DriveFileResource | null;
+      try {
+        liveFolder = await getDriveFile(accessToken, folder.drive_folder_id, scope);
+      } catch {
+        continue; // fallo transitorio de Drive: no se marca nada, se reintenta.
+      }
+      const missing =
+        !liveFolder || liveFolder.trashed || liveFolder.mimeType !== DRIVE_FOLDER_MIME_TYPE;
+      if (missing) {
+        await db
+          .from("google_drive_client_folders")
+          .update({ sync_status: "missing", sync_error: "CLIENT_DRIVE_FOLDER_MISSING" })
+          .eq("id", folder.id);
+        continue;
+      }
+      const moved = !(liveFolder!.parents ?? []).includes(rootFolderId);
+      if (moved) {
+        await db
+          .from("google_drive_client_folders")
+          .update({ sync_status: "conflict", sync_error: "DRIVE_PARENT_MISMATCH" })
+          .eq("id", folder.id);
+        continue;
+      }
+      if (folder.sync_status !== "synced") continue; // pendiente/error de onboarding, no es candidato a escaneo todavía.
+
+      const children = await listGoogleDriveFolderChildren(
+        accessToken,
+        folder.drive_folder_id,
+        scope,
+      );
+      for (const child of children) {
+        if (child.mimeType === DRIVE_FOLDER_MIME_TYPE) continue; // sin recursión.
+        if (child.trashed) continue;
+        if (classifyUnsupportedDriveEntry(child.mimeType) !== null) continue;
+
+        const { data: existingMapping } = await db
+          .from("google_drive_document_files")
+          .select("id")
+          .eq("connection_id", connection.id)
+          .eq("drive_file_id", child.id)
+          .maybeSingle();
+        if (existingMapping) continue; // el paso 4 verifica los ya mapeados.
+
+        const ownership = classifyAppPropertiesOwnership(child.appProperties);
+        if (ownership.kind === "conflict") continue;
+        if (ownership.kind === "known_document") {
+          const { data: document } = await db
+            .from("documents")
+            .select("id, client_id, content_hash")
+            .eq("id", ownership.documentId)
+            .maybeSingle();
+          if (!document || document.client_id !== ownership.clientId) continue;
+          const { data: alreadyMapped } = await db
+            .from("google_drive_document_files")
+            .select("id")
+            .eq("document_id", document.id)
+            .maybeSingle();
+          if (alreadyMapped) continue;
+          const repaired = await attemptDriveDocumentMappingRepair(
+            db,
+            context,
+            document.id,
+            document.client_id,
+            document.content_hash,
+            child,
+          );
+          if (repaired) summary.mappingsRepaired += 1;
+          continue;
+        }
+        await enqueueGoogleDriveImportFile({ connectionId: connection.id, driveFileId: child.id });
+        summary.filesImported += 1;
+      }
+    }
+
+    // 4. Verificación de mapeados existentes (Sección 42): detecta archivos
+    // movidos FUERA de la jerarquía de carpetas de Cliente, que el escaneo
+    // del paso 3 nunca vería (ya no cuelga de ninguna carpeta vinculada).
+    const mappings = await selectAllRows<{
+      id: string;
+      drive_file_id: string;
+      last_synced_file_name: string | null;
+      last_synced_drive_parent_id: string | null;
+      last_synced_drive_md5_checksum: string | null;
+      last_synced_drive_version: number | null;
+    }>((from, to) =>
+      db
+        .from("google_drive_document_files")
+        .select(
+          "id, drive_file_id, last_synced_file_name, last_synced_drive_parent_id, last_synced_drive_md5_checksum, last_synced_drive_version",
+        )
+        .eq("connection_id", connection.id)
+        .range(from, to),
+    );
+    for (const mapping of mappings) {
+      let file: DriveFileResource | null;
+      try {
+        file = await getDriveFile(accessToken, mapping.drive_file_id, scope);
+      } catch {
+        continue; // fallo transitorio: no se marca nada.
+      }
+      const action = evaluateKnownDriveDocumentState(mapping, file === null, file ?? undefined);
+      if (action.kind === "unchanged") continue;
+      await db
+        .from("google_drive_document_files")
+        .update({
+          sync_status: action.kind === "missing" ? "missing" : "conflict",
+          sync_error: action.reason,
+        })
+        .eq("id", mapping.id);
+    }
+
+    // 5. Lost-delete scan (Sección 43/44/45, OBLIGATORIO): archivos que
+    // Drive sigue teniendo marcados como gestionados por el CRM
+    // (`appProperties.crm_entity=document`) cuyo `documents` YA NO EXISTE.
+    // Nunca se resucita ni se auto-trashea (Sección 44) -- solo se reporta
+    // para revisión humana.
+    const managedFiles = await searchGoogleDriveManagedFiles(accessToken, scope);
+    for (const file of managedFiles) {
+      const ownership = classifyAppPropertiesOwnership(file.appProperties);
+      if (ownership.kind !== "known_document") continue;
+      const { data: document } = await db
+        .from("documents")
+        .select("id")
+        .eq("id", ownership.documentId)
+        .maybeSingle();
+      if (document) continue; // existe: lo cubren los pasos 3/4 si le falta mapping o cambió.
+      summary.orphanDriveFileIds.push(file.id);
+    }
+
+    await db.rpc("complete_google_drive_reconciliation", { p_connection_id: connection.id });
+  } catch {
+    // Fallo catastrófico (p. ej. el access token no se pudo refrescar): se
+    // devuelve el resumen parcial, pero NUNCA se marca como completada --
+    // el claim expira solo por staleness para un reintento limpio.
+  }
+
+  return summary;
+}
+
 // ── procesador ───────────────────────────────────────────────────────────
 /** Nunca se propaga texto crudo de Google ni de PostgreSQL. */
 function sanitizeReason(message: string): string {
@@ -1189,10 +2156,11 @@ function sanitizeReason(message: string): string {
 /**
  * Procesa un lote de la cola.
  *
- * Solo despacha las operaciones CRM -> Drive de esta fase. `poll_changes` e
- * `import_drive_file` pertenecen a Drive -> CRM (Fases 8E/8F): si
- * apareciesen, se marcan como no implementadas SIN llamar a Google, en vez
- * de intentar algo a medias.
+ * Despacha las nueve operaciones existentes: seis productoras CRM -> Drive
+ * (8B-8D), `import_drive_file` (Drive -> CRM, 8E) y `poll_changes`
+ * (descubrimiento automático Drive -> CRM, 8F). Solo `update_document`
+ * sigue sin ningún productor real que la encole -- el CRM todavía no
+ * ofrece reemplazar el contenido de un documento.
  */
 export async function processGoogleDriveSyncQueue(limit = 10) {
   const db = adminClient();
@@ -1273,8 +2241,9 @@ async function dispatch(
       return { status: "failed", reason: "OPERATION_NOT_IMPLEMENTED" };
     case "import_drive_file":
       return handleImportDriveFile(job, context, accessToken);
+    case "poll_changes":
+      return handlePollGoogleDriveChanges(job, context, accessToken);
     default:
-      // poll_changes: descubrimiento automático Drive -> CRM, Fase 8F.
       return { status: "failed", reason: "OPERATION_NOT_IMPLEMENTED" };
   }
 }
@@ -1289,6 +2258,95 @@ async function requeue(db: ReturnType<typeof adminClient>, job: QueueJob, reason
       available_at: new Date(Date.now() + driveRetryDelayMs(job.attempt_count)).toISOString(),
     })
     .eq("id", job.id);
+}
+
+// ── mantenimiento (Fase 8F Sección 37) ──────────────────────────────────
+export interface GoogleDriveMaintenanceSummary {
+  processed: number;
+  completed: number;
+  retried: number;
+  failed: number;
+  changeTrackingBootstrapped: boolean;
+  watchEnsured: boolean;
+  pollEnqueued: boolean;
+  reconciliation: GoogleDriveReconciliationSummary | null;
+}
+
+/**
+ * Único punto de entrada del mantenimiento periódico. En orden (Sección
+ * 37): 1) bootstrap del cursor de cambios si falta; 2) asegurar/renovar el
+ * canal de watch si hay webhook configurado; 3) encolar `poll_changes`;
+ * 4) reconciliación si ya toca (Sección 39: no en cada llamada); 5) procesar
+ * la cola -- lo que incluye el propio `poll_changes` recién encolado, en la
+ * MISMA ejecución.
+ *
+ * Cada paso es best-effort respecto a los demás: un fallo al asegurar el
+ * watch (por ejemplo, Drive caído un instante) nunca debe impedir que la
+ * cola se siga procesando -- el poll periódico sigue siendo la vía de
+ * durabilidad real (Sección 49), el watch es solo una optimización de
+ * latencia.
+ */
+export async function runGoogleDriveMaintenance(): Promise<GoogleDriveMaintenanceSummary> {
+  const resolved = await resolveDriveContext();
+  if (!resolved.ok) {
+    const queueResult = await processGoogleDriveSyncQueue();
+    return {
+      ...queueResult,
+      changeTrackingBootstrapped: false,
+      watchEnsured: false,
+      pollEnqueued: false,
+      reconciliation: null,
+    };
+  }
+
+  const context = resolved.context;
+  const accessToken = await accessTokenForDrive(context.connection);
+
+  let changeTrackingBootstrapped = false;
+  if (!context.connection.changes_page_token) {
+    try {
+      await bootstrapGoogleDriveChangeTracking(context, accessToken);
+      changeTrackingBootstrapped = true;
+    } catch {
+      // best-effort: si Drive falla aquí, el resto del mantenimiento sigue.
+    }
+  }
+
+  // El bootstrap pudo haber fijado el token recién -- se relee para que los
+  // pasos siguientes de ESTA misma ejecución ya lo vean.
+  const refreshedConnection = changeTrackingBootstrapped
+    ? await activeDriveConnection()
+    : context.connection;
+  const refreshedContext: DriveContext = {
+    connection: refreshedConnection ?? context.connection,
+    rootFolderId: context.rootFolderId,
+  };
+
+  let watchEnsured = false;
+  try {
+    await ensureGoogleDriveWatch(refreshedContext, accessToken);
+    watchEnsured = true;
+  } catch {
+    // best-effort (Sección 35): un fallo de watch/renovación nunca bloquea
+    // el resto del mantenimiento.
+  }
+
+  let pollEnqueued = false;
+  if (refreshedContext.connection.changes_page_token) {
+    pollEnqueued = await enqueueGoogleDrivePollChanges(refreshedContext.connection.id);
+  }
+
+  let reconciliation: GoogleDriveReconciliationSummary | null = null;
+  const lastReconciledAt = refreshedContext.connection.last_reconciled_at;
+  const dueForReconciliation =
+    !lastReconciledAt ||
+    Date.now() - new Date(lastReconciledAt).getTime() >= GOOGLE_DRIVE_RECONCILIATION_INTERVAL_MS;
+  if (dueForReconciliation) {
+    reconciliation = await runGoogleDriveReconciliation();
+  }
+
+  const queueResult = await processGoogleDriveSyncQueue();
+  return { ...queueResult, changeTrackingBootstrapped, watchEnsured, pollEnqueued, reconciliation };
 }
 
 // Se re-exporta para que las rutas no tengan que importar de dos módulos.

@@ -20,7 +20,11 @@ const routeFiles = readdirSync("src/routes").filter((name) => name.startsWith("a
 
 // ── migración ────────────────────────────────────────────────────────────
 describe("Fase 8E — migración incremental", () => {
-  it("es la única migración nueva; las anteriores de Drive quedan intactas", () => {
+  it("es la única migración nueva EN 8E; las anteriores de Drive quedan intactas", () => {
+    // Fase 8F añadió una quinta migración incremental propia (ver
+    // tests/google-drive-automatic-sync-structure.test.ts); esta prueba
+    // protege que las CUATRO de 8B-8E nunca se recreen/destruyan, no un
+    // conteo cerrado para siempre.
     const driveMigrations = readdirSync("supabase/migrations")
       .filter((name) => name.includes("google_drive"))
       .sort();
@@ -29,6 +33,7 @@ describe("Fase 8E — migración incremental", () => {
       "20260824110000_google_drive_client_folder_onboarding.sql",
       "20260825100000_google_drive_crm_to_drive.sql",
       "20260825110000_google_drive_drive_to_crm_import.sql",
+      "20260826100000_google_drive_automatic_sync.sql",
     ]);
   });
 
@@ -248,12 +253,18 @@ describe("Fase 8E — Google Workspace nativo: rechazado, nunca exportado", () =
 });
 
 // ── auditoría negativa (Sección 55) ───────────────────────────────────────
-describe("Fase 8E — auditoría negativa: nada de 8F implementado todavía", () => {
-  it("sin llamadas reales a drive/v3/changes, getStartPageToken, webhook ni channel renewal", () => {
+// Fase 8F ya implementó el change feed/watch/reconciliación -- pero en su
+// propio módulo aislado (drive-changes.ts), nunca duplicado dentro de
+// drive-sync.server.ts/drive-files.ts/drive-storage.server.ts. Esta
+// auditoría original de 8E sigue siendo válida con ese matiz: protege la
+// separación de responsabilidades, no la ausencia total de la fase 8F.
+describe("Fase 8E — auditoría negativa: separación de responsabilidades con 8F", () => {
+  it("sin llamadas reales a drive/v3/changes, getStartPageToken, webhook ni channel renewal EN ESTOS módulos", () => {
     // `changes.list`/`changes.watch` sí aparecen como texto -- son la propia
     // documentación de scope ("eso es Fase 8F") en los comentarios del
     // código; lo que se comprueba aquí es la ausencia de la URL real y de
-    // los identificadores de API que una implementación funcional usaría.
+    // los identificadores de API que una implementación funcional usaría
+    // FUERA de drive-changes.ts.
     for (const source of [sync, files, storage]) {
       expect(source).not.toMatch(/drive\/v3\/changes/);
       expect(source).not.toContain("getStartPageToken");
@@ -262,10 +273,10 @@ describe("Fase 8E — auditoría negativa: nada de 8F implementado todavía", ()
     }
   });
 
-  it("poll_changes sigue sin implementación funcional en el procesador", () => {
+  it("Fase 8F implementó poll_changes (ver tests/google-drive-automatic-sync-*.test.ts)", () => {
     const start = sync.indexOf("async function dispatch");
     const body = sync.slice(start, sync.indexOf("\nasync function requeue", start));
-    expect(body).not.toContain('case "poll_changes"');
+    expect(body).toContain('case "poll_changes"');
   });
 
   it("no existe ningún bucle de reconciliación completa", () => {
@@ -326,7 +337,7 @@ describe("Fase 8E — documentación operativa actualizada", () => {
     expect(doc).toMatch(/no añade ninguna ruta/i);
   });
 
-  it("dice explícitamente que el descubrimiento sigue sin implementarse", () => {
-    expect(doc).toMatch(/no detecta cambios hechos directamente en Drive/i);
+  it("Fase 8F implementó el descubrimiento automático (ver tests/google-drive-automatic-sync-structure.test.ts)", () => {
+    expect(doc).toMatch(/sincronización automática \(Fase 8F\)/i);
   });
 });

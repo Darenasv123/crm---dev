@@ -27,6 +27,10 @@ describe("Fase 8D — migración incremental", () => {
   // tres anteriores siguen intactas -- este test protege eso, no un
   // recuento cerrado que nunca pueda crecer.
   it("las migraciones de Drive ya commiteadas no se tocan", () => {
+    // Fase 8F añadió una quinta migración incremental (ver
+    // tests/google-drive-automatic-sync-structure.test.ts); este test
+    // protege que ninguna de las CUATRO anteriores se recree/destruya, no
+    // un conteo cerrado.
     const driveMigrations = readdirSync("supabase/migrations")
       .filter((name) => name.includes("google_drive"))
       .sort();
@@ -35,6 +39,7 @@ describe("Fase 8D — migración incremental", () => {
       "20260824110000_google_drive_client_folder_onboarding.sql",
       "20260825100000_google_drive_crm_to_drive.sql",
       "20260825110000_google_drive_drive_to_crm_import.sql",
+      "20260826100000_google_drive_automatic_sync.sql",
     ]);
   });
 
@@ -227,10 +232,12 @@ describe("Fase 8D — endpoint de mantenimiento", () => {
     expect(maintenanceRoute).toContain("status: 503");
   });
 
-  it("solo procesa la cola: todavía no sondea cambios ni renueva canales", () => {
-    expect(maintenanceRoute).toContain("processGoogleDriveSyncQueue");
-    expect(maintenanceRoute).not.toContain("changes.list");
-    expect(maintenanceRoute).not.toContain("renew");
+  it("Fase 8F: delega en el orquestador único de mantenimiento (bootstrap + watch + poll + reconciliación + cola)", () => {
+    expect(maintenanceRoute).toContain("runGoogleDriveMaintenance");
+    // La ruta en sí sigue sin llamar a Google directamente -- toda esa
+    // lógica vive en drive-sync.server.ts (ver
+    // tests/google-drive-automatic-sync-structure.test.ts).
+    expect(maintenanceRoute).not.toContain("googleapis.com");
   });
 
   it("el secreto está en .env.example y es requerido solo si Drive está configurado", () => {
@@ -242,8 +249,8 @@ describe("Fase 8D — endpoint de mantenimiento", () => {
 });
 
 // ── alcance ──────────────────────────────────────────────────────────────
-describe("Fase 8D — Drive -> CRM sigue sin implementarse", () => {
-  it("no hay changes.list, changes.watch, webhook ni startPageToken", () => {
+describe("Fase 8D — separación de responsabilidades del motor CRM -> Drive", () => {
+  it("drive-sync/drive-files/drive-storage nunca contienen las URLs del change feed -- esa lógica vive aislada en drive-changes.ts (Fase 8F)", () => {
     for (const source of [sync, files, storage]) {
       expect(source).not.toContain("changes/startPageToken");
       expect(source).not.toContain("drive/v3/changes");
@@ -251,7 +258,7 @@ describe("Fase 8D — Drive -> CRM sigue sin implementarse", () => {
     }
   });
 
-  it("el procesador rechaza de forma segura la operación que sigue perteneciendo a una fase futura", () => {
+  it("el procesador despacha las operaciones ya implementadas por su nombre exacto", () => {
     expect(sync).toContain("OPERATION_NOT_IMPLEMENTED");
     const start = sync.indexOf("async function dispatch");
     const body = sync.slice(start, sync.indexOf("\nasync function requeue", start));
@@ -259,12 +266,13 @@ describe("Fase 8D — Drive -> CRM sigue sin implementarse", () => {
     expect(body).toContain('case "upload_document"');
     expect(body).toContain('case "rename_document"');
     expect(body).toContain('case "trash_document"');
-    // Fase 8E implementó el consumidor de import_drive_file (ver
-    // tests/google-drive-inbound-import.test.ts). poll_changes (el
-    // descubrimiento automático que lo alimentaría) sigue siendo Fase 8F y
-    // cae en el default sin tocar Google.
+    // Fase 8E implementó el consumidor de import_drive_file; Fase 8F
+    // implementó poll_changes, el descubrimiento automático que lo
+    // alimenta (ver tests/google-drive-automatic-sync-*.test.ts). Solo
+    // update_document sigue sin productor real -- el CRM no ofrece
+    // reemplazar el contenido de un documento.
     expect(body).toContain('case "import_drive_file"');
-    expect(body).not.toContain('case "poll_changes"');
+    expect(body).toContain('case "poll_changes"');
   });
 
   it("update_document no tiene productor porque el CRM no ofrece reemplazar contenido", () => {
@@ -400,8 +408,12 @@ describe("Fase 8D.1 — contrato de reconciliación para 8F: no sobreafirmar", (
     expect(doc).toMatch(/huérfano/i);
   });
 
-  it("no implementa ningún escaneo real de Drive todavía", () => {
-    expect(sync).not.toMatch(/crm_entity.*=.*document.*q=/);
-    expect(sync).not.toContain("orphan");
+  it("Fase 8F implementó el escaneo real (ver tests/google-drive-automatic-sync-*.test.ts); nunca resucita un huérfano detectado", () => {
+    expect(sync).toContain("searchGoogleDriveManagedFiles");
+    expect(sync).toContain("orphanDriveFileIds");
+    const start = sync.indexOf("async function runGoogleDriveReconciliation");
+    const body = sync.slice(start, sync.indexOf("\n// ── procesador", start));
+    expect(body).not.toMatch(/insert into|\.insert\(\{[\s\S]{0,80}documents/);
+    expect(body).not.toContain("trashDriveFile");
   });
 });

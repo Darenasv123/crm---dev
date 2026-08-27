@@ -72,6 +72,7 @@ Estas variables deben configurarse en `.env.production` del servidor **cuando ll
 | `GOOGLE_DRIVE_CLIENT_ID` | Client ID de un OAuth Web Client de Google **distinto** del que usa Calendar |
 | `GOOGLE_DRIVE_CLIENT_SECRET` | Client Secret correspondiente (secreto) |
 | `GOOGLE_DRIVE_REDIRECT_URI` | `https://abogado.consoldi.com/api/google-drive/callback` |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | (Fase 8F, opcional) `https://abogado.consoldi.com/api/google-drive/webhook`. HTTPS siempre que se use de verdad -- nunca `localhost` en producción. Sin esta variable, el watch queda deshabilitado y el CRM sigue funcionando: el poll periódico (mantenimiento) es la vía de durabilidad real, el watch solo reduce la latencia. |
 
 **No se necesita ninguna variable nueva de cifrado ni de firma de estado** — Drive reutiliza `GOOGLE_OAUTH_STATE_SECRET` y `GOOGLE_TOKEN_ENCRYPTION_KEY`, ya configuradas para Calendar.
 
@@ -122,7 +123,11 @@ Añadidas en **Fase 8D** (CRM -> Drive):
 
 **Fase 8E deliberadamente NO añade ninguna ruta.** El consumidor de `import_drive_file` (`enqueueGoogleDriveImportFile`) es server-only: no existe -- ni existirá con esa forma -- un `POST /api/google-drive/import-file` que acepte un `driveFileId` del navegador. Ver "Cómo funciona Drive -> CRM" más abajo.
 
-**No existen todavía** (llegan en 8F): `/api/google-drive/webhook` y el sondeo de cambios.
+Añadida en **Fase 8F** (sincronización automática):
+
+| Ruta | Método | Descripción |
+|---|---|---|
+| `/api/google-drive/webhook` | POST | Receptor de notificaciones de `changes.watch`. Sin sesión ni secreto de mantenimiento -- la autoridad es el propio canal (`channel_id` + hash del `channel_token`, verificados en tiempo constante). Siempre ligero: solo encola `poll_changes`, nunca llama a Google. Ver "Cómo funciona la sincronización automática" más abajo. |
 
 ---
 
@@ -271,22 +276,87 @@ Un documento importado automáticamente no lo subió ninguna sesión interactiva
 
 ---
 
+## Cómo funciona la sincronización automática (Fase 8F)
+
+Fase 8F cierra el descubrimiento automático: ya no hace falta que algo externo le diga a `enqueueGoogleDriveImportFile` qué archivo es nuevo -- el propio CRM lo detecta.
+
+### Arquitectura: watch como señal, changes.list como autoridad, polling como durabilidad
+
+```
+Google Drive
+   │  (canal de notificación, opcional)
+   ▼
+webhook (ligero: SOLO encola poll_changes, deduped, responde 204)
+   │
+   ▼
+poll_changes (worker de la cola)
+   │  changes.list, paginado, desde el cursor persistido
+   ▼
+clasificación de cada cambio -> enqueue de la operación real
+   (import_drive_file / marcar conflict-missing / reparar mapping)
+```
+
+El webhook **nunca** decide nada por sí mismo: una notificación solo dice "puede que haya cambios", nunca trae el `fileId` ni el tipo de cambio con autoridad. Toda decisión real sale de `changes.list`, que el `poll_changes` encolado ejecuta por separado. Esto es deliberado (no una limitación): Google documenta que las notificaciones pueden llegar duplicadas, fuera de orden, o antes de que la propia suscripción termine de registrarse -- construir lógica de negocio directamente sobre el webhook heredaría todas esas garantías débiles.
+
+**El watch es una optimización de latencia, no la garantía de durabilidad.** Si el webhook nunca está configurado (`GOOGLE_DRIVE_WEBHOOK_URL` vacío), si Google no logra entregar una notificación, o si el canal expira antes de renovarse, el CRM sigue descubriendo cambios igual: cada ejecución de `POST /api/google-drive/maintenance` encola su propio `poll_changes` sin depender de ninguna notificación. La durabilidad real es el cursor persistido (`changes_page_token`) más el mantenimiento periódico -- el watch solo hace que la detección sea casi instantánea en vez de esperar al siguiente ciclo de mantenimiento.
+
+### El cursor (`changes_page_token`): compare-and-swap real, nunca last-write-wins
+
+El bootstrap pide un `startPageToken` (T0) la primera vez que hay una conexión activa con raíz configurada, y lo persiste UNA sola vez (`initialize_google_drive_change_token`) -- un segundo bootstrap nunca sobrescribe un cursor ya existente, porque eso perdería exactamente los cambios ocurridos entre medias. A partir de ahí, cada `poll_changes` pagina `changes.list` completo (procesando cada página según llega) y solo al llegar a la página FINAL -- la que trae `newStartPageToken` -- intenta avanzar el cursor con `advance_google_drive_change_token`, una función que compara el valor esperado antes de escribir (compare-and-swap real a nivel de PostgreSQL, probado con dos sesiones concurrentes reales). Si otro poller ya avanzó el cursor mientras este procesaba, el intento se resuelve como completado sin sobrescribir ni retroceder nada -- ambos pollers partieron del mismo cursor, así que procesaron el mismo tramo de cambios, y todo lo que produjeron (encolados) es idempotente por `dedupe_key`.
+
+Si el proceso muere a mitad de la paginación, el cursor en base de datos sigue siendo el anterior -- el siguiente intento vuelve a pedir desde ahí y reprocesa lo mismo, lo cual es seguro precisamente porque todo lo que este código produce está deduplicado.
+
+### Clasificación de un cambio detectado
+
+Para cada entrada de `changes.list`:
+
+- **Archivo desconocido, manual, hijo directo de una carpeta de Cliente sincronizada** -> se encola `import_drive_file`. Esta fase NUNCA duplica la validación de 8E (M1/M2, tamaño, integridad, appProperties) -- solo decide que vale la pena intentarlo.
+- **Archivo desconocido fuera de cualquier carpeta de Cliente vinculada** -> se ignora. Nunca se importa "todo Mi unidad".
+- **Archivo desconocido con `appProperties.crm_entity=document`** -- ya lo gestiona (o gestionó) el CRM -- se intenta reparar el mapping automáticamente solo si la identidad es inequívoca (un único padre, coincide exactamente con la carpeta del Cliente referenciado); si el documento referenciado ya no existe, no se repara nada aquí -- lo cubre la reconciliación (ver más abajo), que nunca resucita.
+- **Archivo YA mapeado, sin cambios respecto al último baseline sincronizado** -> no-op. Esto es lo que absorbe el eco de nuestras propias operaciones (una subida, un import, un rename) sin generar un bucle.
+- **Archivo mapeado renombrado en Drive** -> `sync_status='conflict'`, `sync_error='DRIVE_NAME_CHANGED'`. El CRM **nunca** se renombra solo -- sigue siendo la copia operativa primaria.
+- **Archivo mapeado con contenido cambiado (`md5Checksum`/`version` distintos del baseline)** -> `conflict`/`DRIVE_CONTENT_CHANGED`. Nunca se sobreescribe el Storage del CRM automáticamente.
+- **Archivo mapeado movido a otra carpeta** -> `conflict`/`DRIVE_PARENT_MISMATCH`. Nunca se reasigna `client_id`, ni se mueve el Storage, ni se cambia `case_id`.
+- **Archivo mapeado marcado `trashed` o reportado `removed`** -> `missing`/código estable (`DRIVE_FILE_TRASHED` o `DRIVE_FILE_REMOVED_OR_ACCESS_LOST`). El documento del CRM **se conserva siempre** -- una eliminación en Drive nunca borra nada del CRM.
+- **Carpeta de un Cliente movida fuera de la raíz o eliminada** -> se revalida igual que un documento (mismo criterio, nunca se reasigna el mapping del Cliente).
+
+### Reconciliación: red de seguridad, no la ruta principal
+
+El change feed cubre el flujo normal, pero no todo: un `poll_changes` puede haberse perdido antes de este release, un Cliente puede haberse creado sin que su `ensure_client_folder` llegara a encolarse, o -- el caso más delicado -- un documento puede haberse borrado del CRM sin que su `prepare-document-trash` llegara a ejecutarse en Drive, dejando un archivo huérfano marcado `appProperties.crm_entity=document` sin ningún rastro en la base de datos del CRM que lo señale.
+
+Por eso existe `runGoogleDriveReconciliation`, invocada desde el mantenimiento cada `GOOGLE_DRIVE_RECONCILIATION_INTERVAL_MS` (varias horas, no en cada ejecución), con un solo pase activo por conexión (CAS sobre `reconciliation_claimed_at`, sin mantener ningún lock de PostgreSQL abierto mientras dura el escaneo de Drive). Hace, en orden: encolar `ensure_client_folder` para Clientes sin carpeta; encolar `upload_document` para documentos sin mapping (nunca para los de procedencia `google_drive`, que en cambio intentan reparar su mapping si la identidad de Drive sigue siendo válida); escanear los hijos directos de cada carpeta de Cliente (sin recursión) para encontrar manuales sin importar; verificar que cada mapping existente siga apuntando a un archivo real, en el sitio correcto; y, por último, una búsqueda Drive-side por `appProperties.crm_entity=document` para encontrar archivos que Drive todavía marca como gestionados por el CRM pero cuyo documento **ya no existe**.
+
+**Un huérfano detectado nunca se resucita ni se auto-mueve a la papelera.** Se reporta (recuento y lista de `drive_file_id`, expuestos en el status mínimo) para revisión humana -- la ausencia en el CRM podría deberse tanto a un borrado legítimo perdido como a una restauración parcial de base de datos, y esta integración no asume cuál de los dos es.
+
+El cursor de cambios (`changes_page_token`) y la reconciliación son **mecanismos independientes**: completar una reconciliación nunca avanza el cursor, y viceversa.
+
+### Watch/webhook: creación, renovación y la carrera sync-antes-de-persistir
+
+Con `GOOGLE_DRIVE_WEBHOOK_URL` configurada, el mantenimiento asegura un canal de notificación (`changes.watch`) con una duración conservadora (6 días, por debajo del máximo real de Google de 7) y lo renueva cuando falta menos de 24 h para expirar. El token del canal es aleatorio, se envía en texto plano a Google (así puede devolvérnoslo en cada notificación) pero **solo su hash se persiste** -- nunca el texto plano, ni en la base de datos ni en ningún log.
+
+La renovación crea el canal **nuevo** primero (persistido de forma atómica, superseding el anterior en la misma operación) y solo después intenta `channels.stop` del viejo, de forma best-effort: si ese `stop` remoto falla, el canal nuevo sigue activo igual -- un breve solapamiento de dos canales notificando es un resultado aceptado (ambos deduplican al mismo `poll_changes`), nunca un error.
+
+El webhook mismo es deliberadamente ligero: valida `channel_id` + hash del `channel_token` (comparación en tiempo constante) + `resource_id`, y si todo coincide y el estado es `change`, encola `poll_changes` y responde `204`. Nunca llama a Google, nunca hace un escaneo de base de datos largo, ignora el body de la petición. Un `channel_id` que la base de datos todavía no reconoce se **ignora** (`204`), nunca se rechaza como error -- Google puede enviar el mensaje `sync` inicial antes de que la propia respuesta de `changes.watch` termine de persistirse localmente, y esa carrera no implica nada malicioso. Un token incorrecto, en cambio, sí se rechaza explícitamente. Un `resourceState` desconocido o futuro (Google documenta que puede añadir nuevos) también se ignora con `204`, nunca con un error 500 -- `X-Goog-Message-Number` nunca se usa como cursor, solo el `changes_page_token` real tiene autoridad.
+
+---
+
 ## Limitación conocida: Drive puede cambiar fuera del CRM
 
 Drive es un sistema externo y **no existe atomicidad distribuida** entre Google y PostgreSQL. Al vincular un cliente, el servidor revalida la carpeta contra Drive (existe, es carpeta, no está en la papelera, cuelga de la raíz) inmediatamente antes de escribir, y la escritura es atómica y serializada — pero entre esa validación y el COMMIT queda una ventana en la que alguien con acceso al Drive puede mover o borrar la carpeta.
 
-Esto **no se intenta resolver con una transacción distribuida**: el remedio sería peor que el problema. Se asume como limitación conocida y se resuelve por detección posterior: la sincronización de **Fase 8F** comparará el padre real de cada carpeta con el esperado y marcará `DRIVE_PARENT_MISMATCH` como conflicto para que una persona lo resuelva. En ningún caso se reasignará `client_id` de forma automática — el CRM es la autoridad de la relación jurídica.
+Esto **no se intenta resolver con una transacción distribuida**: el remedio sería peor que el problema. Se asume como limitación conocida y se resuelve por detección posterior: la sincronización automática de **Fase 8F** compara el padre real de cada carpeta y de cada documento mapeado contra el esperado (tanto vía el change feed como en la reconciliación periódica) y marca `DRIVE_PARENT_MISMATCH` como conflicto para que una persona lo resuelva. En ningún caso se reasigna `client_id` de forma automática — el CRM es la autoridad de la relación jurídica.
 
 ---
 
 ## Lo que NO hace todavía
 
-- No detecta cambios hechos directamente en Drive: sin `changes.list`, `changes.watch` ni webhooks -- Fase 8E solo consume un `drive_file_id` que ya le llega, nunca lo descubre por su cuenta.
 - No reemplaza el contenido de un documento ya subido (el CRM tampoco lo ofrece).
-- No reconcilia eventos perdidos -- ni los de creación/subida perdida (recuperables desde el propio CRM) ni, sobre todo, los de un borrado perdido que deja un archivo huérfano en Drive sin ningún rastro en la base de datos del CRM: eso exige un escaneo del lado de Drive vía `appProperties`, no solo del lado de la base de datos, y llega en 8F.
 - No exporta archivos nativos de Google Workspace (Docs/Sheets/Slides/...); los rechaza explícitamente.
-- No importa archivos fuera de una carpeta de Cliente vinculada, ni desde subcarpetas internas.
+- No importa archivos fuera de una carpeta de Cliente vinculada, ni desde subcarpetas internas (sin recursión, ni en el change feed ni en la reconciliación).
 - No mueve a la papelera la carpeta de un Cliente eliminado.
+- No resuelve conflictos automáticamente ("usar CRM" / "usar Drive" / fusionar): los detecta y los deja para revisión humana -- una UI de resolución es, como mucho, una fase futura.
+- No auto-trashea ni auto-repara un huérfano Drive-side detectado por la reconciliación: solo lo reporta.
+- No conecta todavía Google Drive real ni Google Cloud Console -- toda la validación de 8F, igual que las fases anteriores, es contra mocks y PostgreSQL local.
 
 ---
 

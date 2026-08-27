@@ -67,6 +67,12 @@ export type DriveConnection = {
   status: string;
   last_synced_at: string | null;
   last_error: string | null;
+  /** Cursor durable del change feed (Fase 8F). NULL = tracking sin inicializar. */
+  changes_page_token: string | null;
+  changes_initialized_at: string | null;
+  last_changes_polled_at: string | null;
+  last_reconciled_at: string | null;
+  reconciliation_claimed_at: string | null;
 };
 
 function serverSecret(name: string) {
@@ -520,6 +526,42 @@ export async function completeGoogleDriveOAuth(request: Request) {
 }
 
 // ── status ──────────────────────────────────────────────────────────────
+/**
+ * Fase 8F Sección 50/51: extensión MÍNIMA del status -- no es un dashboard,
+ * solo lo suficiente para que un Administrador vea si el tracking automático
+ * está inicializado, si hay un webhook activo, cuándo corrió el último poll/
+ * reconciliation, y cuántos conflictos hay pendientes (solo el número: nunca
+ * se listan documentos completos aquí).
+ */
+async function googleDriveAutomaticSyncStatus(connectionId: string) {
+  const db = adminClient();
+  const [{ data: channel }, { count: documentConflicts }, { count: folderConflicts }] =
+    await Promise.all([
+      db
+        .from("google_drive_channels")
+        .select("expires_at, stopped_at, superseded_at")
+        .eq("connection_id", connectionId)
+        .is("superseded_at", null)
+        .maybeSingle(),
+      db
+        .from("google_drive_document_files")
+        .select("id", { count: "exact", head: true })
+        .eq("connection_id", connectionId)
+        .eq("sync_status", "conflict"),
+      db
+        .from("google_drive_client_folders")
+        .select("id", { count: "exact", head: true })
+        .eq("connection_id", connectionId)
+        .eq("sync_status", "conflict"),
+    ]);
+  const webhookActive = Boolean(channel && !channel.stopped_at);
+  return {
+    webhookActive,
+    watchExpiresAt: webhookActive ? channel!.expires_at : null,
+    conflictCount: (documentConflicts ?? 0) + (folderConflicts ?? 0),
+  };
+}
+
 export async function googleDriveConnectionStatus(request: Request) {
   await requireAdmin(request);
   if (!isGoogleDriveConfigured()) {
@@ -527,6 +569,7 @@ export async function googleDriveConnectionStatus(request: Request) {
   }
   const connection = await activeDriveConnection();
   if (!connection) return { configured: true, connected: false } as const;
+  const automaticSync = await googleDriveAutomaticSyncStatus(connection.id);
   return {
     configured: true,
     connected: true,
@@ -542,6 +585,13 @@ export async function googleDriveConnectionStatus(request: Request) {
     // Nunca el mensaje crudo de Google ni ningún dato técnico -- solo lo
     // que ya se saneó/generó desde este propio módulo.
     lastError: connection.last_error,
+    // Fase 8F: sincronización automática. `changeTrackingInitialized` en
+    // `false` significa que ningún poll_changes puede correr todavía --
+    // el maintenance lo inicializa (bootstrap), nunca esta ruta de status.
+    changeTrackingInitialized: Boolean(connection.changes_page_token),
+    lastChangesPolledAt: connection.last_changes_polled_at,
+    lastReconciledAt: connection.last_reconciled_at,
+    ...automaticSync,
   } as const;
 }
 

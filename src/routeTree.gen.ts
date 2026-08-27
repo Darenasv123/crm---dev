@@ -27,6 +27,7 @@ import { Route as AppConfiguracionIndexRouteImport } from './routes/_app.configu
 import { Route as AppClientesIndexRouteImport } from './routes/_app.clientes.index'
 import { Route as AppCasosIndexRouteImport } from './routes/_app.casos.index'
 import { Route as AppAgendaIndexRouteImport } from './routes/_app.agenda.index'
+import { Route as ApiGoogleDriveWebhookRouteImport } from './routes/api.google-drive.webhook'
 import { Route as ApiGoogleDriveSyncDocumentRouteImport } from './routes/api.google-drive.sync-document'
 import { Route as ApiGoogleDriveSyncClientRouteImport } from './routes/api.google-drive.sync-client'
 import { Route as ApiGoogleDriveStatusRouteImport } from './routes/api.google-drive.status'
@@ -148,6 +149,11 @@ const AppAgendaIndexRoute = AppAgendaIndexRouteImport.update({
   id: '/agenda/',
   path: '/agenda/',
   getParentRoute: () => AppRoute,
+} as any)
+const ApiGoogleDriveWebhookRoute = ApiGoogleDriveWebhookRouteImport.update({
+  id: '/api/google-drive/webhook',
+  path: '/api/google-drive/webhook',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiGoogleDriveSyncDocumentRoute =
   ApiGoogleDriveSyncDocumentRouteImport.update({
@@ -358,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
   '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
+  '/api/google-drive/webhook': typeof ApiGoogleDriveWebhookRoute
   '/agenda/': typeof AppAgendaIndexRoute
   '/casos/': typeof AppCasosIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -409,6 +416,7 @@ export interface FileRoutesByTo {
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
   '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
+  '/api/google-drive/webhook': typeof ApiGoogleDriveWebhookRoute
   '/agenda': typeof AppAgendaIndexRoute
   '/casos': typeof AppCasosIndexRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -462,6 +470,7 @@ export interface FileRoutesById {
   '/api/google-drive/status': typeof ApiGoogleDriveStatusRoute
   '/api/google-drive/sync-client': typeof ApiGoogleDriveSyncClientRoute
   '/api/google-drive/sync-document': typeof ApiGoogleDriveSyncDocumentRoute
+  '/api/google-drive/webhook': typeof ApiGoogleDriveWebhookRoute
   '/_app/agenda/': typeof AppAgendaIndexRoute
   '/_app/casos/': typeof AppCasosIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -515,6 +524,7 @@ export interface FileRouteTypes {
     | '/api/google-drive/status'
     | '/api/google-drive/sync-client'
     | '/api/google-drive/sync-document'
+    | '/api/google-drive/webhook'
     | '/agenda/'
     | '/casos/'
     | '/clientes/'
@@ -566,6 +576,7 @@ export interface FileRouteTypes {
     | '/api/google-drive/status'
     | '/api/google-drive/sync-client'
     | '/api/google-drive/sync-document'
+    | '/api/google-drive/webhook'
     | '/agenda'
     | '/casos'
     | '/clientes'
@@ -618,6 +629,7 @@ export interface FileRouteTypes {
     | '/api/google-drive/status'
     | '/api/google-drive/sync-client'
     | '/api/google-drive/sync-document'
+    | '/api/google-drive/webhook'
     | '/_app/agenda/'
     | '/_app/casos/'
     | '/_app/clientes/'
@@ -664,6 +676,7 @@ export interface RootRouteChildren {
   ApiGoogleDriveStatusRoute: typeof ApiGoogleDriveStatusRoute
   ApiGoogleDriveSyncClientRoute: typeof ApiGoogleDriveSyncClientRoute
   ApiGoogleDriveSyncDocumentRoute: typeof ApiGoogleDriveSyncDocumentRoute
+  ApiGoogleDriveWebhookRoute: typeof ApiGoogleDriveWebhookRoute
   ApiGoogleDriveOnboardingApplyRoute: typeof ApiGoogleDriveOnboardingApplyRoute
   ApiGoogleDriveOnboardingPreviewRoute: typeof ApiGoogleDriveOnboardingPreviewRoute
 }
@@ -795,6 +808,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/agenda/'
       preLoaderRoute: typeof AppAgendaIndexRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/api/google-drive/webhook': {
+      id: '/api/google-drive/webhook'
+      path: '/api/google-drive/webhook'
+      fullPath: '/api/google-drive/webhook'
+      preLoaderRoute: typeof ApiGoogleDriveWebhookRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/google-drive/sync-document': {
       id: '/api/google-drive/sync-document'
@@ -1103,6 +1123,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGoogleDriveStatusRoute: ApiGoogleDriveStatusRoute,
   ApiGoogleDriveSyncClientRoute: ApiGoogleDriveSyncClientRoute,
   ApiGoogleDriveSyncDocumentRoute: ApiGoogleDriveSyncDocumentRoute,
+  ApiGoogleDriveWebhookRoute: ApiGoogleDriveWebhookRoute,
   ApiGoogleDriveOnboardingApplyRoute: ApiGoogleDriveOnboardingApplyRoute,
   ApiGoogleDriveOnboardingPreviewRoute: ApiGoogleDriveOnboardingPreviewRoute,
 }
