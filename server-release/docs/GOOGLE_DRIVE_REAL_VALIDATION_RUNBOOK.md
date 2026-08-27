@@ -425,6 +425,18 @@ propio servicio de cron — nunca escrito en texto plano directamente dentro
 de la línea de crontab si existe una alternativa mejor disponible en el
 target real. No se crea ningún cron en esta fase.
 
+**REFINAMIENTO (Fase 8I-B1): el cron cada 10 minutos es el estado FINAL
+del staging, no el primer paso.** Antes de instalarlo, `POST
+/api/google-drive/maintenance` debe invocarse **manualmente** (curl directo,
+una vez por paso) las veces suficientes para confirmar que cada ciclo hace
+lo esperado — avanza el cursor de cambios, no duplica trabajo, no lanza
+errores — con ojos humanos revisando cada respuesta. Instalar el cron ANTES
+de esa confirmación manual mezclaría dos preguntas distintas ("¿el
+endpoint funciona?" y "¿el cron está bien configurado?") en un solo fallo
+silencioso y periódico, mucho más difícil de diagnosticar que una llamada
+manual que falla a la vista. Ver el orden exacto en la Sección 39.M
+(BLOCK I) — el cron solo se instala después de BLOCK L.
+
 ## 21. Relación webhook/mantenimiento (durabilidad)
 
 Arquitectura confirmada y ya documentada en `GOOGLE_DRIVE_CONFIGURATION.md`:
@@ -445,28 +457,35 @@ diff → Sección de diff.)
 
 ## 23. Secuencia de la primera prueba real (8I-B) — NO ejecutar todavía
 
-| Stage | Acción | Resultado esperado |
-|---|---|---|
-| 0 | Backup + punto de rollback | Snapshot restaurable confirmado |
-| 1 | Migraciones en entorno controlado (17.x) | 9 migraciones aplicadas sin error, grants verificados |
-| 2 | Validación de entorno | `validate-production-env.mjs` exit 0 |
-| 3 | Solo OAuth connect | Conexión `connected`, refresh token cifrado guardado |
-| 4 | Status / refresh de access token | `/api/google-drive/status` responde sano |
-| 5 | Seleccionar carpeta raíz DE PRUEBA | `root_folder_id` fijado a `CRM-DRIVE-STAGING`, nunca a la raíz real |
-| 6 | Onboarding con 1–2 Clientes ficticios | Mapeos creados, sin homónimos reales afectados |
-| 7 | CRM → Drive: un documento de prueba | Archivo aparece en Drive con appProperties correctas |
-| 8 | Drive → CRM: un blob de prueba | `import_drive_file` crea el documento, `case_id`/`created_by` NULL |
-| 9 | Rename en Drive | `sync_status='conflict'`, CRM no se renombra |
-| 10 | Move en Drive | `DRIVE_PARENT_MISMATCH`, sin reasignar Cliente |
-| 11 | Trash en Drive | CRM conserva el documento, mapping `missing` |
-| 12 | Poll de cambios | Cursor avanza correctamente, sin duplicados |
-| 13 | Watch/webhook | Canal creado, notificación real recibida y procesada |
-| 14 | Reconciliación | Corre sin error, detecta lo esperado |
-| 15 | Disconnect (local-only) | Token destruido, Calendar no afectado |
-| 16 | Reconnect | Nueva conexión limpia, sin residuos de la anterior |
+**Reemplazada por la secuencia de bloques BLOCK A–L de la Sección 39.M**
+(Fase 8I-B1), que detalla precondition/action/expected/evidence/abort para
+cada bloque, en vez de la tabla de 17 stages numéricos de esta sección
+original. La tabla original queda conservada aquí solo como referencia
+rápida de alto nivel — para ejecutar, usar siempre la Sección 39.M como
+fuente de verdad, no esta tabla.
 
-Ningún stage se ejecuta en esta fase. Cada stage requiere que el anterior
-haya sido explícitamente aprobado.
+| Stage | Acción | Resultado esperado | Bloque equivalente |
+|---|---|---|---|
+| 0 | Backup + punto de rollback | Snapshot restaurable confirmado | BLOCK B |
+| 1 | Migraciones en entorno controlado (17.x) | Esquema release completo aplicado, grants verificados | BLOCK B |
+| 2 | Validación de entorno | `validate-production-env.mjs` exit 0 | BLOCK A |
+| 3 | Solo OAuth connect | Conexión `connected`, refresh token cifrado guardado | BLOCK D |
+| 4 | Status / refresh de access token | `/api/google-drive/status` responde sano | BLOCK D |
+| 5 | Seleccionar carpeta raíz DE PRUEBA | `root_folder_id` fijado a `CRM-DRIVE-STAGING`, nunca a la raíz real | BLOCK E |
+| 6 | Onboarding con 1–2 Clientes ficticios | Mapeos creados, sin homónimos reales afectados | BLOCK E |
+| 7 | CRM → Drive: un documento de prueba | Archivo aparece en Drive con appProperties correctas | BLOCK F |
+| 8 | Drive → CRM: un blob de prueba | `import_drive_file` crea el documento, `case_id`/`created_by` NULL | BLOCK G |
+| 9 | Rename en Drive | `sync_status='conflict'`, CRM no se renombra | BLOCK H |
+| 10 | Move en Drive | `DRIVE_PARENT_MISMATCH`, sin reasignar Cliente | BLOCK H |
+| 11 | Trash en Drive | CRM conserva el documento, mapping `missing` | BLOCK H |
+| 12 | Poll de cambios (manual, sin cron todavía) | Cursor avanza correctamente, sin duplicados | BLOCK I |
+| 13 | Watch/webhook | Canal creado, notificación real recibida y procesada | BLOCK J |
+| 14 | Reconciliación | Corre sin error, detecta lo esperado | BLOCK K |
+| 15 | Disconnect (local-only) | Token destruido, Calendar no afectado | BLOCK L |
+| 16 | Reconnect | Nueva conexión limpia, sin residuos de la anterior | BLOCK L |
+
+Ningún stage/bloque se ejecuta en esta fase. Cada uno requiere que el
+anterior haya sido explícitamente aprobado.
 
 ## 24. Política de datos de prueba
 
@@ -655,12 +674,17 @@ restauración.
 
 ## 36. Contenido de este runbook
 
-Este documento es el entregable principal de la Fase 8I-A, cubriendo las 12
-secciones pedidas: prerrequisitos, decision gates, setup de Google Cloud,
-checklist de variables, requisitos de staging, orden de migraciones,
-backup/rollback, secuencia E2E, resultados esperados, criterios de aborto
-(Sección 37), evidencia a recolectar, y limpieza posterior a la prueba
-(Sección 38). No incluye secretos.
+Este documento es el entregable principal de la Fase 8I-A, ampliado en
+8I-A.1 (rehearsal real PG17 + hardening del validador, Secciones 5/32) y en
+8I-B1 (staging readiness completo, Sección 39): prerrequisitos, decision
+gates, setup de Google Cloud, checklist de variables, requisitos de
+staging, orden de migraciones, backup/rollback, secuencia E2E por bloques
+(Sección 39.M), resultados esperados, criterios de aborto (Sección 37),
+evidencia a recolectar, limpieza posterior a la prueba (Sección 38), y el
+diseño completo de staging (topología, dominio, aislamiento Supabase,
+inventario de variables, Google Cloud testing project, rollback y limpieza
+— Sección 39). Se mantiene como fuente de verdad única — no se crea un
+runbook complementario. No incluye secretos.
 
 ## 37. Criterios de aborto — NO proceder a 8I-B si:
 
@@ -686,3 +710,651 @@ backup/rollback, secuencia E2E, resultados esperados, criterios de aborto
   si se conserva o se limpia la carpeta `CRM-DRIVE-STAGING` y los Clientes
   ficticios usados — nunca dejarlos indefinidamente confundibles con datos
   reales.
+
+---
+
+## 39. Fase 8I-B1 — Staging Readiness (diseño, sin ejecutar)
+
+Objetivo de esta sección: dejar el staging completamente diseñado y
+verificable ANTES de tocar Google Cloud, OAuth, Supabase staging remoto,
+DNS, Virtualmin, Apache, Cloudflare, servidor real o Drive real. Nada de
+lo que sigue se ejecutó en esta fase.
+
+### 39.A — Auditoría de deployment real (hallazgo)
+
+`DEPLOY.md` (raíz del repo) describe un flujo de **Cloudflare Workers**
+(`npm run deploy` → `wrangler deploy`) que referencia directamente el
+proyecto Supabase legacy `pnqdgwpxcxngeueosmnh` en texto plano. Confirmado
+por auditoría: **este NO es el mecanismo de despliegue real actual.** El
+mecanismo real, documentado en `server-release/docs/VIRTUALMIN_DEPLOYMENT.md`
+y consistente con `server-release/docs/ADMIN_SERVER_MESSAGE.md` y el ZIP de
+release ya presente en el repo (`advocate-nest-virtualmin-release-2026-08-01.zip`), es:
+
+```
+Internet → https://abogado.consoldi.com
+  → [capa DNS/proxy: PENDING VERIFICACIÓN OPERATIVA — ver 39.W]
+    → Apache/Virtualmin (reverse proxy)
+      → http://127.0.0.1:3000 (Node interno)
+        → .output/server/index.mjs (TanStack Start + Nitro, preset "node")
+          → Supabase externo (Auth, PostgreSQL, RLS, RPC, Storage)
+```
+
+Build real: `npm run build:node` (`BUILD_TARGET=node`, ver `vite.config.ts`
+líneas 9-31), que fuerza el preset Nitro `"node"` — distinto del preset
+`"cloudflare-module"` que usa `npm run build`/`npm run deploy` (el que
+`DEPLOY.md` documenta). Estructura de release:
+`/home/abogado/apps/advocate-nest/{releases/<fecha>/,current→symlink,shared/.env.production}`.
+Servidor real: `144.126.140.178`, SFTP puerto `2705`, usuario `abogado`.
+
+**`DEPLOY.md` queda confirmado como documentación obsoleta** (Cloudflare, no
+el target real) — no se modifica en esta fase por estar fuera del scope
+autorizado (auditoría, no limpieza de docs no relacionadas con Drive), pero
+queda registrado aquí para no repetir la confusión en 8I-B2.
+
+**Corrección (Fase 8I-B1.1) — proceso permanente:** `VIRTUALMIN_DEPLOYMENT.md`
+(el único documento de deployment de este repo que describe el proceso
+permanente) lista PM2 como "Opción 1 (recomendada)" y systemd como "Opción
+2" — ambas presentadas como alternativas igualmente válidas, sin indicar
+cuál está realmente en uso. Según información operativa aportada
+directamente por el propietario del CRM (procedimiento
+`deploy-advocate-nest-root.sh`, **no localizado en este repositorio** —
+no se pudo verificar su contenido por auditoría propia, se toma como dato
+operativo del propietario, no como hallazgo de código), el procedimiento
+canónico real define `/etc/systemd/system/advocate-nest.service`
+(`ExecStart=/usr/bin/node .output/server/index.mjs`) como el mecanismo
+permanente, y **limpia explícitamente PM2 legacy** (proceso, daemon, y el
+cron de `pm2 resurrect`) como parte de su ejecución. Esto contradice
+directamente la recomendación de `VIRTUALMIN_DEPLOYMENT.md` — ese documento
+queda marcado como desactualizado en cuanto a cuál opción es la vigente
+(no se corrige su contenido en esta subfase, solo se anota aquí la
+discrepancia; corregirlo pertenece a mantenimiento de docs de despliegue,
+fuera del scope Drive). Ver modelo corregido en 39.O/39.Q.
+
+### 39.B — Topología de staging
+
+Staging vive en el MISMO servidor físico que producción, pero como entorno
+lógicamente aislado, sin ningún recurso compartido con producción salvo el
+hardware:
+
+| Recurso | Producción | Staging |
+|---|---|---|
+| vhost/dominio | `abogado.consoldi.com` | `abogado-staging.consoldi.com` (PENDING, ver 39.C) |
+| Directorio app | `/home/abogado/apps/advocate-nest/` | directorio independiente, ej. `/home/abogado/apps/advocate-nest-staging/` |
+| Proceso Node | `systemd advocate-nest.service` en `:3000` (canónico corregido, ver 39.A) | `systemd advocate-nest-staging.service` independiente, en puerto distinto (ver 39.P) |
+| Variables | `shared/.env.production` | archivo separado, nunca el mismo `.env.production` |
+| Logs | `/home/abogado/logs/advocate-nest.*` | ruta de logs separada |
+| Supabase | proyecto `pnqdgwpxcxngeueosmnh` | **proyecto Supabase staging independiente** (ver 39.F) |
+| Google Cloud (Drive) | no existe todavía para Drive | **proyecto Google Cloud "CRM Drive — Testing" independiente** (ver 39.K) |
+| OAuth Client (Drive) | no existe todavía | Client dedicado, nunca reutiliza el de Calendar |
+| Callback/webhook | `abogado.consoldi.com/api/google-drive/*` | `abogado-staging.consoldi.com/api/google-drive/*` |
+
+Nunca compartir entre staging y producción: `SUPABASE_URL`/`service_role`
+productivos, el OAuth Client de Drive, cualquier `refresh_token`, o
+`GOOGLE_DRIVE_MAINTENANCE_SECRET`. Los secretos genéricos criptográficos
+(`GOOGLE_OAUTH_STATE_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY`) pueden — y
+deben — tener valores **distintos e independientes** en staging; no se
+copian valores productivos bajo ninguna circunstancia.
+
+### 39.C — Dominio de staging (PENDING)
+
+**Propuesto:** `abogado-staging.consoldi.com`. Estado: **PENDING** — no se
+crea ningún registro DNS en esta fase, y el dominio se trata como no
+confirmado hasta verificar que no colisiona con configuración existente en
+Virtualmin/Cloudflare para `consoldi.com`. Si hay conflicto, alternativa
+propuesta: `staging-abogado.consoldi.com` o un subdominio bajo un dominio
+de pruebas separado si el estudio lo prefiere — decisión pendiente de
+confirmación externa, no de este documento.
+
+Una vez el dominio quede confirmado en firme, las URLs exactas serán:
+
+```
+Redirect: https://abogado-staging.consoldi.com/api/google-drive/callback
+Webhook:  https://abogado-staging.consoldi.com/api/google-drive/webhook
+```
+
+**No configurar el OAuth Client en Google Cloud Console antes de confirmar
+el dominio real** — Google exige coincidencia exacta y literal del redirect
+URI; registrar un valor especulativo obligaría a recrear el Client después.
+
+### 39.D — Supabase staging (aislamiento)
+
+La primera validación real **no puede apuntar** a `pnqdgwpxcxngeueosmnh` ni
+a ningún proyecto productivo. Requisito de diseño: un proyecto Supabase
+**staging** completamente independiente, con:
+
+- su propio Auth (usuarios de prueba, nunca cuentas reales del estudio);
+- su propio Storage (bucket `documents`, ver 39.S);
+- su propio PostgreSQL (aplicado con el bootstrap canónico + 9 migraciones, ver 39.T);
+- su propio `service_role`/`anon key` (nunca los de producción);
+- cero usuarios, clientes, expedientes o documentos productivos.
+
+No se crea el proyecto en esta fase. No usar un dump anonimizado de
+producción como semilla — dataset 100% sintético (ver 39.E), tal como ya
+decidido en fases previas.
+
+### 39.E — Dataset sintético
+
+Ningún dato productivo, ni siquiera anonimizado. Fixture mínimo:
+
+- 1 Administrador ficticio, 1 Personal ficticio si alguna prueba lo requiere.
+- Cliente Prueba A, Cliente Prueba B.
+- 1 expediente ficticio por cliente, solo si alguna función lo exige (ver
+  precedente de fixtures usado en el rehearsal PG17 de 8I-A.1).
+- Documentos sintéticos: `drive-test-a.pdf`, `drive-test-b.docx` — sin DNI,
+  direcciones reales, expedientes reales, emails reales (salvo la cuenta
+  técnica de Google necesaria para OAuth, nunca almacenada en el repo), ni
+  datos jurídicos reales de ningún tipo.
+
+### 39.F — Inventario completo de variables de entorno para staging
+
+Reconciliado por grep real contra `src/`, `scripts/` y los tres documentos
+de variables existentes (`.env.example`, `server-release/config/.env.production.example`,
+`ENVIRONMENT_VARIABLES.md`) — no asumido.
+
+**Hallazgo adicional:** `server-release/config/.env.production.example` está
+desactualizado — le faltan por completo las variables de Drive (`GOOGLE_DRIVE_*`)
+introducidas en Fase 8B y el bloque SMTP documentado en `ENVIRONMENT_VARIABLES.md`.
+No se corrige en esta fase (fuera del scope de "documentación/configuración
+de staging" — es un archivo de producción, no de staging), pero queda
+registrado para 8I-B2 o una fase de mantenimiento de docs.
+
+| Variable | Categoría | Requerida en staging | Valor |
+|---|---|---|---|
+| `NODE_ENV` | runtime base | Sí | `production` (staging usa el mismo build de producción) |
+| `HOST` | runtime base | Sí | `127.0.0.1` |
+| `PORT` | runtime base | Sí | puerto staging distinto de `3000` (ver 39.P) |
+| `APP_URL` | runtime base | Sí | `https://abogado-staging.consoldi.com` |
+| `SUPABASE_URL` | Supabase | Sí | proyecto staging (39.D) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase, secreto | Sí | proyecto staging, nunca producción |
+| `VITE_SUPABASE_URL` | Supabase, build-time | Sí | proyecto staging |
+| `VITE_SUPABASE_ANON_KEY` | Supabase, build-time | Sí | proyecto staging |
+| `GOOGLE_CLIENT_ID` / `_SECRET` / `GOOGLE_OAUTH_REDIRECT_URI` | Calendar | **debe permanecer disabled** | vacío — ver 39.G |
+| `GOOGLE_CALENDAR_WEBHOOK_URL` / `GOOGLE_SHARED_CALENDAR_ID` | Calendar | debe permanecer disabled | vacío |
+| `GOOGLE_CALENDAR_MAINTENANCE_SECRET` | Calendar | debe permanecer disabled | vacío |
+| `VITE_GOOGLE_CLIENT_ID` | Calendar, build-time | debe permanecer disabled | vacío |
+| `GOOGLE_DRIVE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Drive | staging value required, solo después de BLOCK C | proyecto Drive testing (39.K) |
+| `GOOGLE_OAUTH_STATE_SECRET` / `GOOGLE_TOKEN_ENCRYPTION_KEY` | Drive (compartidas con Calendar en el esquema, pero Calendar va disabled) | staging value required cuando Drive se habilite | valor generado propio de staging, nunca el de producción |
+| `GOOGLE_DRIVE_MAINTENANCE_SECRET` | Drive | staging value required cuando Drive se habilite | valor generado propio de staging |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Drive | optional (ver Sección 26 — watch al final) | vacío hasta BLOCK J |
+| `SMTP_HOST` / `_PORT` / `_SECURE` / `_USER` / `_PASSWORD` / `_FROM_EMAIL` / `_FROM_NAME` | Correo | debe permanecer disabled | vacío — ver 39.G |
+| `VITE_PASSWORD_RECOVERY_ENABLED` | feature flag | production-only, ya `false` por defecto | `false` |
+| `GROQ_API_KEY` | Chatbot Lex | optional | vacío o valor propio de staging si se quiere probar el chatbot |
+| `VITE_BUILD_COMMIT` / `VITE_BUILD_DATE` | build-time, informativo | optional | generado por build |
+| `DOCUMENT_ANALYSIS_PROVIDER` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `CF_IMPORT_QUEUE` / `CF_IMPORT_WORKFLOW` | Futura importación documental | no usada en este release | vacío (mock) |
+
+### 39.G — Integraciones que deben permanecer OFF en staging
+
+Confirmado por auditoría de código (no supuesto): tanto Calendar como
+Drive determinan "no configurado" únicamente por ausencia de sus variables
+de OAuth-specific — el mismo patrón ya verificado y endurecido para Drive en
+Fase 8I-A.1 (`scripts/validate-production-env.mjs`). **Dejar vacías las
+variables de Calendar (`GOOGLE_CLIENT_ID`/`_SECRET`/`GOOGLE_OAUTH_REDIRECT_URI`)
+es suficiente y seguro para que Calendar aparezca deshabilitado en la UI**,
+sin ningún cambio de código — confirmado en `src/routes/api.google-calendar.status.ts`
+→ `googleConnectionStatus()`, mismo patrón que Drive. SMTP se comporta
+igual: `src/lib/email.server.ts` exige `SMTP_HOST`/`_USER`/`_PASSWORD`/`_FROM_EMAIL`
+juntas; dejarlas vacías desactiva el envío de correo sin tocar runtime.
+Ninguna credencial productiva de Calendar o SMTP se usa en staging bajo
+ninguna circunstancia.
+
+### 39.H — Decisión de template de entorno
+
+Se audita primero si ya existe un mecanismo equivalente: `.env.example`
+(desarrollo) y `server-release/config/.env.production.example` (producción)
+ya existen, pero ninguno está pensado para staging (el de producción asume
+"producción real", con lenguaje y valores que no aplican a un entorno
+descartable). **Decisión: crear `server-release/staging/.env.staging.example`**,
+solo nombres/placeholders, sin secretos — ver archivo real creado en esta
+fase (Sección 39.T de "Archivos modificados" del informe). No se crea un
+`.env.staging` real ni se generan secretos.
+
+### 39.I — URLs de Drive para staging (dependientes del dominio, Sección 39.C)
+
+```
+GOOGLE_DRIVE_REDIRECT_URI=https://abogado-staging.consoldi.com/api/google-drive/callback
+GOOGLE_DRIVE_WEBHOOK_URL=https://abogado-staging.consoldi.com/api/google-drive/webhook
+```
+
+Ambas dependen de que el dominio de 39.C quede confirmado en firme —
+no se generan antes de eso.
+
+### 39.J — Especificación del proyecto Google Cloud de testing (futuro, NO ejecutar)
+
+- **Nombre sugerido:** `CRM Drive — Testing`.
+- Proyecto **completamente separado** del usado (o futuro) para Calendar —
+  nunca comparte Client ID/Secret con Calendar, tal como ya establece
+  Fase 8B (`GOOGLE_DRIVE_CLIENT_ID`/`_SECRET` documentados como "distinto
+  del de Calendar" en `ENVIRONMENT_VARIABLES.md`).
+- **Google Auth Platform:** Audience `External`; Publishing status `Testing`.
+- **Test users:** únicamente las cuentas estrictamente necesarias para la
+  validación. La cuenta real del Dr. Arenas se añade como test user cuando
+  corresponda ejecutar 8I-B2 — **su email no se guarda en el repositorio
+  ni en ningún documento**, se gestiona fuera de control de versiones.
+- **Scope:** `openid`, `email`, `https://www.googleapis.com/auth/drive` —
+  ningún scope adicional. Los "native Google Workspace files" (Docs,
+  Sheets nativos) permanecen fuera de scope de esta integración, sin
+  cambios respecto a decisiones previas.
+
+### 39.K — Caveat de 7 días (External + Testing)
+
+Bajo `External` + `Testing` + scope `drive`, el `refresh_token` expira en
+aproximadamente **7 días** — esto es un límite documentado de la propia
+plataforma OAuth de Google para apps no verificadas, no un defecto del
+CRM. Un `invalid_grant` después de ~7 días de inactividad durante staging
+debe interpretarse primero como expiración/necesidad de reconsentimiento,
+nunca como bug, hasta descartar explícitamente lo primero. La decisión de
+mover el proyecto a `In production` (audience verificado, sin límite de 7
+días) para el release final es una decisión separada, fuera del scope de
+esta subfase.
+
+### 39.L — Tipo de OAuth Client y requisitos de webhook HTTPS
+
+- **Tipo:** `Web application` — nunca `Desktop`, `Android`, ni `Service
+  account`. El flujo es server-side (`grant_type: authorization_code` /
+  `refresh_token`, confirmado en `src/lib/google-drive/google-drive.server.ts`
+  líneas 362-470) — el `client_secret` vive solo en el servidor, nunca en
+  el frontend.
+- **Authorized redirect URI:** exactamente la callback de staging de 39.I,
+  registrada solo después de confirmar el dominio.
+- **Authorized JavaScript origins:** no se necesita ninguno — el flujo no
+  hace ninguna llamada OAuth desde el navegador, confirmado por auditoría
+  de código (ningún uso de `google.accounts.oauth2` ni similar en `src/`).
+- **Webhook HTTPS:** antes de habilitar `watch` (BLOCK J), la URL de
+  staging debe resolver públicamente, servir HTTPS con certificado válido
+  (no autofirmado), aceptar `POST`, y enrutar correctamente al proceso
+  staging — nunca un túnel temporal (ngrok o similar) como diseño
+  definitivo, solo aceptable como prueba puntual si acaso. Puede probarse
+  con `GET`/`POST` genéricos a la ruta antes de involucrar a Google.
+
+### 39.M — Secuencia E2E refinada por bloques (reemplaza la tabla de la Sección 23)
+
+Cada bloque: **Precondition** (qué debe existir ya) · **Action** (qué se
+hace) · **Expected** (resultado correcto) · **Evidence** (qué capturar) ·
+**Abort** (cuándo detenerse y no continuar).
+
+**BLOCK A — Staging base**
+- Precondition: release Node desplegado, staging Supabase project creado y migrado (BLOCK B), variables base cargadas, Drive **sin credenciales todavía** (ver 39.N).
+- Action: iniciar el proceso Node staging; ejecutar `validate-production-env.mjs`; probar `/api/health`; login con Admin sintético; un CRUD básico (crear/leer un Cliente).
+- Expected: healthcheck OK, login OK, CRUD OK, Drive aparece "not configured"/"disconnected" en la UI, Calendar y SMTP sin efectos externos.
+- Evidence: respuesta de `/api/health`, captura de estado Drive/Calendar, log de arranque sin errores.
+- Abort: cualquier error de arranque, `validate-production-env.mjs` exit≠0, o CRUD básico fallando — no se avanza a BLOCK C hasta resolver.
+
+**BLOCK B — Supabase staging**
+- Precondition: proyecto Supabase staging creado (fuera de esta fase).
+- Action: aplicar el bootstrap canónico + las 9 migraciones pendientes usando el mecanismo canónico del repo (ver 39.T — nunca solo "las 9 sobre vacío"); sembrar el Admin sintético (39.R) y el dataset sintético (39.E).
+- Expected: esquema idéntico al validado en el rehearsal PG17 de 8I-A.1 (31/31 en `0008_verify.sql` + 9 migraciones); grants/RLS/RPC coinciden con lo ya auditado.
+- Evidence: inventario post-migración (tablas/funciones/triggers/policies), tal como en el informe 8I-A.1.
+- Abort: cualquier discrepancia estructural frente al rehearsal ya validado.
+
+**BLOCK C — Proyecto Google Cloud de Drive (testing)**
+- Precondition: dominio de staging confirmado (39.C).
+- Action: crear proyecto `CRM Drive — Testing` (39.J); configurar Auth Platform External/Testing; crear OAuth Client Web (39.L); registrar redirect URI exacto.
+- Expected: Client ID/Secret emitidos, redirect URI coincide exactamente con 39.I.
+- Evidence: Client ID (no el secret) documentado fuera del repo.
+- Abort: dominio aún no confirmado, o redirect URI no coincide exactamente.
+
+**BLOCK D — Conexión OAuth**
+- Precondition: BLOCK C completo; variables `GOOGLE_DRIVE_*` cargadas en staging.
+- Action: iniciar `connect`; completar consentimiento con la cuenta de prueba; verificar `/api/google-drive/status`.
+- Expected: conexión `connected`, refresh token cifrado guardado, `status` responde sano.
+- Evidence: respuesta de `/status` (sin tokens).
+- Abort: `invalid_grant`/mismatch de redirect URI — no reintentar sin diagnosticar.
+
+**BLOCK E — Onboarding**
+- Action: fijar `root_folder_id` a `CRM-DRIVE-STAGING` (nunca una carpeta real); onboarding de Cliente Prueba A/B.
+- Expected: mapeos creados, ningún cliente real afectado.
+- Evidence: filas de `google_drive_client_folders`.
+- Abort: el root resuelto no es `CRM-DRIVE-STAGING`.
+
+**BLOCK F — Outbound (CRM → Drive)**
+- Action: subir `drive-test-a.pdf` a un documento sintético.
+- Expected: archivo aparece en Drive con `appProperties` correctas.
+- Abort: archivo aparece fuera de `CRM-DRIVE-STAGING`.
+
+**BLOCK G — Inbound (Drive → CRM)**
+- Action: colocar `drive-test-b.docx` manualmente en Drive.
+- Expected: `import_drive_file` crea el documento con `case_id`/`created_by` NULL.
+
+**BLOCK H — Conflictos**
+- Action: renombrar, mover y enviar a la papelera un archivo de prueba en Drive, uno por uno.
+- Expected: `sync_status='conflict'` en rename (CRM no se renombra); `DRIVE_PARENT_MISMATCH` en move (sin reasignar Cliente); mapping `missing` en trash (CRM conserva el documento).
+
+**BLOCK I — Poll de cambios (MANUAL, sin cron todavía)**
+- Action: invocar `POST /api/google-drive/maintenance` manualmente, una vez por verificación (ver refinamiento de la Sección 20) — repetir varias veces observando cada respuesta antes de considerar instalar el cron.
+- Expected: cursor de cambios avanza, sin duplicados, sin errores.
+- Abort: cualquier error o cursor que no avanza — no instalar el cron hasta resolver.
+
+**BLOCK J — Watch/webhook (AL FINAL, no antes)**
+- Precondition: BLOCK I estable manualmente durante varias invocaciones. Razón de posponerlo: aislar fallos — si watch fallara primero, no se podría distinguir un problema de webhook de uno de polling.
+- Action: habilitar `GOOGLE_DRIVE_WEBHOOK_URL`; confirmar requisitos HTTPS de 39.L; provocar un cambio real en Drive y verificar notificación.
+- Expected: canal creado, notificación real recibida y procesada.
+
+**BLOCK K — Reconciliación**
+- Action: forzar/esperar un ciclo de reconciliación.
+- Expected: corre sin error, detecta lo esperado contra el estado real de Drive.
+
+**BLOCK L — Disconnect/Reconnect**
+- Action: disconnect (local-only, nunca revoke global); luego reconnect limpio.
+- Expected: token local destruido, Calendar no afectado (aislamiento de revocación ya confirmado en Sección 16); reconexión sin residuos de la anterior.
+- Solo DESPUÉS de este bloque, con BLOCK I/J ya estables, se instala el cron de 10 minutos (Sección 20).
+
+### 39.N — Drive deshabilitado primero (orden obligatorio)
+
+La primera vez que staging se despliegue: **sin ninguna credencial de
+Drive** (BLOCK A completo antes que BLOCK C). Esto separa explícitamente
+"¿staging funciona?" de "¿la integración de Google funciona?" — si algo
+falla con Drive ya configurado desde el primer despliegue, no se podría
+aislar si el problema es del staging en sí o de la integración.
+
+### 39.O — Proceso Node de staging (ejemplo conceptual, no ejecutado)
+
+**CURRENT CANONICAL DEPLOYMENT MODEL: systemd + Node.** PM2 es un proceso
+legacy que el procedimiento de despliegue vigente limpia explícitamente
+(ver corrección en 39.A) — no se usa PM2 en ningún ejemplo de esta
+sección. **Esto debe reconfirmarse contra el servidor real mediante una
+auditoría read-only antes de crear el unit de staging** (ver 39.W/Sección
+8 de esta fase) — no se asume que el servidor sigue exactamente igual sin
+observarlo primero; el procedimiento pudo cambiar entre el momento en que
+se documentó y el momento real de 8I-B2.
+
+```
+/home/abogado/apps/advocate-nest-staging/
+├── releases/<fecha>/app/.output/server/index.mjs
+├── current → releases/<fecha>/
+└── shared/.env.staging
+```
+
+Unit conceptual (**no se crea en esta fase**):
+
+```ini
+# /etc/systemd/system/advocate-nest-staging.service
+[Unit]
+Description=CRM Jurídico Estudio Arenas — STAGING
+After=network.target
+
+[Service]
+Type=simple
+User=abogado
+WorkingDirectory=/home/abogado/apps/advocate-nest-staging/current/app
+EnvironmentFile=/home/abogado/apps/advocate-nest-staging/shared/.env.staging
+ExecStart=/usr/bin/node .output/server/index.mjs
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=advocate-nest-staging
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`WorkingDirectory` y `EnvironmentFile` completamente separados de
+producción — nunca el mismo directorio ni el mismo archivo de entorno.
+`HOST=127.0.0.1`, `PORT` pendiente de auditoría (ver 39.P).
+
+### 39.P — Puerto de staging
+
+**STAGING_PORT = PENDING.** No se fija un puerto específico en este
+documento. Antes de elegirlo en 8I-B2: auditar el servidor real con `ss
+-ltnp` (no `netstat`, no instalado por defecto en todas las distribuciones
+modernas) y revisar qué servicios ya escuchan. **No asumir `3100`**: según
+información operativa del propietario, el script de despliegue productivo
+ya utilizó históricamente el puerto `3100` como puerto temporal de release
+testing — reutilizarlo como puerto PERMANENTE de staging podría colisionar
+con ese uso temporal si ambos coincidieran en el tiempo. La elección final
+del puerto es un paso de 8I-B2, condicionado al resultado de la auditoría
+read-only, no de esta fase.
+
+### 39.Q — Apache/Virtualmin (plan futuro, NO ejecutar)
+
+```
+https://abogado-staging.consoldi.com
+        ↓
+[capa DNS/proxy: PENDING VERIFICACIÓN OPERATIVA — ver 39.W]
+        ↓
+Apache reverse proxy (nuevo vhost, análogo al de producción en
+VIRTUALMIN_DEPLOYMENT.md, mismos módulos: proxy proxy_http proxy_wstunnel ssl rewrite headers)
+        ↓
+http://127.0.0.1:<staging-port PENDING, ver 39.P>
+        ↓
+advocate-nest-staging.service (systemd, ver 39.O)
+```
+
+Nunca editar el vhost de producción (`abogado.consoldi.com`) al crear el
+de staging. **Antes de crear cualquier vhost de staging, reconfirmar por
+auditoría read-only (ver 39.W, Sección 8 de esta fase) la configuración
+exacta del vhost de producción** — no asumir que el Apache config
+documentado en `VIRTUALMIN_DEPLOYMENT.md` sigue siendo textualmente exacto
+sin observarlo. Rollback: deshabilitar/eliminar el vhost de staging
+(`a2dissite` o el mecanismo equivalente de Virtualmin) sin ningún reinicio
+que afecte al vhost productivo — Apache soporta recargar solo la
+configuración nueva sin downtime del vhost existente si se usa
+`systemctl reload` en vez de `restart`, a confirmar en el servidor real.
+
+### 39.R — Admin de staging
+
+Necesario para `/configuracion` y el flujo de conexión de Drive.
+
+**Corrección (Fase 8I-B1.1):** el `INSERT` directo en `auth.users` usado en
+el rehearsal de 8I-A.1 fue válido **únicamente como fixture SQL sobre una
+instancia PostgreSQL desechable sin GoTrue real** — no reproduce una
+identidad de Auth real (no crea contraseña hasheada, no permite login por
+email/password, no emite sesión ni JWT). **No es el mecanismo recomendado
+para crear la cuenta de Auth de staging real.** Staging necesita una
+identidad completa: email/password + sesión + JWT + `profile`.
+
+**Método soportado, en orden de preferencia:**
+
+**A. Supabase Auth Admin API** (preferido) — `supabase.auth.admin.createUser({ email, password, email_confirm: true })`,
+ejecutado exclusivamente **server-side** o desde un script administrativo
+one-shot fuera del navegador (requiere `service_role`, que nunca debe
+tocar el frontend). Puede usar un email sintético de staging y una
+password generada aleatoriamente.
+
+**B. Supabase Dashboard** (alternativa manual) — Authentication → Users →
+Add User, si el flujo del Dashboard cubre lo necesario para crear la
+identidad de prueba.
+
+En ambos casos: la contraseña **nunca** se guarda en el repositorio, nunca
+se loggea, y el `service_role`/secret key nunca se expone al frontend.
+
+**Rol Administrador:** después de crear la identidad vía A o B, el trigger
+existente (`handle_new_user()`) crea automáticamente el `profile` asociado
+con `role='Personal'` — el rol se eleva después mediante un mecanismo
+administrativo seguro en staging, a auditar en 8I-B2 entre: (a) un
+RPC/endpoint admin ya existente si lo hay, (b) `service_role` server-side
+directo, o (c) un `UPDATE` SQL administrativo puntual sobre el proyecto
+staging (no sobre `auth.users`, solo sobre `public.profiles`, que sí es
+una tabla de aplicación normal). **Nunca insertar manualmente la fila de
+`auth.users`** en un proyecto Supabase real — ese atajo solo es válido en
+el rehearsal PG17 desechable de 8I-A.1, no en staging.
+
+**Bootstrap chicken-and-egg:** el primer Admin de staging es,
+necesariamente, un bootstrap administrativo — no puede depender de un
+endpoint que ya requiera un Administrador existente para funcionar. Por
+eso se permite la Auth Admin API o el Dashboard específicamente para esta
+primera identidad. Una vez existe el primer Admin, las funciones normales
+del CRM (gestión de Personal/usuarios) ya cubren el resto según la
+arquitectura existente — no se necesita ningún mecanismo especial después
+del bootstrap inicial.
+
+**Separación de identidades — CRM Admin vs. Google OAuth test user:** no
+usar el correo del Dr. Arenas para el login del Admin del CRM de staging,
+salvo necesidad explícita — preferencia por una identidad
+sintética/técnica de staging para esa cuenta. La cuenta Gmail del Dr.
+Arenas se usará más adelante como **test user de Google OAuth** (Sección
+39.J) — un concepto completamente distinto del Admin del CRM. No mezclar
+ambas identidades: una autentica contra Supabase Auth del proyecto
+staging, la otra autoriza el consentimiento OAuth de Google Drive.
+
+### 39.S — Storage staging
+
+Auditado contra `supabase/self-hosted/0007_storage.sql` y la migración
+`20260822110000_add_templates.sql`: el release usa un **único bucket**,
+`documents` — privado (`public=false`), sin `file_size_limit` ni
+`allowed_mime_types` restringidos a nivel de bucket. Las plantillas NO
+tienen bucket propio: viven bajo el prefijo `templates/` dentro del mismo
+bucket `documents`, protegidas por 2 policies RESTRICTIVE adicionales
+(solo Administrador puede insertar/reemplazar bajo ese prefijo). Staging
+necesita recrear exactamente este mismo bucket (nombre, visibilidad,
+policies) en su propio proyecto Supabase — no se crea en esta fase, ni se
+copian blobs de producción.
+
+### 39.T — Migraciones de staging (mecanismo canónico, no solo "las 9")
+
+Corrección respecto a instrucciones previas: staging limpio **no** se
+construye aplicando solo las 9 migraciones pendientes sobre una base
+vacía (eso reproduciría únicamente lo ya probado en el rehearsal PG17 de
+8I-A.1, que partió de la baseline de producción). Para un proyecto Supabase
+staging genuinamente nuevo, la secuencia correcta es la que el propio
+repositorio usa como mecanismo canónico:
+
+1. `supabase/self-hosted/0001` → `0008_verify.sql` (bootstrap canónico
+   completo — confirmado en 8I-A.1 como byte-idéntico a la baseline de
+   producción `409e1798`, y como la primera ejecución real que exige
+   PostgreSQL 17.x).
+2. Las 9 migraciones pendientes (`20260822090000` → `20260826100000`), en
+   el mismo orden cronológico exacto ya reconciliado y probado.
+3. `0008_verify.sql` u otra verificación equivalente para confirmar el
+   esquema resultante antes de considerar staging "listo".
+
+Esta es exactamente la secuencia ya ejecutada y aprobada en el rehearsal de
+8I-A.1 — staging debe reproducirla contra el proyecto Supabase staging
+real, no inventar un camino distinto. No se ejecuta en esta fase.
+
+### 39.U — Rollback de staging
+
+- Un fallo en staging **nunca** afecta producción (aislamiento total de
+  39.B).
+- Deshabilitar el proceso Node de staging (`systemctl stop advocate-nest-staging`).
+- No revocar OAuth globalmente — disconnect local-only si la app sigue
+  operativa, igual que el principio ya establecido para producción
+  (Sección 29).
+- Detener cualquier canal de watch creado, best-effort.
+- Conservar la base de datos de staging para diagnóstico — no eliminarla
+  de inmediato.
+- No eliminar archivos de Drive sin revisión manual previa.
+- Eliminar el entorno de staging solo cuando la investigación del fallo
+  haya terminado.
+
+### 39.V — Limpieza del proyecto Google Cloud tras testing
+
+Después de terminar una ronda de pruebas: **no eliminar el proyecto de
+inmediato.** Primero: guardar evidencia (Sección 38), detener cualquier
+watch activo, desconectar la integración (local-only), revisar y limpiar
+los archivos sintéticos en `CRM-DRIVE-STAGING`, y solo entonces decidir
+explícitamente si conservar el proyecto para más rondas de prueba o darlo
+de baja. Nunca ejecutar un revoke de OAuth que pudiera afectar otro grant,
+aunque este proyecto esté aislado — se mantiene el principio de disconnect
+local-only ya establecido en toda fase anterior.
+
+### 39.W — Cloudflare/DNS (estado corregido — PENDING VERIFICACIÓN OPERATIVA)
+
+**Corrección (Fase 8I-B1.1):** la versión anterior de esta sección
+afirmaba "producción NO usa Cloudflare" como hecho confirmado, basado en
+que `VIRTUALMIN_DEPLOYMENT.md`, `ROLLBACK.md` y `UPDATE.md` no lo
+mencionan. Esa inferencia es inválida: **la ausencia de una mención en la
+documentación no demuestra la ausencia de una capa DNS/CDN/proxy externa
+real** — un proxy Cloudflare (u otro) podría estar activo en el dominio
+sin que ningún documento interno del repo lo registre, especialmente si
+fue configurado directamente en el panel DNS del dominio, fuera del
+alcance de lo que Virtualmin gestiona. El propio procedimiento de
+despliegue (`deploy-advocate-nest-root.sh`, ver 39.A) tampoco modifica
+Cloudflare ni DNS ni Apache — solo remite a revisarlos por separado cuando
+falla la ruta pública, lo cual es consistente con que esa capa exista y
+simplemente no esté bajo su control, no con que no exista.
+
+**Estado correcto: `Production DNS/CDN layer: PENDING OPERATIONAL
+VERIFICATION.`** Lo único confirmado por auditoría de este repositorio:
+
+```
+Internet
+  → dominio abogado.consoldi.com
+    → [capa DNS/proxy: todavía por verificar]
+      → Apache/Virtualmin
+        → 127.0.0.1:3000
+          → advocate-nest.service (systemd, ver 39.A)
+            → Node
+```
+
+No se inserta Cloudflare en el diagrama como hecho confirmado. Tampoco se
+declara "DNS directo" como hecho todavía — ambas serían afirmaciones no
+demostradas por igual.
+
+**Auditoría futura obligatoria en 8I-B2, antes de crear el dominio de
+staging** (estrictamente read-only, sin modificaciones durante la
+auditoría inicial):
+
+- DNS actual del dominio de producción (nameservers, registros A/CNAME).
+- Respuesta pública real (`curl -I https://abogado.consoldi.com`) y sus headers HTTP.
+- VirtualHost Apache exacto tal como está hoy en el servidor (no el documentado, el real).
+- Certificado TLS real: emisor, mecanismo de renovación.
+- `ProxyPass`/`ProxyPassReverse` reales.
+- Servicio systemd real corriendo (nombre exacto, estado, puertos).
+
+El resultado de esa auditoría determina si staging seguirá un patrón de
+DNS directo o necesitará replicar un Cloudflare/proxy equivalente — **no
+se decide en esta fase.** Igualmente, **no se afirma todavía "staging
+usará Let's Encrypt" como decisión definitiva**: el TLS de staging requiere
+un certificado público válido, y el mecanismo exacto queda como `PENDING
+INFRASTRUCTURE AUDIT` — si la auditoría confirma que Virtualmin ya
+administra Let's Encrypt para el dominio real, se reutilizará ese mismo
+mecanismo para staging; no se inventa un mecanismo alternativo sin haber
+observado primero el real.
+
+Si la auditoría confirmara la presencia de un proxy tipo Cloudflare, el
+callback/webhook de OAuth deberían probarse explícitamente contra: un WAF
+challenge, un Cloudflare Access, o un bot challenge — cualquiera de los
+tres podría bloquear las llamadas de Google a `/api/google-drive/webhook`
+o el propio flujo de callback. Esto queda documentado como una prueba
+futura condicionada al resultado real de la auditoría, no como algo
+descartado de antemano.
+
+### 39.X — Health checks previos a OAuth (checklist A–G)
+
+Antes de cualquier paso de OAuth real (BLOCK C en adelante), confirmar en
+orden — cada uno es precondición del siguiente:
+
+| # | Check | Resultado esperado |
+|---|---|---|
+| A | Homepage/app de staging responde | HTTP 200, SSR renderiza |
+| B | `/api/health` responde | `{"status":"ok","service":"advocate-nest",...}` |
+| C | Login de staging funciona | Admin sintético (39.R) inicia sesión |
+| D | Supabase staging funciona | lecturas/escrituras básicas sin error |
+| E | Subida de documento sintético funciona | CRUD de Documentos operativo sin Drive |
+| F | Drive aparece "not configured"/"disconnected" | confirma 39.N (Drive deshabilitado primero) |
+| G | Calendar/SMTP no generan efectos externos | ningún email enviado, ningún evento de Calendar creado — confirma 39.G |
+
+Solo después de A–G en verde: proceder a Google OAuth real (BLOCK C/D de 39.M).
+
+### 39.Y — Resumen estructurado (Fase 8I-B1.1)
+
+**Verificado desde repo/documentación:**
+- Node artifact: `.output/server/index.mjs` (build real: `npm run build:node`, preset Nitro `"node"`).
+- Production internal port históricamente documentado: `3000`.
+- Bucket de Storage: `documents` (único, privado, sin límites de tamaño/MIME).
+- Migraciones pendientes reconciliadas: 9, ya validadas sobre PostgreSQL 17 real (Fase 8I-A.1).
+- Staging debe ser independiente (topología, 39.B).
+- Supabase staging independiente (39.D).
+- Google project independiente (39.J).
+
+**Pendiente de auditoría real (ninguno se convierte en hecho sin observar el servidor):**
+- **Process manager realmente activo hoy** — `VIRTUALMIN_DEPLOYMENT.md` (repo) documenta PM2 como "recomendada"; información operativa del propietario (procedimiento `deploy-advocate-nest-root.sh`, no localizado en este repositorio) indica systemd y limpieza explícita de PM2 legacy — ninguna de las dos fuentes es una observación en vivo del servidor. **Ambas versiones permanecen sin confirmar** hasta la auditoría read-only de 8I-B2.
+- Unit systemd actual (si existe) — nombre exacto, estado.
+- PM2 legacy presente o no.
+- Puerto de staging disponible (`ss -ltnp`, nunca asumir `3100`).
+- Configuración exacta del VirtualHost Apache real.
+- `ProxyPass`/`ProxyPassReverse` reales.
+- DNS/nameservers reales del dominio.
+- Presencia o ausencia de Cloudflare u otro proxy — ni confirmado ni descartado.
+- Mecanismo real de aprovisionamiento de certificado TLS.
+- Configuración Virtualmin actual.
+
+**Staging planned (diseño, no ejecutado):**
+- Dominio: `abogado-staging.consoldi.com` — PENDING disponibilidad/confirmación.
+- Supabase: proyecto staging independiente, aislado de `pnqdgwpxcxngeueosmnh`.
+- Proceso: `systemd advocate-nest-staging.service` independiente como diseño de staging (39.O) — esto es una decisión de diseño para el entorno NUEVO, independiente de qué gestor esté realmente activo hoy en producción.
+- Google: proyecto de testing independiente (`CRM Drive — Testing`), separado de Calendar.
+- Admin: identidad Auth real vía Supabase Auth Admin API o Dashboard — nunca `INSERT` directo en `auth.users` en un proyecto real.
