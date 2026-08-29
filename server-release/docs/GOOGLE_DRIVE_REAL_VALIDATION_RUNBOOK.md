@@ -1,7 +1,12 @@
 # Runbook: primera validación real de Google Drive (Fase 8I-A/8I-B)
 
-**Versión:** 2026-08-27 (Fase 8I-A — preflight, sin tocar Google ni Supabase remoto)
-**Estado:** checklist verificable, NADA de esto se ha ejecutado todavía.
+**Versión:** 2026-08-29 (Fase 8I-B2A — evidencia READ-ONLY real del servidor/DNS
+incorporada, auditoría cerrada; ver Sección 39.Z)
+**Estado:** checklist verificable. La auditoría READ-ONLY del servidor y del
+DNS (Sección 39.Z) ya se ejecutó — manualmente, por el propietario, sin
+ninguna conexión SSH adicional de este proceso y sin modificar
+infraestructura. El resto (OAuth real, staging real, Drive real) sigue sin
+ejecutarse.
 
 Este documento es el único entregable de código de la Fase 8I-A. No contiene
 secretos reales, no asume valores no verificados, y no autoriza por sí mismo
@@ -670,21 +675,46 @@ TypeScript, lint, suite completa, build Node — **y** el ensayo de
 migraciones compatible descrito en la Sección 5, con su prueba de
 restauración.
 
+**Baseline canónico de tests (reconciliado en Fase 8I-B2A.1):**
+
+- **Gate estándar — `npm test`:** 65 archivos, **1628 passed, 0 skipped, 0
+  failed.** Este es el número canónico para todo gate de esta fase y de
+  cualquier fase posterior. `npm test` ejecuta `vitest run --exclude
+  'tests/remote-validation.test.ts'` (`package.json`), excluyendo ese
+  archivo **intencionalmente** — su propio encabezado documenta que nunca
+  debe correr en CI ni en `npm run test` estándar, porque requiere 6
+  variables de entorno de credenciales remotas reales de Supabase.
+- **Auditoría de descubrimiento completo (opcional) — `npx vitest run`
+  sin `--exclude`:** 66 archivos, **1629 passed, 3 skipped** (1632 tests
+  en total). La diferencia frente al gate estándar es exactamente
+  `tests/remote-validation.test.ts`: 3 tests dentro de
+  `describe.runIf(isAuthorized)` aparecen `skipped` (sin credenciales
+  remotas configuradas), y 1 test adicional siempre-activo
+  ("informa si las variables de entorno de autorización están
+  configuradas") pasa. **No hay tests perdidos ni bug** — es la diferencia
+  esperada entre el script canónico y una corrida de descubrimiento
+  completo sin el flag de exclusión. No se modificó ningún test ni
+  configuración de Vitest para reconciliar esta cifra (ver informe de
+  cierre 8I-B2A.1).
+
 ---
 
 ## 36. Contenido de este runbook
 
 Este documento es el entregable principal de la Fase 8I-A, ampliado en
-8I-A.1 (rehearsal real PG17 + hardening del validador, Secciones 5/32) y en
-8I-B1 (staging readiness completo, Sección 39): prerrequisitos, decision
-gates, setup de Google Cloud, checklist de variables, requisitos de
-staging, orden de migraciones, backup/rollback, secuencia E2E por bloques
-(Sección 39.M), resultados esperados, criterios de aborto (Sección 37),
-evidencia a recolectar, limpieza posterior a la prueba (Sección 38), y el
-diseño completo de staging (topología, dominio, aislamiento Supabase,
-inventario de variables, Google Cloud testing project, rollback y limpieza
-— Sección 39). Se mantiene como fuente de verdad única — no se crea un
-runbook complementario. No incluye secretos.
+8I-A.1 (rehearsal real PG17 + hardening del validador, Secciones 5/32), en
+8I-B1 (staging readiness completo, Sección 39) y en 8I-B2A (evidencia
+READ-ONLY real del servidor y del DNS, Sección 39.Z, que cierra la
+auditoría operativa y corrige el proceso manager/rutas/puerto/Cloudflare
+frente a las hipótesis previas): prerrequisitos, decision gates, setup de
+Google Cloud, checklist de variables, requisitos de staging, orden de
+migraciones, backup/rollback, secuencia E2E por bloques (Sección 39.M),
+resultados esperados, criterios de aborto (Sección 37), evidencia a
+recolectar, limpieza posterior a la prueba (Sección 38), y el diseño
+completo de staging (topología, dominio, aislamiento Supabase, inventario
+de variables, Google Cloud testing project, rollback y limpieza — Sección
+39, con evidencia real incorporada en 39.Z). Se mantiene como fuente de
+verdad única — no se crea un runbook complementario. No incluye secretos.
 
 ## 37. Criterios de aborto — NO proceder a 8I-B si:
 
@@ -725,50 +755,53 @@ lo que sigue se ejecutó en esta fase.
 `DEPLOY.md` (raíz del repo) describe un flujo de **Cloudflare Workers**
 (`npm run deploy` → `wrangler deploy`) que referencia directamente el
 proyecto Supabase legacy `pnqdgwpxcxngeueosmnh` en texto plano. Confirmado
-por auditoría: **este NO es el mecanismo de despliegue real actual.** El
-mecanismo real, documentado en `server-release/docs/VIRTUALMIN_DEPLOYMENT.md`
-y consistente con `server-release/docs/ADMIN_SERVER_MESSAGE.md` y el ZIP de
-release ya presente en el repo (`advocate-nest-virtualmin-release-2026-08-01.zip`), es:
+por auditoría: **este NO es el mecanismo de despliegue real actual.**
+
+**Corrección final (Fase 8I-B2A, evidencia READ-ONLY real del servidor —
+ver 39.Z):** el mecanismo real, reconfirmado por observación directa del
+servidor de producción, es:
 
 ```
 Internet → https://abogado.consoldi.com
-  → [capa DNS/proxy: PENDING VERIFICACIÓN OPERATIVA — ver 39.W]
-    → Apache/Virtualmin (reverse proxy)
-      → http://127.0.0.1:3000 (Node interno)
-        → .output/server/index.mjs (TanStack Start + Nitro, preset "node")
-          → Supabase externo (Auth, PostgreSQL, RLS, RPC, Storage)
+  → Cloudflare (CONFIRMADO, ver 39.W)
+    → Apache/Virtualmin (reverse proxy, vhost abogado.consoldi.com)
+      → ProxyPass/ProxyPassReverse http://127.0.0.1:3000/ (CONFIRMADO)
+        → PM2 (usuario admin-docker, app "advocate-nest", CONFIRMADO — ver 39.Z.2)
+          → .output/server/index.mjs (TanStack Start + Nitro, preset "node")
+            → Supabase externo (Auth, PostgreSQL, RLS, RPC, Storage)
 ```
 
 Build real: `npm run build:node` (`BUILD_TARGET=node`, ver `vite.config.ts`
 líneas 9-31), que fuerza el preset Nitro `"node"` — distinto del preset
 `"cloudflare-module"` que usa `npm run build`/`npm run deploy` (el que
-`DEPLOY.md` documenta). Estructura de release:
-`/home/abogado/apps/advocate-nest/{releases/<fecha>/,current→symlink,shared/.env.production}`.
-Servidor real: `144.126.140.178`, SFTP puerto `2705`, usuario `abogado`.
+`DEPLOY.md` documenta). **`DEPLOY.md` queda confirmado como documentación
+obsoleta** (Cloudflare Workers, no el target real) — no se modifica en esta
+fase por estar fuera del scope autorizado (auditoría, no limpieza de docs no
+relacionadas con Drive), pero queda registrado aquí para no repetir la
+confusión en 8I-B2B.
 
-**`DEPLOY.md` queda confirmado como documentación obsoleta** (Cloudflare, no
-el target real) — no se modifica en esta fase por estar fuera del scope
-autorizado (auditoría, no limpieza de docs no relacionadas con Drive), pero
-queda registrado aquí para no repetir la confusión en 8I-B2.
-
-**Corrección (Fase 8I-B1.1) — proceso permanente:** `VIRTUALMIN_DEPLOYMENT.md`
-(el único documento de deployment de este repo que describe el proceso
-permanente) lista PM2 como "Opción 1 (recomendada)" y systemd como "Opción
-2" — ambas presentadas como alternativas igualmente válidas, sin indicar
-cuál está realmente en uso. Según información operativa aportada
-directamente por el propietario del CRM (procedimiento
-`deploy-advocate-nest-root.sh`, **no localizado en este repositorio** —
-no se pudo verificar su contenido por auditoría propia, se toma como dato
-operativo del propietario, no como hallazgo de código), el procedimiento
-canónico real define `/etc/systemd/system/advocate-nest.service`
-(`ExecStart=/usr/bin/node .output/server/index.mjs`) como el mecanismo
-permanente, y **limpia explícitamente PM2 legacy** (proceso, daemon, y el
-cron de `pm2 resurrect`) como parte de su ejecución. Esto contradice
-directamente la recomendación de `VIRTUALMIN_DEPLOYMENT.md` — ese documento
-queda marcado como desactualizado en cuanto a cuál opción es la vigente
-(no se corrige su contenido en esta subfase, solo se anota aquí la
-discrepancia; corregirlo pertenece a mantenimiento de docs de despliegue,
-fuera del scope Drive). Ver modelo corregido en 39.O/39.Q.
+**Historial de la investigación de proceso/rutas (para no repetir la
+confusión):**
+1. `VIRTUALMIN_DEPLOYMENT.md` (repo) listó históricamente PM2 como "Opción 1
+   (recomendada)" y systemd como "Opción 2", sin indicar cuál estaba
+   realmente en uso, y describía rutas bajo `/home/abogado/apps/...`.
+2. En Fase 8I-B1.1, información operativa de segunda mano (no observación en
+   vivo) sugirió que un procedimiento `deploy-advocate-nest-root.sh` (no
+   localizado en este repositorio) migraba a systemd y limpiaba PM2 legacy.
+   Esa hipótesis quedó marcada explícitamente como "sin confirmar" a la
+   espera de auditoría real.
+3. **La auditoría READ-ONLY real (Fase 8I-B2A, Sección 39.Z) descarta esa
+   hipótesis:** `advocate-nest.service` **no existe** en el servidor. El
+   proceso de producción real corre bajo **PM2**, gestionado por el usuario
+   del sistema **`admin-docker`** (no `abogado`), con CWD
+   `/home/admin-docker/proyectos/advocate-nest/app` (no
+   `/home/abogado/apps/advocate-nest/`, que queda descartado como ruta real).
+   Ambos documentos previos (`VIRTUALMIN_DEPLOYMENT.md` y la nota de
+   8I-B1.1) quedan superados por esta observación directa — no se corrige el
+   contenido de `VIRTUALMIN_DEPLOYMENT.md` en esta subfase (fuera de scope:
+   mantenimiento de docs de despliegue, no Drive), pero todo el diseño de
+   staging de este runbook (39.B/39.O/39.P/39.Q) ya queda actualizado contra
+   el hallazgo real, no contra ninguna de las dos hipótesis anteriores.
 
 ### 39.B — Topología de staging
 
@@ -776,13 +809,15 @@ Staging vive en el MISMO servidor físico que producción, pero como entorno
 lógicamente aislado, sin ningún recurso compartido con producción salvo el
 hardware:
 
-| Recurso | Producción | Staging |
+| Recurso | Producción (CONFIRMADO, ver 39.Z) | Staging |
 |---|---|---|
-| vhost/dominio | `abogado.consoldi.com` | `abogado-staging.consoldi.com` (PENDING, ver 39.C) |
-| Directorio app | `/home/abogado/apps/advocate-nest/` | directorio independiente, ej. `/home/abogado/apps/advocate-nest-staging/` |
-| Proceso Node | `systemd advocate-nest.service` en `:3000` (canónico corregido, ver 39.A) | `systemd advocate-nest-staging.service` independiente, en puerto distinto (ver 39.P) |
-| Variables | `shared/.env.production` | archivo separado, nunca el mismo `.env.production` |
-| Logs | `/home/abogado/logs/advocate-nest.*` | ruta de logs separada |
+| vhost/dominio | `abogado.consoldi.com` | `abogado-staging.consoldi.com` (AVAILABLE / NOT CREATED, ver 39.C) |
+| Usuario del sistema | `admin-docker` | mismo usuario `admin-docker` (mismo daemon PM2, ver 39.O) |
+| Directorio app | `/home/admin-docker/proyectos/advocate-nest/app` | directorio independiente, ej. `/home/admin-docker/proyectos/advocate-nest-staging/app` |
+| Proceso Node | **PM2** (usuario `admin-docker`), app `advocate-nest`, `status=online`, `restarts=0`; script `start-crm.sh`; NO existe `advocate-nest.service` | **PM2** del mismo daemon `admin-docker`, app `advocate-nest-staging`, puerto distinto (ver 39.P) |
+| Puerto interno | `127.0.0.1:3000` | `127.0.0.1:3200` (ver 39.P) |
+| Variables | `.env.production` (owner `admin-docker`, mode `600`, contenido NO leído) | archivo separado, nunca el mismo `.env.production` |
+| Logs | gestionados por PM2 (`/home/admin-docker/.pm2`) + `/var/log/virtualmin/abogado.consoldi.com_{error,access}_log` | ruta de logs separada, propio daemon PM2 |
 | Supabase | proyecto `pnqdgwpxcxngeueosmnh` | **proyecto Supabase staging independiente** (ver 39.F) |
 | Google Cloud (Drive) | no existe todavía para Drive | **proyecto Google Cloud "CRM Drive — Testing" independiente** (ver 39.K) |
 | OAuth Client (Drive) | no existe todavía | Client dedicado, nunca reutiliza el de Calendar |
@@ -795,15 +830,18 @@ productivos, el OAuth Client de Drive, cualquier `refresh_token`, o
 deben — tener valores **distintos e independientes** en staging; no se
 copian valores productivos bajo ninguna circunstancia.
 
-### 39.C — Dominio de staging (PENDING)
+### 39.C — Dominio de staging (elegido, no creado)
 
-**Propuesto:** `abogado-staging.consoldi.com`. Estado: **PENDING** — no se
-crea ningún registro DNS en esta fase, y el dominio se trata como no
-confirmado hasta verificar que no colisiona con configuración existente en
-Virtualmin/Cloudflare para `consoldi.com`. Si hay conflicto, alternativa
-propuesta: `staging-abogado.consoldi.com` o un subdominio bajo un dominio
-de pruebas separado si el estudio lo prefiere — decisión pendiente de
-confirmación externa, no de este documento.
+**Auditoría DNS real (Fase 8I-B2A, ver 39.Z):** se comprobaron ambos
+candidatos en el DNS público actual — `abogado-staging.consoldi.com` → sin
+registro, `staging-abogado.consoldi.com` → sin registro. Ninguno colisiona
+con configuración existente.
+
+**DECISIÓN (Fase 8I-B2A): `abogado-staging.consoldi.com`.** Estado:
+**AVAILABLE IN CURRENT DNS / NOT CREATED** — no se crea ningún registro DNS
+en esta fase, ni en Cloudflare ni en Virtualmin. `staging-abogado.consoldi.com`
+queda descartado como alternativa (ya no es necesaria: el candidato
+preferido está libre).
 
 Una vez el dominio quede confirmado en firme, las URLs exactas serán:
 
@@ -1048,90 +1086,102 @@ aislar si el problema es del staging en sí o de la integración.
 
 ### 39.O — Proceso Node de staging (ejemplo conceptual, no ejecutado)
 
-**CURRENT CANONICAL DEPLOYMENT MODEL: systemd + Node.** PM2 es un proceso
-legacy que el procedimiento de despliegue vigente limpia explícitamente
-(ver corrección en 39.A) — no se usa PM2 en ningún ejemplo de esta
-sección. **Esto debe reconfirmarse contra el servidor real mediante una
-auditoría read-only antes de crear el unit de staging** (ver 39.W/Sección
-8 de esta fase) — no se asume que el servidor sigue exactamente igual sin
-observarlo primero; el procedimiento pudo cambiar entre el momento en que
-se documentó y el momento real de 8I-B2.
+**CURRENT CANONICAL DEPLOYMENT MODEL (confirmado por auditoría READ-ONLY
+real, Fase 8I-B2A, ver 39.Z): PM2, no systemd.** Las dos hipótesis previas
+(39.A: "PM2 recomendado" en `VIRTUALMIN_DEPLOYMENT.md` vs. "systemd
+canónico" según información operativa de 8I-B1.1) quedan resueltas por
+observación directa: `advocate-nest.service` **no existe** en el servidor;
+producción corre bajo **PM2**, daemon del usuario `admin-docker`
+(`/home/admin-docker/.pm2`), app `advocate-nest`, `status=online`,
+`restarts=0`. Por consistencia operacional con lo que realmente corre en
+producción, staging futuro usará el **mismo daemon PM2 de `admin-docker`**
+— nunca el daemon PM2 de `root` (`pm2-root.service`, que gestiona procesos
+no relacionados con el CRM, ver 39.Z.7). No se usa systemd en ningún
+ejemplo de esta sección.
 
 ```
-/home/abogado/apps/advocate-nest-staging/
-├── releases/<fecha>/app/.output/server/index.mjs
-├── current → releases/<fecha>/
-└── shared/.env.staging
+/home/admin-docker/proyectos/advocate-nest-staging/
+├── app/.output/server/index.mjs
+├── app/start-crm-staging.sh (análogo a start-crm.sh de producción, ver 39.A)
+└── app/.env.staging
 ```
 
-Unit conceptual (**no se crea en esta fase**):
+Definición conceptual de la app PM2 (**no se crea en esta fase**):
 
-```ini
-# /etc/systemd/system/advocate-nest-staging.service
-[Unit]
-Description=CRM Jurídico Estudio Arenas — STAGING
-After=network.target
-
-[Service]
-Type=simple
-User=abogado
-WorkingDirectory=/home/abogado/apps/advocate-nest-staging/current/app
-EnvironmentFile=/home/abogado/apps/advocate-nest-staging/shared/.env.staging
-ExecStart=/usr/bin/node .output/server/index.mjs
-Restart=on-failure
-RestartSec=5s
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=advocate-nest-staging
-NoNewPrivileges=yes
-PrivateTmp=yes
-
-[Install]
-WantedBy=multi-user.target
+```
+pm2 start start-crm-staging.sh --name advocate-nest-staging \
+  --cwd /home/admin-docker/proyectos/advocate-nest-staging/app
 ```
 
-`WorkingDirectory` y `EnvironmentFile` completamente separados de
-producción — nunca el mismo directorio ni el mismo archivo de entorno.
-`HOST=127.0.0.1`, `PORT` pendiente de auditoría (ver 39.P).
+equivalente a como PM2 ya ejecuta producción hoy (`node
+--env-file=.env.production .output/server/index.mjs` vía `start-crm.sh`,
+confirmado por observación directa del proceso real), sustituyendo
+`.env.production` por `.env.staging` y el `cwd` por el directorio de
+staging.
+
+`cwd` y el archivo de entorno completamente separados de producción —
+nunca el mismo directorio ni el mismo archivo `.env.production`. Ejecutado
+bajo el mismo usuario `admin-docker` que ya posee el daemon PM2 de
+producción (nunca PM2 root). `HOST=127.0.0.1`, `PORT=3200` (ver 39.P).
 
 ### 39.P — Puerto de staging
 
-**STAGING_PORT = PENDING.** No se fija un puerto específico en este
-documento. Antes de elegirlo en 8I-B2: auditar el servidor real con `ss
--ltnp` (no `netstat`, no instalado por defecto en todas las distribuciones
-modernas) y revisar qué servicios ya escuchan. **No asumir `3100`**: según
-información operativa del propietario, el script de despliegue productivo
-ya utilizó históricamente el puerto `3100` como puerto temporal de release
-testing — reutilizarlo como puerto PERMANENTE de staging podría colisionar
-con ese uso temporal si ambos coincidieran en el tiempo. La elección final
-del puerto es un paso de 8I-B2, condicionado al resultado de la auditoría
-read-only, no de esta fase.
+**STAGING_PORT = 3200 (DECIDIDO, Fase 8I-B2A).** Auditoría READ-ONLY real
+(ver 39.Z.4): se comprobaron `3100`, `3200` y `3300` — ninguno aparece en
+`LISTEN` durante la auditoría. Se descarta explícitamente `3100` como
+puerto **permanente** de staging: según información operativa del
+propietario, el script de despliegue productivo ya lo utilizó
+históricamente como puerto **temporal** de release testing, y reutilizarlo
+como permanente podría colisionar con ese uso si ambos coincidieran en el
+tiempo. Se descarta el rango `5000`–`5300`: el servidor tiene un número
+elevado de listeners ya activos en ese rango. `3200` queda **VERIFIED FREE
+DURING AUDIT / NOT RESERVED** — no hay ningún mecanismo de reserva; debe
+reconfirmarse libre inmediatamente antes de arrancar el proceso PM2 de
+staging en 8I-B2B, por si algo lo ocupó entre la auditoría y la ejecución
+real.
 
-### 39.Q — Apache/Virtualmin (plan futuro, NO ejecutar)
+### 39.Q — Apache/Virtualmin (plan futuro, NO ejecutar) — topología aprobada
+
+Topología aprobada tras la auditoría READ-ONLY real de Fase 8I-B2A (ver
+39.Z):
 
 ```
-https://abogado-staging.consoldi.com
-        ↓
-[capa DNS/proxy: PENDING VERIFICACIÓN OPERATIVA — ver 39.W]
-        ↓
-Apache reverse proxy (nuevo vhost, análogo al de producción en
-VIRTUALMIN_DEPLOYMENT.md, mismos módulos: proxy proxy_http proxy_wstunnel ssl rewrite headers)
-        ↓
-http://127.0.0.1:<staging-port PENDING, ver 39.P>
-        ↓
-advocate-nest-staging.service (systemd, ver 39.O)
+Internet
+  ↓
+Cloudflare (CONFIRMADO, ver 39.W)
+  ↓
+abogado-staging.consoldi.com
+  ↓
+Apache/Virtualmin (nuevo vhost, análogo al de producción — confirmado en
+producción: proxy proxy_http proxy_wstunnel ssl rewrite headers,
+ProxyPass/ProxyPassReverse hacia el backend Node, WebSocket proxy incluido)
+  ↓
+ProxyPass
+  ↓
+http://127.0.0.1:3200 (ver 39.P)
+  ↓
+PM2 (usuario admin-docker, app advocate-nest-staging — ver 39.O)
+  ↓
+.output/server/index.mjs
+  ↓
+Supabase STAGING (ver 39.D)
 ```
 
 Nunca editar el vhost de producción (`abogado.consoldi.com`) al crear el
-de staging. **Antes de crear cualquier vhost de staging, reconfirmar por
-auditoría read-only (ver 39.W, Sección 8 de esta fase) la configuración
-exacta del vhost de producción** — no asumir que el Apache config
-documentado en `VIRTUALMIN_DEPLOYMENT.md` sigue siendo textualmente exacto
-sin observarlo. Rollback: deshabilitar/eliminar el vhost de staging
+de staging. Rollback: deshabilitar/eliminar el vhost de staging
 (`a2dissite` o el mecanismo equivalente de Virtualmin) sin ningún reinicio
 que afecte al vhost productivo — Apache soporta recargar solo la
 configuración nueva sin downtime del vhost existente si se usa
 `systemctl reload` en vez de `restart`, a confirmar en el servidor real.
+
+**Caveat de diagnóstico (`apachectl -S`), no de producción:** durante la
+auditoría READ-ONLY, `apachectl -S` falló con un mensaje relacionado a
+`SuexecUserGroup`/suEXEC. Esto **no** clasifica producción como rota:
+`apache2.service` está `active/running`, el vhost `abogado.consoldi.com`
+funciona, `ProxyPass`/`ProxyPassReverse` están confirmados apuntando a
+`127.0.0.1:3000`, y `/api/health` respondió `200` antes y después de la
+auditoría. Se registra como **`apachectl -S diagnostic caveat`** — no se
+intenta corregir en esta fase ni se investiga más a fondo su causa.
 
 ### 39.R — Admin de staging
 
@@ -1228,7 +1278,8 @@ real, no inventar un camino distinto. No se ejecuta en esta fase.
 
 - Un fallo en staging **nunca** afecta producción (aislamiento total de
   39.B).
-- Deshabilitar el proceso Node de staging (`systemctl stop advocate-nest-staging`).
+- Deshabilitar el proceso Node de staging (`pm2 stop advocate-nest-staging`,
+  bajo el usuario `admin-docker` — nunca `pm2 root`, ver 39.O).
 - No revocar OAuth globalmente — disconnect local-only si la app sigue
   operativa, igual que el principio ya establecido para producción
   (Sección 29).
@@ -1250,67 +1301,59 @@ de baja. Nunca ejecutar un revoke de OAuth que pudiera afectar otro grant,
 aunque este proyecto esté aislado — se mantiene el principio de disconnect
 local-only ya establecido en toda fase anterior.
 
-### 39.W — Cloudflare/DNS (estado corregido — PENDING VERIFICACIÓN OPERATIVA)
+### 39.W — Cloudflare/DNS (CONFIRMADO — auditoría READ-ONLY real cerrada)
 
-**Corrección (Fase 8I-B1.1):** la versión anterior de esta sección
-afirmaba "producción NO usa Cloudflare" como hecho confirmado, basado en
-que `VIRTUALMIN_DEPLOYMENT.md`, `ROLLBACK.md` y `UPDATE.md` no lo
-mencionan. Esa inferencia es inválida: **la ausencia de una mención en la
-documentación no demuestra la ausencia de una capa DNS/CDN/proxy externa
-real** — un proxy Cloudflare (u otro) podría estar activo en el dominio
-sin que ningún documento interno del repo lo registre, especialmente si
-fue configurado directamente en el panel DNS del dominio, fuera del
-alcance de lo que Virtualmin gestiona. El propio procedimiento de
-despliegue (`deploy-advocate-nest-root.sh`, ver 39.A) tampoco modifica
-Cloudflare ni DNS ni Apache — solo remite a revisarlos por separado cuando
-falla la ruta pública, lo cual es consistente con que esa capa exista y
-simplemente no esté bajo su control, no con que no exista.
-
-**Estado correcto: `Production DNS/CDN layer: PENDING OPERATIONAL
-VERIFICATION.`** Lo único confirmado por auditoría de este repositorio:
+**Historial:** una versión previa de esta sección afirmó "producción NO usa
+Cloudflare" sin evidencia directa (solo ausencia de mención en
+`VIRTUALMIN_DEPLOYMENT.md`/`ROLLBACK.md`/`UPDATE.md`), y una corrección
+posterior (8I-B1.1) la rebajó a `PENDING OPERATIONAL VERIFICATION`. **La
+auditoría READ-ONLY real de Fase 8I-B2A (ver 39.Z) resuelve la pregunta de
+forma definitiva: Cloudflare está confirmado.** Se elimina cualquier
+estado PENDING anterior sobre esta capa.
 
 ```
 Internet
-  → dominio abogado.consoldi.com
-    → [capa DNS/proxy: todavía por verificar]
+  → Cloudflare (CONFIRMADO)
+    → dominio abogado.consoldi.com
       → Apache/Virtualmin
-        → 127.0.0.1:3000
-          → advocate-nest.service (systemd, ver 39.A)
-            → Node
+        → ProxyPass 127.0.0.1:3000 (CONFIRMADO)
+          → PM2 (usuario admin-docker, app advocate-nest — CONFIRMADO, ver 39.A/39.Z)
+            → Node (.output/server/index.mjs)
 ```
 
-No se inserta Cloudflare en el diagrama como hecho confirmado. Tampoco se
-declara "DNS directo" como hecho todavía — ambas serían afirmaciones no
-demostradas por igual.
+**Evidencia (ver detalle completo en 39.Z.6/39.Z.8):**
+- DNS público de `abogado.consoldi.com`: registros A `104.21.92.132` /
+  `172.67.194.37` y AAAA `2606:4700:...` — rango de IP propio de Cloudflare.
+- Headers públicos observados: `Server: cloudflare`, `CF-RAY` presente,
+  `cf-cache-status` presente.
+- **Production DNS/CDN: CLOUDFLARE CONFIRMED.**
 
-**Auditoría futura obligatoria en 8I-B2, antes de crear el dominio de
-staging** (estrictamente read-only, sin modificaciones durante la
-auditoría inicial):
+**TLS público confirmado:** certificado observado tras Cloudflare —
+`CN=consoldi.com`, SAN `consoldi.com` + `*.consoldi.com`, issuer `Google
+Trust Services WE1`. Esto es el TLS público (el que Cloudflare presenta al
+navegador), no necesariamente el certificado origin de Apache.
 
-- DNS actual del dominio de producción (nameservers, registros A/CNAME).
-- Respuesta pública real (`curl -I https://abogado.consoldi.com`) y sus headers HTTP.
-- VirtualHost Apache exacto tal como está hoy en el servidor (no el documentado, el real).
-- Certificado TLS real: emisor, mecanismo de renovación.
-- `ProxyPass`/`ProxyPassReverse` reales.
-- Servicio systemd real corriendo (nombre exacto, estado, puertos).
+**TLS origin — evidencia parcial, NO concluir modo Cloudflare todavía:**
+Apache posee configuración de certificado origin propia
+(`/etc/ssl/virtualmin/.../ssl.cert` y `.../ssl.key`, rutas Virtualmin
+observadas) y `certbot` está instalado en el servidor. **No se afirma** que
+Cloudflare SSL mode esté en Full/Strict, ni que `certbot` sea
+necesariamente el mecanismo que renueva el certificado de este vhost — ninguna
+de las dos cosas tiene evidencia suficiente todavía. Ambas quedan como
+`PENDING`, a verificar recién al crear el staging (Sección 39.Y).
 
-El resultado de esa auditoría determina si staging seguirá un patrón de
-DNS directo o necesitará replicar un Cloudflare/proxy equivalente — **no
-se decide en esta fase.** Igualmente, **no se afirma todavía "staging
-usará Let's Encrypt" como decisión definitiva**: el TLS de staging requiere
-un certificado público válido, y el mecanismo exacto queda como `PENDING
-INFRASTRUCTURE AUDIT` — si la auditoría confirma que Virtualmin ya
-administra Let's Encrypt para el dominio real, se reutilizará ese mismo
-mecanismo para staging; no se inventa un mecanismo alternativo sin haber
-observado primero el real.
+**Antes de activar el webhook de Google (BLOCK J, Sección 39.M) sobre el
+dominio de staging**, validar explícitamente contra la capa Cloudflare ya
+confirmada:
+- HTTPS público accesible sin desafío.
+- Sin Cloudflare Access ni challenge (WAF/bot) bloqueando la ruta.
+- `POST` permitido hacia `/api/google-drive/webhook`.
+- El callback OAuth (`/api/google-drive/callback`) accesible públicamente.
 
-Si la auditoría confirmara la presencia de un proxy tipo Cloudflare, el
-callback/webhook de OAuth deberían probarse explícitamente contra: un WAF
-challenge, un Cloudflare Access, o un bot challenge — cualquiera de los
-tres podría bloquear las llamadas de Google a `/api/google-drive/webhook`
-o el propio flujo de callback. Esto queda documentado como una prueba
-futura condicionada al resultado real de la auditoría, no como algo
-descartado de antemano.
+**Cambios de Cloudflare (DNS de staging, reglas, etc.) quedan fuera de
+scope de esta fase** — corresponde a Fase 8I-B2B, ejecutados por el
+propietario siguiendo la topología Cloudflare real ya confirmada aquí. No
+se realiza ningún cambio de Cloudflare en 8I-B2A.
 
 ### 39.X — Health checks previos a OAuth (checklist A–G)
 
@@ -1329,32 +1372,135 @@ orden — cada uno es precondición del siguiente:
 
 Solo después de A–G en verde: proceder a Google OAuth real (BLOCK C/D de 39.M).
 
-### 39.Y — Resumen estructurado (Fase 8I-B1.1)
+### 39.Y — Resumen estructurado (actualizado, Fase 8I-B2A)
 
-**Verificado desde repo/documentación:**
+**Verificado desde repo/documentación (sin cambios respecto a fases previas):**
 - Node artifact: `.output/server/index.mjs` (build real: `npm run build:node`, preset Nitro `"node"`).
-- Production internal port históricamente documentado: `3000`.
 - Bucket de Storage: `documents` (único, privado, sin límites de tamaño/MIME).
 - Migraciones pendientes reconciliadas: 9, ya validadas sobre PostgreSQL 17 real (Fase 8I-A.1).
 - Staging debe ser independiente (topología, 39.B).
 - Supabase staging independiente (39.D).
 - Google project independiente (39.J).
 
-**Pendiente de auditoría real (ninguno se convierte en hecho sin observar el servidor):**
-- **Process manager realmente activo hoy** — `VIRTUALMIN_DEPLOYMENT.md` (repo) documenta PM2 como "recomendada"; información operativa del propietario (procedimiento `deploy-advocate-nest-root.sh`, no localizado en este repositorio) indica systemd y limpieza explícita de PM2 legacy — ninguna de las dos fuentes es una observación en vivo del servidor. **Ambas versiones permanecen sin confirmar** hasta la auditoría read-only de 8I-B2.
-- Unit systemd actual (si existe) — nombre exacto, estado.
-- PM2 legacy presente o no.
-- Puerto de staging disponible (`ss -ltnp`, nunca asumir `3100`).
-- Configuración exacta del VirtualHost Apache real.
-- `ProxyPass`/`ProxyPassReverse` reales.
-- DNS/nameservers reales del dominio.
-- Presencia o ausencia de Cloudflare u otro proxy — ni confirmado ni descartado.
-- Mecanismo real de aprovisionamiento de certificado TLS.
-- Configuración Virtualmin actual.
+**CONVERTIDO de PENDING a CONFIRMADO en esta fase, por auditoría READ-ONLY
+real del servidor y del DNS (Fase 8I-B2A — ver detalle completo en 39.Z;
+NO se realizó ninguna conexión SSH adicional para producir este runbook,
+NO se modificó infraestructura):**
+- **Process manager de producción → PM2 CONFIRMED.** Corre bajo el usuario
+  `admin-docker` (`/home/admin-docker/.pm2`), app `advocate-nest`,
+  `status=online`, `restarts=0`. `advocate-nest.service` (systemd) **no
+  existe** — la hipótesis systemd de 8I-B1.1 queda descartada.
+- **Production port → 3000 CONFIRMED** (`127.0.0.1:3000`).
+- **ProxyPass → 127.0.0.1:3000 CONFIRMED** (`ProxyPass`/`ProxyPassReverse`
+  y WebSocket proxy, vhost `abogado.consoldi.com`).
+- **Cloudflare → CONFIRMED** (DNS A/AAAA en rango Cloudflare, headers
+  `Server: cloudflare`/`CF-RAY`/`cf-cache-status`).
+- **Public TLS → CONFIRMED** (`CN=consoldi.com`, SAN `*.consoldi.com`,
+  issuer Google Trust Services WE1).
+- **Staging domain → `abogado-staging.consoldi.com` AVAILABLE / NOT
+  CREATED** (sin registro DNS actual, elegido en firme).
+- **Staging port → 3200 VERIFIED FREE DURING AUDIT / NOT RESERVED**
+  (`3100`/`3200`/`3300` auditados, ninguno en `LISTEN`; `3100` descartado
+  como permanente por uso histórico temporal; rango `5000`–`5300`
+  evitado por alta densidad de listeners existentes).
 
-**Staging planned (diseño, no ejecutado):**
-- Dominio: `abogado-staging.consoldi.com` — PENDING disponibilidad/confirmación.
+**Pendiente real, sin resolver todavía (mantener PENDING — no se fuerza
+ninguna conclusión sin evidencia adicional):**
+- Cloudflare SSL mode (Full/Strict) y si `certbot` es realmente quien
+  renueva el certificado origin del vhost (ver 39.W).
+- Procedimiento exacto de creación del vhost/Virtualmin de staging.
+- Supabase staging (proyecto todavía no creado).
+- Google Cloud (proyecto de testing todavía no creado).
+- Confirmación final del tipo de cuenta Google (Workspace vs. personal, Sección 11).
+
+**Staging planned (diseño actualizado contra el hallazgo real, no ejecutado):**
+- Dominio: `abogado-staging.consoldi.com` — AVAILABLE / NOT CREATED.
 - Supabase: proyecto staging independiente, aislado de `pnqdgwpxcxngeueosmnh`.
-- Proceso: `systemd advocate-nest-staging.service` independiente como diseño de staging (39.O) — esto es una decisión de diseño para el entorno NUEVO, independiente de qué gestor esté realmente activo hoy en producción.
+- Proceso: **mismo daemon PM2 de `admin-docker`**, app `advocate-nest-staging`,
+  `cwd` independiente, puerto `127.0.0.1:3200` (39.O/39.P) — ya no
+  `systemd advocate-nest-staging.service` (modelo descartado, ver 39.A).
+  Nunca PM2 root.
 - Google: proyecto de testing independiente (`CRM Drive — Testing`), separado de Calendar.
 - Admin: identidad Auth real vía Supabase Auth Admin API o Dashboard — nunca `INSERT` directo en `auth.users` en un proyecto real.
+
+### 39.Z — Auditoría READ-ONLY real del servidor y DNS (Fase 8I-B2A, evidencia confirmada)
+
+**Alcance:** esta sección incorpora exclusivamente la evidencia real
+provista por el propietario, obtenida por una auditoría READ-ONLY manual
+del servidor y del DNS. No se realizó ninguna conexión SSH adicional para
+producir este documento, no se modificó infraestructura, runtime,
+migraciones ni variables de entorno reales.
+
+**39.Z.1 — Identidad del servidor**
+Ubuntu 24.04.4 LTS. 8 CPUs. 23 GiB RAM (~16 GiB disponibles durante la
+auditoría). Filesystem root: 387 GB totales, ~186 GB libres. Producción
+saludable: `GET https://abogado.consoldi.com/api/health` → HTTP 200, antes
+y después de la auditoría.
+
+**39.Z.2 — Process manager de producción**
+CONFIRMADO: PM2. **No existe** `advocate-nest.service`. PM2 bajo el
+usuario `admin-docker` tiene la app `advocate-nest`, `status=online`,
+`restarts=0`. Daemon PM2: `/home/admin-docker/.pm2`. El CRM **no** depende
+de `pm2-root.service`. Existe por separado un daemon PM2 de `root`
+(`/root/.pm2`, gestionado por `pm2-root.service`) — no confundir ambos
+(ver 39.Z.7).
+
+**39.Z.3 — Proceso CRM**
+CWD: `/home/admin-docker/proyectos/advocate-nest/app`. Script PM2:
+`/home/admin-docker/proyectos/advocate-nest/app/start-crm.sh`. Proceso
+Node observado: `node --env-file=.env.production .output/server/index.mjs`.
+Artefacto `.output/server/index.mjs`: EXISTS. `.env.production`: existe,
+owner `admin-docker`, group `admin-docker`, mode `600` — **no se leyó su
+contenido**.
+
+**39.Z.4 — Puerto de producción y capacidad de staging**
+Producción: `127.0.0.1:3000` (Node CRM escucha ahí, CONFIRMADO). Staging:
+puertos `3100`/`3200`/`3300` auditados, ninguno en `LISTEN` — ver decisión
+final en 39.P.
+
+**39.Z.5 — Apache**
+`apache2.service`: `active/running`. VirtualHost `abogado.consoldi.com`
+incluye `ProxyPass / http://127.0.0.1:3000/`, `ProxyPassReverse /
+http://127.0.0.1:3000/`, y el proxy WebSocket también apunta a
+`127.0.0.1:3000`. Logs: `/var/log/virtualmin/abogado.consoldi.com_error_log`
+y `..._access_log`. Producción: HTTP 200. Caveat de `apachectl -S`: ver 39.Q.
+
+**39.Z.6 — Cloudflare y TLS**
+Ver detalle completo y evidencia en 39.W.
+
+**39.Z.7 — PM2 root**
+`pm2-root.service` está `active`, pero **no gestiona** el CRM
+`advocate-nest` del usuario `admin-docker`. No se modifica en esta fase.
+Staging usará el PM2 de `admin-docker`, nunca el de `root`.
+
+**39.Z.8 — Cron**
+El usuario `admin-docker` **no tiene crontab actual**. Esto confirma que
+el futuro cron de mantenimiento de Drive (Sección 20) será una adición
+enteramente nueva, a instalar únicamente después de validar el
+mantenimiento manual (ver refinamiento de la Sección 20 y BLOCK I de
+39.M). No se crea ningún cron en esta fase.
+
+**39.Z.9 — Capacidad de recursos**
+Snapshot: 8 CPU, 23 GiB RAM, ~16 GiB disponibles, ~186 GiB disco libre,
+load promedio ~1. Clasificación: **no hay bloqueador de capacidad obvio**
+para un staging de bajo volumen. Este snapshot **no** se trata como
+benchmark de capacidad — es una fotografía puntual del momento de la
+auditoría, no una garantía de comportamiento bajo carga sostenida.
+
+**39.Z.10 — Observación de seguridad, saneada (fuera de scope de Drive)**
+La salida original de `ps` capturada durante la auditoría contenía una
+línea correspondiente a un servicio **no relacionado con el CRM** que
+exponía en sus argumentos de línea de comandos un valor con apariencia de
+token/cookie interno. Ese valor **no se copia a este runbook ni se
+reproduce en ningún informe** — se registra únicamente el hecho
+sanitizado: *"un servicio no relacionado expone datos con apariencia
+sensible en sus argumentos de proceso; fuera del alcance del CRM."* No se
+corrige en esta fase (no es responsabilidad de este proyecto ni de esta
+auditoría).
+
+**39.Z.11 — Estado final del runbook tras esta auditoría**
+Ver el resumen de conversiones PENDING → CONFIRMED en 39.Y. El resto de
+PENDING que **no** cambia en esta fase: Cloudflare SSL mode/origin
+strictness, procedimiento exacto de creación del vhost/Virtualmin de
+staging, Supabase staging futuro, Google Cloud, y la confirmación final del
+tipo de cuenta Google (Sección 11).
