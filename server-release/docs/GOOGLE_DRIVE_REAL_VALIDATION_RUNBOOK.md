@@ -745,10 +745,19 @@ verdad única — no se crea un runbook complementario. No incluye secretos.
 
 ## 39. Fase 8I-B1 — Staging Readiness (diseño, sin ejecutar)
 
-Objetivo de esta sección: dejar el staging completamente diseñado y
-verificable ANTES de tocar Google Cloud, OAuth, Supabase staging remoto,
+**Estado (Fase 8I-B2B-0A): DEFERRED.** El staging público completo (dominio
+Cloudflare/Virtualmin descrito en esta sección) queda diferido a favor de
+validar primero la integración real de Drive en localhost — ver Sección 40
+para la secuencia actualizada (B2B-0A → B2B-0B → B2B-0C → B2B-1 → B2B-2) y
+el razonamiento del cambio. **Ninguna evidencia de esta Sección 39 se
+elimina ni se invalida** — la infraestructura auditada en B2A (Sección
+39.Z) sigue siendo válida y se reutilizará cuando el staging público se
+retome; simplemente no se ejecutará todavía.
+
+Objetivo original de esta sección: dejar el staging completamente diseñado
+y verificable ANTES de tocar Google Cloud, OAuth, Supabase staging remoto,
 DNS, Virtualmin, Apache, Cloudflare, servidor real o Drive real. Nada de
-lo que sigue se ejecutó en esta fase.
+lo que sigue se ejecutó en esa fase.
 
 ### 39.A — Auditoría de deployment real (hallazgo)
 
@@ -1504,3 +1513,699 @@ PENDING que **no** cambia en esta fase: Cloudflare SSL mode/origin
 strictness, procedimiento exacto de creación del vhost/Virtualmin de
 staging, Supabase staging futuro, Google Cloud, y la confirmación final del
 tipo de cuenta Google (Sección 11).
+
+---
+
+## 40. Fase 8I-B2B-0A — Localhost Drive Readiness (auditoría, sin infraestructura cloud)
+
+### 40.A — Cambio de estrategia (aprobado)
+
+El staging público (Sección 39, `abogado-staging.consoldi.com`) queda
+**DEFERRED**. Antes de tocar DNS/Cloudflare/Virtualmin/Apache/PM2 públicos,
+la primera integración real de Google Drive se validará en **localhost**,
+contra un proyecto **Supabase Hosted staging** independiente (no
+self-hosted, no producción). La secuencia queda:
+
+1. **B2B-0A** — auditoría de localhost readiness. **CLOSED** (ver 40.Z —
+   cierre controlado con las decisiones adicionales de esta fase).
+2. **B2B-0B1** — implementar el safety guard diseñado en 40.E (script +
+   denylist de dos identidades) + creación del proyecto Supabase Hosted
+   staging **vacío** (sin bootstrap todavía), usando el procedimiento
+   `--db-url` explícito de 40.M.
+3. **B2B-0B2** — validación empírica del bootstrap/migraciones contra ese
+   proyecto Hosted real (reemplaza la mera "auditoría por razonamiento" de
+   40.K, ahora marcada `UNVERIFIED UNTIL B2B-0B2` — ver 40.K, 40.M3, 40.M4).
+4. **B2B-0B3** — CRM local con Drive deshabilitado (health/login/CRUD
+   sintético) contra el Hosted staging ya poblado.
+5. **B2B-0C** — Google Cloud Testing project + OAuth localhost + Drive E2E
+   completo por **polling** (sin watch/webhook).
+6. **B2B-1** — staging público (Sección 39, retomada tal cual quedó
+   diseñada/auditada en B2A).
+7. **B2B-2** — watch/webhook/integración pública real.
+
+Nada de la evidencia de B2A (Sección 39.Z) se descarta — se reutilizará
+íntegra al llegar a B2B-1. Esta fase (B2B-0A) es auditoría/repo únicamente:
+no se creó ningún proyecto Supabase, Google Cloud, DNS, ni se tocó
+Cloudflare/Virtualmin/Apache/PM2/servidor real. **Producción no se tocó.**
+
+### 40.B — Comando de desarrollo local real
+
+Auditado `vite.config.ts` + `@lovable.dev/vite-tanstack-config` (paquete
+base que este proyecto no debe editar manualmente, según su propio
+comentario de cabecera):
+
+- **`npm run dev`** (`vite dev`) — servidor de desarrollo Vite con HMR.
+  Fuera de un sandbox Lovable (`LOVABLE_SANDBOX=1` o
+  `DEV_SERVER__PROJECT_PATH` presentes — **ninguna de las dos está
+  presente en este entorno local**), el propio paquete base aplica
+  `mergeConfig({ server: { host: "::", port: 8080 } }, config)`: **host
+  `::` (todas las interfaces), puerto por defecto `8080`, sin
+  `strictPort`** (si 8080 está ocupado, Vite incrementa automáticamente).
+  Nuestro `vite.config.ts` no sobreescribe `server`, así que estos valores
+  aplican tal cual.
+- **`npm run build:node`** (`BUILD_TARGET=node vite build`) — genera el
+  standalone Node server real (`.output/server/index.mjs`, preset Nitro
+  `"node"`), **el mismo artefacto que corre en producción** (confirmado
+  en 39.A/39.Z). Es el único comando que reproduce fielmente el
+  comportamiento de producción — `vite dev` usa el pipeline de desarrollo
+  de Vite, no el server Node standalone.
+- **`npm run start`** / **`npm run start:production`** —
+  `node .output/server/index.mjs`, **sin `--env-file`**. A diferencia del
+  script real de producción (`start-crm.sh`, que sí usa
+  `--env-file=.env.production`, confirmado en 39.Z.3), el script de
+  `package.json` asume que las variables ya están en el entorno del
+  proceso que lo invoca. `PORT`/`HOST` los lee Nitro vía `process.env`
+  (alias `NITRO_PORT` también funciona — confirmado en
+  `server-release/docs/ENVIRONMENT_VARIABLES.md`), default documentado
+  `127.0.0.1:3000`.
+- **`npm run preview`** (`vite preview`) — sirve el build estático del
+  preset por defecto (`cloudflare-module`), **no** el preset `node`; no es
+  el mecanismo relevante para probar el server real.
+
+**Rutas API en dev:** el plugin `tanstackStart` integra las rutas
+`server.handlers` (incluidas `src/routes/api.google-drive.*.ts`) también
+bajo `vite dev`, no solo en el build — no se requiere el build Node para
+probar el flujo OAuth completo, aunque para la primera prueba real se
+preferirá el build Node standalone por fidelidad con producción (ver
+40.W).
+
+### 40.C — Auditoría de carga de env (precedence)
+
+**Sin iniciar la app**, por auditoría estática de
+`node_modules/vite/dist/node/chunks/node.js` (`loadEnv`) y de
+`@lovable.dev/vite-tanstack-config`:
+
+1. El framework llama `loadEnv(mode, process.cwd(), "VITE_")` — **solo
+   variables con prefijo `VITE_`** entran en el `envDefine` que se
+   incrusta como reemplazo estático (`import.meta.env.VITE_X` →
+   literal) en el bundle cliente y SSR.
+2. `loadEnv()` internamente parsea **todas** las variables de
+   `.env`/`.env.local`/`.env.[mode]`/`.env.[mode].local`, pero pasa una
+   **copia** de `process.env` (`{ ...process.env }`) a `dotenv-expand`,
+   no el objeto real — confirmado leyendo el código fuente de Vite línea
+   por línea. **`vite dev` no escribe variables arbitrarias (sin prefijo
+   `VITE_`) en `process.env` real**, salvo las 3 excepciciones
+   hardcodeadas de Vite (`VITE_USER_NODE_ENV`, `BROWSER`,
+   `BROWSER_ARGS`, ninguna relevante aquí).
+3. `src/lib/env-server.ts` (`readServerEnv`) lee `process.env[name]`
+   primero, con fallback a `import.meta.env[name]` "solo por
+   compatibilidad server/dev". Bajo `vite dev`, ese fallback únicamente
+   puede resolver variables `VITE_`-prefijadas (por el punto 1) — una
+   variable server-only sin prefijo (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+   `GOOGLE_DRIVE_CLIENT_SECRET`, etc.) **no se resuelve por ningún camino
+   bajo `vite dev`** a menos que se exporte explícitamente en el shell
+   real antes de lanzar el proceso.
+4. El **server Node standalone** (`node --env-file=<archivo>
+   .output/server/index.mjs`) es un mecanismo completamente distinto:
+   `--env-file` es una flag nativa de Node (estable desde Node ≥20.6,
+   este entorno corre Node v24.15.0) que vuelca **todas** las líneas
+   `KEY=VALUE` del archivo indicado directamente a `process.env`, **sin
+   ningún filtro de prefijo**. Ahí sí, cualquier variable del archivo
+   pasado —tenga o no prefijo `VITE_`— queda disponible vía
+   `process.env` para `requireServerEnv`.
+
+**Consecuencia de diseño:** la seguridad del futuro arranque local depende
+enteramente de **qué archivo se pase a `--env-file`**, nunca de la carga
+implícita de Vite. Esto confirma que un archivo explícito dedicado
+(`.env.drive-staging.local`, ver 40.V) es la estrategia correcta — nunca
+depender de `.env`/`.env.local` ambientales.
+
+### 40.D — Hallazgo crítico: exposición de producción en el `.env` local de esta máquina
+
+**Clasificación, sin imprimir valores** (según lo exigido):
+
+- `.env` (raíz del repo, presente en esta máquina) contiene las claves
+  `GROQ_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_GOOGLE_CLIENT_ID`,
+  `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_URL` — **ninguna clave bare
+  `SUPABASE_URL`/`SUPABASE_ANON_KEY`**.
+- `.env.local` contiene `QA_ADMIN_EMAIL`, `QA_ADMIN_PASSWORD`,
+  `QA_PERSONAL_EMAIL`, `QA_PERSONAL_PASSWORD`, `QA_SUPABASE_ANON_KEY`,
+  `QA_SUPABASE_URL`.
+- El host (solo dominio, sin claves) de `VITE_SUPABASE_URL` en `.env` **y**
+  de `QA_SUPABASE_URL` en `.env.local` es el mismo:
+  **`https://supabase.consoldi.com`**.
+
+**Clasificación: `production-looking`.** `supabase.consoldi.com` comparte
+familia de dominio exacta con `abogado.consoldi.com` (producción,
+confirmado en 39.Z) y con la arquitectura self-hosted ya confirmada por
+auditoría real del servidor en B2A — no hay ningún proyecto Supabase
+"staging" documentado en este dominio todavía (39.D lo declara "todavía
+NO existe"). No hay evidencia de un proyecto Supabase self-hosted
+alternativo con ese mismo hostname. **Con alta confianza, `.env` y
+`.env.local` de esta máquina apuntan hoy al Supabase self-hosted de
+PRODUCCIÓN**, no a un entorno de desarrollo aislado.
+
+**Impacto real, acotado por 40.C:**
+- Bajo `vite dev`: solo el **cliente** (bundle de navegador) embebe
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` de producción — cualquier
+  sesión de `npm run dev` hoy, si alguien inicia sesión desde el
+  navegador, autentica y consulta contra el Supabase self-hosted real de
+  producción con la clave `anon`. Las rutas server-side (`requireServerEnv`)
+  NO se ven afectadas por este archivo específico porque no define
+  `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` bare de forma que Vite las
+  propague (ver 40.C.3).
+- Bajo un futuro server Node standalone lanzado con
+  `--env-file=.env` (NUNCA debe hacerse): `SUPABASE_SERVICE_ROLE_KEY` sí
+  quedaría en `process.env`, pero `requireServerEnv("SUPABASE_URL")`
+  seguiría fallando (no hay `SUPABASE_URL` bare en el archivo) — el
+  servidor no arrancaría el flujo Supabase server-side, aunque la clave
+  secreta ya habría quedado cargada en el proceso.
+
+**No se modifica `.env` ni `.env.local` en esta fase** (no es indicado ni
+autorizado). Este hallazgo es la justificación central del gate de
+producción de 40.E y de la regla "nunca `--env-file=.env`" de 40.V/40.W.
+
+**FORBIDDEN UNTIL STAGING GUARD EXISTS (Fase 8I-B2B-0A, cierre
+controlado):** hasta que exista el guard real de 40.E (script
+implementado y verificado, no solo diseñado), quedan **prohibidos** en
+este repositorio:
+
+- `npm run dev` / `vite` / `vite dev`.
+- Cualquier arranque funcional del server Node (`npm run start`,
+  `npm run start:production`, `node .output/server/index.mjs`, con o sin
+  `--env-file`).
+- Cualquier prueba del CRM local que pueda cargar implícitamente `.env` o
+  `.env.local` (esto incluye `npm test`/`vitest`, que **si** se ejecutan
+  como ya viene haciéndose en esta fase, no arrancan el servidor ni abren
+  conexión de red real a Supabase — confirmado por diseño de los tests,
+  no hay excepción a documentar aquí; el gate de la Sección 26/40.AF no
+  viola esta prohibición porque no arranca la app).
+
+**No se borran ni se modifican `.env`/`.env.local` en esta fase.** No se
+arrancó la aplicación en ningún momento de B2B-0A ni de este cierre.
+
+### 40.E — Production Project Guard (diseño, NO implementado todavía)
+
+Objetivo: impedir que cualquier prueba local de Drive hable, ni siquiera
+por accidente, con Supabase de producción.
+
+**Corrección importante de alcance frente al pedido original:** el
+project-ref productivo conocido inicialmente
+(`pnqdgwpxcxngeueosmnh`) es, según confirma
+`tests/production-supabase-env-safety.test.ts` (línea 19, comentario "the
+legacy Supabase Cloud project") y el hallazgo de 39.A, **el proyecto Cloud
+legacy — ya no es producción real**. Producción real hoy es el Supabase
+**self-hosted** en `https://supabase.consoldi.com` (39.Z, 40.D). Un guard
+que solo bloqueara el ref legacy **no habría detectado** el riesgo real
+encontrado en 40.D. El guard debe cubrir ambos:
+
+1. **`SUPABASE_URL`/`VITE_SUPABASE_URL` resuelto == `https://supabase.consoldi.com`**
+   (o cualquier variante de host que apunte al mismo origin) → ABORT.
+2. **Cualquier valor que contenga el ref legacy `pnqdgwpxcxngeueosmnh`**
+   (por si algún día se reintrodujera un `.env` apuntando al Cloud legacy)
+   → ABORT.
+3. Cobertura mínima según el pedido: `SUPABASE_URL`, contexto
+   `service_role`/secret key (no se compara el valor de la key en sí,
+   solo se usa como señal de "hay una key cargada" junto con la URL),
+   contexto `anon`/publishable key, endpoint de storage si aplica (mismo
+   host que `SUPABASE_URL`, no hay endpoint de storage separado en este
+   proyecto).
+
+**Mecanismo preferido (a implementar en B2B-0B, no ahora):** un script
+`scripts/guard-local-drive-env.mjs` corto, ejecutado como pre-step del
+comando de arranque local (40.W) — lee `process.env` **después** de que
+Node ya aplicó `--env-file`, compara `SUPABASE_URL` contra la lista de
+hosts/refs prohibidos, y `process.exit(1)` con mensaje explícito si
+coincide. No imprime valores de keys, solo el host resuelto (dato no
+sensible, ya usado así en toda la Sección 39.Z). Se prefiere un script
+separado a extender `validate-production-env.mjs` porque ese validador
+está diseñado para **producción** (exige que las variables SÍ estén
+presentes); el guard local necesita la lógica inversa (fallar si
+coincide con producción), y mezclar ambos objetivos en un mismo script
+aumentaría el riesgo de una regresión silenciosa en el validador real de
+producción — se auditó esto, no se implementó.
+
+### 40.F — Puerto local
+
+Auditado con `Get-NetTCPConnection -State Listen` (Windows) sobre
+`3000, 3100, 3200, 3300, 4000, 5000, 5173, 8080, 8787` — **todos libres**
+en esta máquina de desarrollo en el momento de la auditoría.
+
+**Corrección de aislamiento (cierre controlado B2B-0A):** el dev server
+auditado en 40.B escucha hoy en `::`:`8080` — **`::` no equivale a
+aislamiento loopback** (escucha en todas las interfaces IPv6, incluida
+cualquier LAN accesible por esa vía). Esto es aceptable para desarrollo
+normal, pero **no** es el binding que las pruebas Drive reales deben usar.
+
+**DECISIÓN: `LOCAL_DRIVE_TEST_PORT = 4000`.**
+- **Bind address obligatorio: `127.0.0.1`** — nunca `0.0.0.0`, nunca `::`,
+  nunca la IP LAN de esta máquina, durante ninguna prueba Drive local.
+- **Hostname de navegador/OAuth: `localhost`** — distinto conceptualmente
+  del bind address; es lo que se registra en Google Cloud Console como
+  redirect URI (`http://localhost:4000/...`, ver 40.G) y lo que el
+  navegador visita, mientras el proceso Node solo escucha en `127.0.0.1`.
+  Google resuelve `localhost` → `127.0.0.1` de forma estándar; ambos
+  términos no son intercambiables al documentar el binding del servidor.
+- Distinto de `3000` (puerto real de producción — evita confusión en
+  copy/paste de configuración entre entornos).
+- Distinto de `3200` (reservado conceptualmente para el staging público
+  futuro, Sección 39.P).
+- Distinto de `8080` (default de `vite dev`, evita colisión si ambos
+  procesos corren a la vez durante desarrollo normal).
+- No es `3100` (con caveat histórico de uso temporal ya documentado en
+  39.P — evitado por claridad aunque ese caveat aplicaba al servidor
+  remoto, no a esta máquina).
+- Estable durante toda la prueba OAuth (puerto fijo, no dinámico) —
+  requisito explícito porque el redirect URI de Google debe coincidir
+  carácter por carácter.
+
+No se inició ningún listener en esta fase — solo se confirmó
+disponibilidad.
+
+### 40.G — Futuro callback OAuth local
+
+Con el puerto fijado en 40.F, el redirect URI futuro será exactamente:
+
+```
+http://localhost:4000/api/google-drive/callback
+```
+
+Google permite explícitamente `http://localhost` (y `http://127.0.0.1`)
+como excepción a su exigencia general de HTTPS para redirect URIs, para
+uso en testing — no se configura todavía en Google Cloud Console (Sección
+20 del pedido de B2B-1, todavía no ejecutada). El valor debe coincidir
+carácter por carácter (scheme + host + puerto + path, con o sin `/` final
+según lo que Google registre) — mismo principio ya documentado en la
+Sección 14 de este runbook para producción.
+
+### 40.H — Auditoría de generación de URL / hardcode (`google-drive.server.ts`)
+
+Confirmado por lectura directa del código, sin ejecutar nada:
+
+- `redirect_uri` en las dos llamadas a Google (`beginGoogleDriveOAuth` y
+  `completeGoogleDriveOAuth`) viene exclusivamente de
+  `serverSecret("GOOGLE_DRIVE_REDIRECT_URI")` — **cero hardcode** de
+  `abogado.consoldi.com` ni de ningún hostname en este archivo. Los únicos
+  literales de host son los endpoints fijos de Google
+  (`accounts.google.com`, `oauth2.googleapis.com`,
+  `openidconnect.googleapis.com`), que son correctos y no deben cambiar.
+- El route de callback (`src/routes/api.google-drive.callback.ts:12`)
+  deriva el origin del **request real** (`new URL(request.url).origin`)
+  para construir la redirección final a `/configuracion` — nunca asume
+  `https://` ni un dominio fijo. Funciona igual bajo
+  `http://localhost:4000`.
+- El `state` OAuth es HMAC-SHA256 sobre `nonce.expiresAt` firmado con
+  `GOOGLE_OAUTH_STATE_SECRET` — no incluye ni depende del hostname.
+- PKCE (`code_verifier`/`code_challenge`, `S256`) se genera y valida
+  server-side, independiente de dominio.
+- El binding al Administrador que inició el flujo (`requested_by`, fila en
+  `google_drive_oauth_states`) es una referencia a `user.id` en la base de
+  datos — no depende de dominio público.
+
+**Conclusión: no se encontró ningún hardcode ni bloqueo de host/HTTPS en
+esta cadena.** El flujo OAuth de Drive es funcionalmente host-agnóstico
+por diseño ya existente — no se requiere ningún cambio de código para que
+funcione bajo `localhost`.
+
+### 40.I — Cookies / sesión / auth bajo HTTP local
+
+Confirmado por auditoría de `src/lib/supabase.ts`, `src/lib/auth-server.ts`
+y `src/lib/email.server.ts` (patrón representativo de las rutas
+protegidas):
+
+- La sesión de Supabase Auth se persiste en **`window.localStorage`**
+  (`src/lib/supabase.ts:29`), no en cookies — no hay flag `Secure` que
+  pueda bloquear `localhost`/HTTP.
+- Las rutas server-side (`requireEmailRole`, y por extensión el mismo
+  patrón que usan las rutas de Drive) leen el token exclusivamente del
+  header `Authorization: Bearer <token>` (`email.server.ts:178-179`) — sin
+  ningún cookie ni sesión del lado servidor.
+- `requireUser`/`auth-server.ts` valida el JWT contra Supabase
+  (`client.auth.getUser(accessToken)`) sin ninguna comprobación de
+  esquema/host de la petición entrante.
+
+**Conclusión: HTTP localhost puede iniciar sesión, conservar sesión,
+acceder `/configuracion`, y ejecutar el flujo connect/callback de Drive
+sin ninguna modificación** — no existe ninguna protección `Secure`
+cookie/HTTPS-only en esta cadena que debilitar ni excepcionar. No se
+propone ningún cambio de seguridad global.
+
+### 40.J — Arquitectura de Supabase staging (decisión)
+
+**APP:** localhost (`http://localhost:4000`, ver 40.F).
+**DATABASE/AUTH/STORAGE:** proyecto **Supabase Hosted** (cloud managed)
+independiente — **no** self-hosted (eso es exclusivamente el mecanismo de
+producción, ver 39.T/40.K), **no** el proyecto Cloud legacy
+`pnqdgwpxcxngeueosmnh` (ver 40.M). Ningún dato productivo, ningún dump de
+producción como semilla (mismo principio ya establecido en 39.D/39.E). No
+se crea el proyecto en esta fase.
+
+### 40.K — Auditoría de bootstrap para Supabase Hosted (hallazgo)
+
+**Hallazgo central, por lectura directa de
+`supabase/self-hosted/0001_extensions_and_base.sql`:** el bootstrap NO
+crea los schemas `auth`/`storage` desde cero — los **verifica** (`if
+to_regclass('auth.users') is null then raise exception...`, mismo patrón
+para `storage.buckets`/`storage.objects`), con el comentario explícito en
+el propio SQL: *"Supabase provides Auth and Storage as platform schemas."*
+Ambos —Supabase Hosted (Cloud) y Supabase self-hosted vía Docker— proveen
+esos schemas automáticamente antes de que el bootstrap `0001` corra; el
+resto de la secuencia (`0002`–`0008_verify.sql`) usa exclusivamente los
+roles estándar de la plataforma Supabase (`anon`, `authenticated`,
+`service_role`, `supabase_auth_admin`, etc.), **los mismos en Hosted y en
+self-hosted**, porque ambos ejecutan el mismo stack open-source.
+
+**`HOSTED_BOOTSTRAP_COMPATIBILITY = UNVERIFIED UNTIL B2B-0B2`** (cierre
+controlado B2B-0A — corrección de estado frente a la redacción anterior de
+esta sección). La auditoría por razonamiento del párrafo anterior — que
+`0001` solo verifica, no crea, `auth`/`storage`, y que ambos targets usan
+los mismos roles de plataforma — **no es suficiente para declarar los
+scripts self-hosted como validados en Hosted**. Sigue siendo una hipótesis
+razonada, no un hecho confirmado: `docs/database/self-hosted-canonical-model.md:165`
+ya señalaba como riesgo pendiente la "disponibilidad operativa real de
+Auth/Storage en la imagen self-hosted", y ese mismo riesgo aplica en
+espejo a Hosted — **nunca se ha ejecutado contra un proyecto Hosted
+real.** **B2B-0B2** (no B2B-0B genérico) es la fase dedicada
+exclusivamente a esta validación empírica.
+
+**Objetivo explícito, no ambiguo:** Supabase Hosted ya provee `auth`,
+`storage` y los demás servicios de plataforma — el objetivo de B2B-0B2
+**no es recrear esos servicios**, es aplicar únicamente el esquema/objetos
+de **aplicación** (`0001`–`0008` en tanto verifican/complementan la
+plataforma, más las 9 migraciones) que sean compatibles con lo que Hosted
+ya expone. Ver regla de no tocar internals de Auth en 40.M4.
+
+**Distinción A/B/C solicitada:**
+- **A. Scripts de bootstrap self-hosted** (`supabase/self-hosted/0001`–`0008`):
+  hipótesis razonada de portabilidad a Hosted — **UNVERIFIED**, pendiente
+  de B2B-0B2.
+- **B. Migraciones de aplicación** (`supabase/migrations/2026...`, las 9 de
+  la Sección 3): idénticas para cualquier target — ya validadas
+  empíricamente sobre PostgreSQL 17 real en 8I-A.1, reutilizables sin
+  cambios.
+- **C. Schemas que Supabase ya provee** (`auth.*`, `storage.*`): nunca se
+  recrean, en ningún target — el bootstrap solo los consume/verifica.
+
+**Secuencia propuesta para un proyecto Hosted vacío (sin ejecutar en esta
+fase — se ejecuta en B2B-0B2):** idéntica a 39.T — `0001`→`0008_verify.sql`,
+luego las 9 migraciones pendientes en su orden cronológico exacto, luego
+`0008_verify.sql` (o verificación equivalente) para confirmar el esquema
+resultante.
+
+### 40.L — Storage staging (Hosted)
+
+Sin cambios respecto al hallazgo ya documentado en 39.S: bucket único
+`documents`, privado (`public=false`), sin `file_size_limit` ni
+`allowed_mime_types` (confirmado de nuevo leyendo
+`supabase/self-hosted/0007_storage.sql` en esta fase), plantillas bajo el
+prefijo `templates/` con 2 policies RESTRICTIVE adicionales. Un proyecto
+Hosted staging debe recrear el mismo bucket con la misma configuración —
+no se crea en esta fase.
+
+### 40.M — Repo-linked safety (hallazgo, sin modificar)
+
+`supabase/.temp/project-ref` (leído, NO modificado) contiene
+`pnqdgwpxcxngeueosmnh` — confirmado también en
+`supabase/.temp/linked-project.json`: `{"ref":"pnqdgwpxcxngeueosmnh",
+"name":"CRM Abogados a tu Servicio", ...}`. Este es el **mismo proyecto
+Cloud legacy** ya identificado como obsoleto en 39.A y en
+`tests/production-supabase-env-safety.test.ts`. `supabase/.temp/pooler-url`
+contiene una plantilla de conexión sin credencial embebida (verificado sin
+imprimir el archivo completo).
+
+**Riesgo real:** este working tree está `supabase link`-eado hoy contra
+ese proyecto legacy. Si alguien ejecutara `supabase link`, `supabase db
+push`, `supabase migration up`, `supabase db reset` o `supabase functions
+deploy` sin relinkear primero explícitamente, el comando apuntaría al
+proyecto Cloud legacy — **no** a producción (que es self-hosted, fuera del
+alcance de la CLI de Supabase linkeada) y **no** al futuro proyecto
+staging (que todavía no existe). **No se ejecutó ninguno de estos comandos
+en esta fase.**
+
+**DECISIÓN FINAL (cierre controlado B2B-0A) — NO relinkear el working
+tree para staging.** El link histórico (`pnqdgwpxcxngeueosmnh`, legacy)
+puede conservarse tal cual está — las acciones de staging deben **ignorar**
+ese link por completo, nunca depender de él ni de un relink ambiguo:
+
+- **Prohibido:** `supabase link <staging>`, `supabase db push --linked`,
+  `supabase migration up --linked`, `supabase db reset --linked` — todo lo
+  que dependa del estado de link del working tree para operar contra
+  staging.
+- **Obligatorio:** usar explícitamente `--db-url` apuntando al proyecto
+  Hosted staging, primero en modo `--dry-run`:
+  ```
+  supabase db push --db-url "<STAGING_DB_URL>" --dry-run
+  supabase db push --db-url "<STAGING_DB_URL>"
+  ```
+- `STAGING_DB_URL` debe provenir **únicamente** del proyecto Hosted
+  staging recién creado (nunca del legacy, nunca de producción). **Nunca
+  se guarda en el repositorio** (ni en el runbook, ni en ningún archivo
+  versionado) y **nunca se imprime la password** en ningún log, error o
+  documento — mismo estándar ya aplicado a toda clave/secreto en este
+  runbook desde B2A.
+
+No se ejecuta nada de esto en B2B-0A ni en este cierre — queda como
+procedimiento decidido en firme para B2B-0B1/0B2.
+
+### 40.M2 — Prohibición de `db reset` remoto
+
+Aunque la CLI de Supabase soporte `supabase db reset --db-url`, **queda
+prohibido usarlo en este proyecto** — un reset remoto puede eliminar
+entidades creadas manualmente por el usuario en el proyecto staging
+(datos de prueba, configuración manual del Dashboard, etc.) sin
+posibilidad de deshacerlo. **Preferencia explícita:** si el bootstrap deja
+el staging en un estado inconsistente, **recrear el proyecto Hosted
+staging desde cero** (es desechable por diseño, 40.J) en vez de ejecutar
+un `db reset` remoto sin una revisión separada y explícita.
+
+### 40.M3 — Estrategia de conexión Hosted para migraciones
+
+Para aplicar el bootstrap/migraciones (B2B-0B2) contra el proyecto Hosted
+staging, orden de preferencia de conexión:
+
+1. **Direct Connection** — preferida, si esta máquina puede alcanzar el
+   endpoint por IPv6 (a confirmar en B2B-0B2, no verificado en esta
+   fase).
+2. **Supavisor Session Pooler, puerto `:5432`** — alternativa si no hay
+   alcance IPv6 directo.
+3. **Transaction Pooler, puerto `:6543` — NUNCA usar para migraciones**
+   (el modo transacción de Supavisor no soporta de forma fiable
+   sentencias DDL/sesión-larga que las migraciones necesitan; esto es una
+   restricción conocida de los poolers en modo transacción, no específica
+   de este proyecto).
+
+No se estableció ninguna conexión real en esta fase — queda documentado
+como criterio de decisión para B2B-0B2.
+
+### 40.M4 — Regla de Auth interno en Hosted
+
+**No se modifican objetos internos gestionados por Supabase** (schema
+`auth.*` y sus tablas/funciones internas) en ningún target, Hosted
+incluido — mismo principio ya establecido en 40.K/Sección C. Referencias
+de la aplicación como foreign keys hacia `auth.users` (ya presentes en el
+diseño existente, p. ej. `profiles.id → auth.users.id`) son válidas y
+esperadas — no son "recrear" el schema, son consumirlo tal como Supabase
+lo expone. El primer usuario real de staging se crea exclusivamente vía
+**Supabase Auth Admin API** o **Dashboard** — nunca `INSERT` directo en
+`auth.users` de un proyecto Hosted real (mismo principio ya establecido en
+39.R/40.O, reafirmado aquí explícitamente para Hosted).
+
+### 40.N — Inventario de migraciones para Hosted (reconciliado)
+
+Sin novedad respecto a 39.T: mismas 9 migraciones application-level de la
+Sección 3, ya reconciliadas contra el filesystem real y validadas sobre
+PostgreSQL 17 real en 8I-A.1. La diferencia de esta fase es el punto de
+partida — no "producción menos 9 pendientes" sino "proyecto Hosted vacío
+más bootstrap completo (`0001`–`0008`) más las 9" (ver 40.K).
+
+### 40.O — Primer Admin staging (bootstrap)
+
+Reutiliza íntegramente el diseño ya corregido en 39.R: **Supabase Auth
+Admin API** (preferido) o **Dashboard** — nunca `INSERT` directo en
+`auth.users` sobre un proyecto Hosted real (el `INSERT` directo solo fue
+válido en el rehearsal PG17 desechable de 8I-A.1). Identidad
+sintética/técnica de staging, nunca la cuenta Gmail del propietario. Rol
+Administrador elevado después vía `service_role` server-side o un
+mecanismo administrativo equivalente sobre `public.profiles`. No se
+ejecuta en esta fase.
+
+### 40.P — Dataset sintético (futuro)
+
+Mínimo: 1 Admin Staging, Cliente Prueba A, Cliente Prueba B, opcionalmente
+1 expediente de prueba. Archivos: `drive-test-a.pdf`, `drive-test-b.docx`.
+Sin DNI real, sin nombres reales, sin clientes ni documentos jurídicos
+reales — mismo principio ya establecido en 24/39.E, reafirmado aquí para
+el contexto local.
+
+### 40.Q — Inventario de variables de Drive para localhost (futuro, sin valores)
+
+| Variable | Rol | Valor en localhost |
+|---|---|---|
+| `GOOGLE_DRIVE_CLIENT_ID` / `_SECRET` | OAuth Drive testing | proyecto Google Cloud Testing (B2B-0C), nunca el de producción |
+| `GOOGLE_DRIVE_REDIRECT_URI` | Redirect | `http://localhost:4000/api/google-drive/callback` (ver 40.G) |
+| `GOOGLE_OAUTH_STATE_SECRET` / `GOOGLE_TOKEN_ENCRYPTION_KEY` | Compartidas con Calendar en el esquema | valor propio generado para local, nunca el de producción |
+| `GOOGLE_DRIVE_MAINTENANCE_SECRET` | Mantenimiento manual | valor propio generado para local |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook | **AUSENTE** — no hay watch/webhook local (ver 40.S) |
+| Calendar (`GOOGLE_CLIENT_ID` etc.) | — | OFF (vacío) |
+| SMTP (`SMTP_HOST` etc.) | — | OFF (vacío) |
+
+No se escriben valores en esta fase.
+
+### 40.R — Auditoría de Google account type (gate humano, sin resolver)
+
+Sigue **PENDING FINAL HUMAN CONFIRMATION** (Sección 11). Indicio disponible:
+cuenta Gmail personal (no verificado si es Workspace administrado). Antes
+de crear el proyecto Google Cloud en B2B-0C, el propietario confirmará
+únicamente si la cuenta termina en `@gmail.com` y no está administrada por
+una organización — **no se pide ni se guarda el email completo** en
+ningún documento de este repositorio.
+
+### 40.S — Webhook/watch: diferido explícitamente
+
+**LOCALHOST NO VALIDA `changes.watch` NI EL WEBHOOK REAL.** Google exige un
+receptor HTTPS público con certificado válido para `channels.watch` — algo
+que localhost no puede ofrecer. Se difieren explícitamente a B2B-2 (staging
+público): `changes.watch`, la recepción real del POST del webhook de
+Google, el ciclo de vida del canal, y la renovación real del watch. **No se
+usará ningún túnel** (no ngrok, no Cloudflare Tunnel, ni equivalente) para
+simular HTTPS público en esta fase ni en B2B-0C — la estrategia local es
+**polling puro** vía `POST /api/google-drive/maintenance` manual (mismo
+patrón ya usado en el rehearsal, Sección 21 de este runbook: el sistema no
+depende de recibir cada webhook, el polling periódico ya cubre la
+durabilidad).
+
+### 40.T — Cobertura E2E local (sin watch/webhook)
+
+Validación local futura (B2B-0C), reemplaza el orden de Stages/BLOCK
+públicos de la Sección 39.M para el tramo que sí puede probarse sin
+servidor público:
+
+1. CRM local boot (build Node + `--env-file` staging).
+2. Login staging (Admin sintético).
+3. Confirmar Drive "not configured"/"disconnected".
+4. Google OAuth connect (localhost).
+5. Almacenamiento/cifrado del refresh token.
+6. `/api/google-drive/status`.
+7. Seleccionar/crear raíz `CRM-DRIVE-STAGING`.
+8. Onboarding Cliente Prueba A/B.
+9. CRM → Drive: subida de documento sintético.
+10. Rename/update en Drive.
+11. Drive → CRM: import de blob.
+12. Duplicado/idempotencia.
+13. Move → conflicto de parent.
+14. `DRIVE_PARENT_MISMATCH`.
+15. Trash en Drive preserva el documento en CRM.
+16. Polling manual de cambios.
+17. Cursor CAS/durabilidad.
+18. Reconciliación.
+19. Mantenimiento manual repetido (sin cron todavía).
+20. Disconnect (local-only).
+21. Reconnect limpio.
+
+**Sin watch/webhook** (diferido, 40.S). No se ejecuta nada de esta lista en
+B2B-0A — queda documentada para B2B-0C.
+
+### 40.U — Congelación de infraestructura pública (confirmación)
+
+Durante B2B-0A: **no se modificó** servidor de producción, Cloudflare,
+DNS, Virtualmin, Apache ni PM2. La infraestructura auditada en B2A sigue
+siendo válida y se retomará sin cambios al llegar a B2B-1 (39.B–39.W). No
+se ejecutó ningún comando contra el servidor real en esta fase — toda la
+auditoría de esta sección 40 fue estática, sobre el repositorio y sobre
+esta máquina de desarrollo local.
+
+### 40.V — Estrategia de archivo env local (diseño)
+
+**Archivo dedicado: `.env.drive-staging.local`.** Ya cubierto por el
+patrón `.env.*.local` de `.gitignore` (línea 22) — no requiere ninguna
+regla nueva de `.gitignore`, confirmado por auditoría del archivo. No se
+usa `.env.production` (nunca), ni se modifica ningún secreto existente
+(`.env`/`.env.local` de esta máquina quedan intactos, ver 40.D). El
+archivo debe pasarse **explícitamente** por nombre en el comando de
+arranque (`--env-file=.env.drive-staging.local`) — nunca depender de
+carga implícita, consistente con el hallazgo de 40.C (Node's `--env-file`
+no tiene fallback automático a otro archivo si el indicado falta, lo cual
+es la propiedad de seguridad que se necesita: sin el archivo explícito, el
+arranque simplemente falla en vez de caer silenciosamente a otro entorno).
+No se crea el archivo en esta fase.
+
+### 40.W — Comando de arranque futuro (diseño, NO ejecutado)
+
+```
+node --env-file=.env.drive-staging.local scripts/guard-local-drive-env.mjs \
+  && PORT=4000 HOST=127.0.0.1 node --env-file=.env.drive-staging.local .output/server/index.mjs
+```
+
+(forma conceptual — el guard de 40.E corre primero y aborta el `&&` si
+detecta producción; la sintaxis exacta del wrapper se decide al
+implementarlo en B2B-0B, no aquí). Requisitos de diseño:
+
+- Carga **exclusivamente** `.env.drive-staging.local` — nunca
+  `.env.production`, nunca `.env`/`.env.local` ambientales.
+- Escucha solo en `127.0.0.1:4000` (nunca `0.0.0.0` ni `::`).
+- Falla explícitamente (`process.exit(1)`, mensaje claro) si el guard de
+  40.E detecta `SUPABASE_URL` de producción o el ref legacy.
+- Requiere el build Node previo (`npm run build:node`) — mismo artefacto
+  que producción, por fidelidad (40.B).
+
+No se implementa el script guard ni se ejecuta ningún arranque en esta
+fase.
+
+### 40.X — Drive-disabled-first (secuencia, reafirmada)
+
+La primera ejecución local (B2B-0B), una vez exista el proyecto Supabase
+Hosted staging, será **sin ninguna variable de Drive** — validar boot,
+login, CRUD sintético, upload sintético, Drive "disabled/not configured",
+Calendar OFF, SMTP OFF. Solo después de eso, Google Cloud (B2B-0C). Mismo
+principio ya establecido en 39.N, reafirmado aquí para el contexto local.
+
+### 40.Y — Bloqueadores antes de B2B-0B1
+
+- Script `scripts/guard-local-drive-env.mjs`: diseñado (40.E), **no
+  implementado** — bloquea `npm run dev`/arranque Node hasta que exista
+  (ver 40.D, "FORBIDDEN UNTIL STAGING GUARD EXISTS").
+- Proyecto Supabase Hosted staging: no creado.
+- Archivo `.env.drive-staging.local`: no creado.
+- Validación empírica de que el bootstrap self-hosted (`0001`–`0008`)
+  aplica limpio sobre un proyecto Hosted real: `UNVERIFIED UNTIL B2B-0B2`
+  (40.K) — ya no es un blocker de B2B-0B1 en sí (que solo crea el proyecto
+  vacío), pero sí de B2B-0B2.
+- Confirmación final del tipo de cuenta Google (Sección 11/40.R): pendiente.
+- Estrategia de conexión Hosted (Direct vs. Session Pooler, 40.M3): no
+  verificada contra el proyecto real todavía — depende de si esta máquina
+  alcanza IPv6, a confirmar en B2B-0B2.
+
+### 40.Z — Cierre controlado de Fase 8I-B2B-0A (decisiones adicionales)
+
+**B2B-0A: CLOSED.** Aprobada con las siguientes decisiones adicionales
+obligatorias, incorporadas en esta misma sección 40:
+
+1. **Env production hazard** (40.D) — `FORBIDDEN UNTIL STAGING GUARD
+   EXISTS`: prohibido `npm run dev`/`vite`/`vite dev`/cualquier arranque
+   funcional del server Node/cualquier prueba del CRM local que pudiera
+   cargar implícitamente `.env`/`.env.local`, hasta que exista el guard
+   real de 40.E. No se borran ni modifican esos archivos. No se arrancó
+   la aplicación en ningún momento de esta fase ni de este cierre.
+2. **Loopback binding** (40.F) — corregido: `::`:`8080` (dev server
+   actual) NO es aislamiento loopback. Bind obligatorio para pruebas Drive
+   reales: `127.0.0.1:4000`. Hostname de navegador/OAuth: `localhost`
+   (distinto conceptualmente del bind address). Nunca `0.0.0.0`/`::`/IP
+   LAN durante testing local.
+3. **Production denylist** (40.E) — el guard debe rechazar explícitamente
+   **dos** identidades productivas: (A) host `https://supabase.consoldi.com`,
+   (B) ref legacy `pnqdgwpxcxngeueosmnh` — comparación por
+   hostname/identidad de proyecto, nunca solo por ref legacy. Nunca
+   imprime keys en el error.
+4. **Supabase CLI staging strategy** (40.M) — decidido en firme: NO
+   relinkear el working tree para staging; usar `--db-url` explícito con
+   `--dry-run` primero; `STAGING_DB_URL` nunca en el repo, password nunca
+   impresa.
+5. **Remote `db reset` prohibido** (40.M2) — preferencia: recrear el
+   proyecto Hosted staging desechable en vez de un reset remoto.
+6. **Hosted connection strategy** (40.M3) — Direct Connection si hay
+   alcance IPv6; si no, Session Pooler `:5432`; nunca Transaction Pooler
+   `:6543` para migraciones.
+7. **Hosted bootstrap status** (40.K) — cambiado a
+   `HOSTED_BOOTSTRAP_COMPATIBILITY = UNVERIFIED UNTIL B2B-0B2`; objetivo
+   explícito: no recrear `auth`/`storage`/servicios de plataforma, solo
+   aplicar esquema de aplicación compatible.
+8. **Hosted auth rule** (40.M4) — no se modifican objetos internos de
+   `auth.*`; FKs hacia `auth.users` son válidas; primer usuario real vía
+   Auth Admin API/Dashboard, nunca `INSERT` directo.
+9. **Nueva secuencia** (40.A) — B2B-0A (CLOSED) → B2B-0B1 (safety guard +
+   proyecto Hosted vacío) → B2B-0B2 (validación empírica del bootstrap) →
+   B2B-0B3 (CRM localhost Drive-disabled) → B2B-0C → B2B-1 → B2B-2.
+
+No se ejecutó ningún comando remoto, ninguna creación de infraestructura,
+ningún arranque de la aplicación, y ningún cambio a `.env`/`.env.local`
+durante este cierre. Producción no se tocó.
