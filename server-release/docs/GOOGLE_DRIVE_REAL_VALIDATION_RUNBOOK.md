@@ -1522,21 +1522,29 @@ tipo de cuenta Google (Sección 11).
 
 El staging público (Sección 39, `abogado-staging.consoldi.com`) queda
 **DEFERRED**. Antes de tocar DNS/Cloudflare/Virtualmin/Apache/PM2 públicos,
-la primera integración real de Google Drive se validará en **localhost**,
-contra un proyecto **Supabase Hosted staging** independiente (no
-self-hosted, no producción). La secuencia queda:
+la primera integración real de Google Drive se validará en **localhost**.
+
+**Corrección de estrategia (cierre B2B-0A + Fase 8I-B2B-0B1):** el backend
+de la primera prueba ya **no** es Supabase Hosted — es **Supabase LOCAL
+vía Docker** (`supabase start`), completamente aislado, sin ningún
+proyecto remoto involucrado. Supabase Hosted staging queda
+**DEFERRED / OPTIONAL UNTIL PUBLIC STAGING DESIGN** (se retoma, si acaso,
+al diseñar el staging público de B2B-1 — no es un requisito para validar
+Drive localmente). Ver el detalle completo de esta fase en la Sección 41.
+La secuencia queda:
 
 1. **B2B-0A** — auditoría de localhost readiness. **CLOSED** (ver 40.Z —
-   cierre controlado con las decisiones adicionales de esta fase).
-2. **B2B-0B1** — implementar el safety guard diseñado en 40.E (script +
-   denylist de dos identidades) + creación del proyecto Supabase Hosted
-   staging **vacío** (sin bootstrap todavía), usando el procedimiento
-   `--db-url` explícito de 40.M.
-3. **B2B-0B2** — validación empírica del bootstrap/migraciones contra ese
-   proyecto Hosted real (reemplaza la mera "auditoría por razonamiento" de
-   40.K, ahora marcada `UNVERIFIED UNTIL B2B-0B2` — ver 40.K, 40.M3, 40.M4).
+   cierre controlado con las decisiones adicionales de esa fase).
+2. **B2B-0B1** — safety guard real (implementado, ver 41.D) + Supabase
+   **LOCAL** vía Docker, aislado en loopback (ver Sección 41 — **estado:
+   parcialmente bloqueado**, Docker Desktop no está corriendo en esta
+   máquina; ver 41.B).
+3. **B2B-0B2** — esquema/Storage/Auth locales + dataset sintético,
+   validación empírica del bootstrap (`HOSTED_BOOTSTRAP_COMPATIBILITY` de
+   40.K se mantiene `UNVERIFIED` — ahora aplica también, en espejo, al
+   bootstrap sobre Supabase LOCAL vía Docker, no solo a Hosted).
 4. **B2B-0B3** — CRM local con Drive deshabilitado (health/login/CRUD
-   sintético) contra el Hosted staging ya poblado.
+   sintético) contra el Supabase LOCAL ya poblado.
 5. **B2B-0C** — Google Cloud Testing project + OAuth localhost + Drive E2E
    completo por **polling** (sin watch/webhook).
 6. **B2B-1** — staging público (Sección 39, retomada tal cual quedó
@@ -1843,12 +1851,15 @@ propone ningún cambio de seguridad global.
 ### 40.J — Arquitectura de Supabase staging (decisión)
 
 **APP:** localhost (`http://localhost:4000`, ver 40.F).
-**DATABASE/AUTH/STORAGE:** proyecto **Supabase Hosted** (cloud managed)
-independiente — **no** self-hosted (eso es exclusivamente el mecanismo de
-producción, ver 39.T/40.K), **no** el proyecto Cloud legacy
-`pnqdgwpxcxngeueosmnh` (ver 40.M). Ningún dato productivo, ningún dump de
-producción como semilla (mismo principio ya establecido en 39.D/39.E). No
-se crea el proyecto en esta fase.
+**DATABASE/AUTH/STORAGE (decisión final, ver Sección 41): Supabase LOCAL
+vía Docker** (`supabase start`) — no Hosted (cloud managed), no
+self-hosted (eso es exclusivamente el mecanismo de producción, ver
+39.T/40.K), no el proyecto Cloud legacy `pnqdgwpxcxngeueosmnh` (ver
+40.M). Supabase Hosted queda `DEFERRED / OPTIONAL UNTIL PUBLIC STAGING
+DESIGN` — ya no es el plan para la primera prueba local. Ningún dato
+productivo, ningún dump de producción como semilla (mismo principio ya
+establecido en 39.D/39.E). No se creó ni arrancó el stack en esta fase
+(bloqueado por Docker Desktop no corriendo, ver 41.B).
 
 ### 40.K — Auditoría de bootstrap para Supabase Hosted (hallazgo)
 
@@ -2209,3 +2220,1001 @@ obligatorias, incorporadas en esta misma sección 40:
 No se ejecutó ningún comando remoto, ninguna creación de infraestructura,
 ningún arranque de la aplicación, y ningún cambio a `.env`/`.env.local`
 durante este cierre. Producción no se tocó.
+
+---
+
+## 41. Fase 8I-B2B-0B1 — Safety Harness + Supabase LOCAL (Docker)
+
+### 41.A — Cambio de estrategia (aprobado)
+
+Para la primera prueba real de Drive, el backend deja de ser Supabase
+Hosted (cloud managed) y pasa a ser **Supabase LOCAL vía Docker**
+(`supabase start`), completamente aislado en esta máquina de desarrollo.
+Supabase Hosted queda `DEFERRED / OPTIONAL UNTIL PUBLIC STAGING DESIGN` —
+ya no es parte del camino crítico hacia la primera validación local. Nada
+de la evidencia de B2A/B2B-0A se descarta. **Producción no se tocó.**
+
+### 41.B — Estado de Docker (BLOQUEADOR)
+
+```
+docker version → Client: 29.6.2 (windows/amd64)
+docker version → Server: ERROR — "failed to connect to the docker API at
+                  npipe:////./pipe/dockerDesktopLinuxEngine ... The system
+                  cannot find the file specified."
+```
+
+**Docker Desktop está instalado pero el daemon NO está corriendo.**
+Siguiendo la instrucción explícita de esta fase ("Si Docker no está
+disponible: DETENERSE y reportar. No modificar WSL/Docker
+automáticamente"), **no se intentó iniciar Docker Desktop ni modificar su
+configuración.** Esto bloquea, en esta pasada, todos los pasos que
+requieren el daemon activo: creación de la red Docker loopback-only
+(41.H), `supabase start` (41.N), verificación del stack (41.O), inventario
+de esquema (41.Q), y estado de Auth/Storage (41.R/41.S). Todos quedan
+marcados `BLOCKED — DOCKER DAEMON NOT RUNNING` más abajo.
+
+`SUPABASE_CLI_VERSION = 2.116.0` (via `npx supabase --version`, instalado
+automáticamente por `npx` en esta ejecución — no se instaló globalmente ni
+se actualizó nada existente).
+
+### 41.C — Auditoría de configuración Supabase local (hallazgo)
+
+Auditado el directorio `supabase/` completo:
+
+| Archivo esperado | Estado |
+|---|---|
+| `supabase/config.toml` | **NO EXISTE** |
+| `supabase/seed.sql` | **NO EXISTE** |
+| `supabase/roles.sql` | **NO EXISTE** |
+| `supabase/.temp/project-ref` | Existe — `pnqdgwpxcxngeueosmnh` (legacy, leído sin modificar, sin cambios desde 40.M) |
+| `supabase/migrations/` | 32 migraciones de aplicación, `20260713131000`→`20260826100000` (incluye las 9 ya reconciliadas en la Sección 3 más 23 anteriores del historial completo del proyecto) |
+| `supabase/self-hosted/0001`–`0008_verify.sql` | Bootstrap canónico ya auditado en 39/40.K |
+| `supabase/schema.sql` | Existe, pero se autodeclara explícitamente **NO canónico** ("SNAPSHOT DE REFERENCIA... no debe ejecutarse en producción", ver cabecera del archivo) — la fuente de verdad son las migraciones |
+| `supabase/verification/` | Scripts de verificación puntuales de una feature (`document_folders`), no un bootstrap general |
+
+**Consecuencia directa:** sin `config.toml`, `supabase start` no tiene
+proyecto local que iniciar (la CLI requiere `supabase init` primero para
+generarlo). Esto es un segundo bloqueador, independiente de Docker —
+incluso con Docker corriendo, `supabase start` fallaría hoy contra este
+repositorio tal cual está. **No se ejecutó `supabase init`** en esta fase:
+generar `config.toml` implica decisiones de configuración (puertos,
+`project_id`, servicios habilitados) que exceden una auditoría pura y que,
+dado que Docker tampoco está disponible para probarlas, no pueden
+validarse en esta misma pasada — queda como el primer paso accionable de
+la continuación de B2B-0B1 (ver 41.Y).
+
+No se encontró ninguna variable `env(...)` en ningún archivo de
+configuración Supabase (no aplica, porque `config.toml` no existe) — este
+chequeo específico del pedido queda trivialmente resuelto por la ausencia
+del archivo, no evaluado contra contenido real.
+
+### 41.D — Production Env Guard: IMPLEMENTADO
+
+A diferencia de fases anteriores (diseño únicamente), esta fase **sí**
+implementa el guard, porque es puro código local sin dependencia de
+Docker/Supabase real:
+
+- **`scripts/validate-drive-local-env.mjs`** — lógica pura exportada
+  (`evaluateEffectiveEnv`), más un wrapper CLI que solo se ejecuta en
+  invocación directa (`node scripts/validate-drive-local-env.mjs`).
+- **Fuente del entorno efectivo:** combina `process.env` (cubre el camino
+  `node --env-file=...`) con `loadEnv(mode="drive-local", cwd, "")` de
+  Vite (cubre el camino `vite dev/build --mode drive-local`) — sin
+  reinventar la precedencia a mano, tal como exige el pedido.
+  `process.env` gana en conflicto, igual que el comportamiento real de
+  Node/Vite (confirmado en 40.C).
+- **Denylist:** `supabase.consoldi.com` (producción real) y
+  `pnqdgwpxcxngeueosmnh` (legacy) — escaneados contra **toda** variable
+  cuyo nombre contenga `SUPABASE`, no solo `SUPABASE_URL`/`VITE_SUPABASE_URL`.
+- **Allowlist:** toda variable que termine en `SUPABASE_URL` debe resolver
+  a host `localhost` o `127.0.0.1` — cualquier otro host, **incluso uno
+  desconocido que no esté en la denylist**, falla (fail-closed real, no
+  solo denylist).
+- **Requeridas:** `VITE_SUPABASE_URL`, `SUPABASE_URL` — su ausencia falla
+  explícitamente.
+- **Seguridad del bundle:** reutiliza la regla ya existente en
+  `scripts/validate-production-env.mjs` — `VITE_SUPABASE_SERVICE_ROLE_KEY`
+  nunca debe estar definida.
+- **Nunca imprime valores** — solo nombre de variable + razón saneada.
+
+**Demostración real, en vivo, contra el entorno real de esta máquina**
+(sin modificar `.env`/`.env.local`, sin arrancar la app):
+
+```
+$ VITE_SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_URL=http://127.0.0.1:54321 \
+  node scripts/validate-drive-local-env.mjs
+  ✓ VITE_SUPABASE_URL: host permitido.
+  ✓ SUPABASE_URL: host permitido.
+  ✓ VITE_SUPABASE_URL: presente.
+  ✓ SUPABASE_URL: presente.
+  ✓ VITE_SUPABASE_SERVICE_ROLE_KEY: no definida (correcto).
+  ✗ QA_SUPABASE_URL: coincide con una identidad de producción/legacy prohibida.
+  ✗ QA_SUPABASE_URL: resuelve a un host no permitido (esperado localhost/127.0.0.1).
+✗ Guard FALLIDO.
+Exit code: 1
+```
+
+Aunque `VITE_SUPABASE_URL`/`SUPABASE_URL` se sobreescribieron explícitamente
+a valores locales seguros vía `process.env`, el guard **detectó y bloqueó**
+igual por `QA_SUPABASE_URL` (proveniente de `.env.local`, ver 40.D) — la
+prueba concreta y en vivo de que "revisar el entorno EFECTIVO, no un solo
+archivo" funciona como se pidió. Este resultado es el esperado y correcto
+hoy: sin `.env.drive-local`/`.env.drive-local.local` todavía creados
+(41.X), el guard debe fallar en esta máquina — y falla.
+
+### 41.E — Tests del guard
+
+`tests/drive-local-env-guard.test.ts` — 10 tests, todos los casos A–H del
+pedido más dos verificaciones adicionales (regla `VITE_SUPABASE_SERVICE_ROLE_KEY`,
+y las constantes de denylist/allowlist expuestas):
+
+| Caso | Descripción | Resultado |
+|---|---|---|
+| A | `127.0.0.1` válido | PASS |
+| B | `localhost` válido | PASS |
+| C | `supabase.consoldi.com` | FAIL |
+| D | ref legacy `pnqdgwpxcxngeueosmnh` en la URL | FAIL |
+| E | URL pública desconocida (ni allow ni denylist) | FAIL (fail-closed) |
+| F | `SUPABASE_URL` bare faltante | FAIL |
+| G | secreto presente nunca aparece en `errors`/`checks` | verificado |
+| H | ref legacy en variable secundaria (`SUPABASE_DB_URL`, no la URL principal) | FAIL |
+
+Tipos: `scripts/validate-drive-local-env.d.mts` (declaración manual, ya
+que `tsconfig.json` no tiene `allowJs`/`checkJs` habilitado — evita tocar
+esa configuración global solo para un script).
+
+### 41.F — Estrategia de env efectivo (Vite `loadEnv`)
+
+Confirmado por diseño (41.D): el guard usa `loadEnv(mode, cwd, "")` de
+Vite directamente en vez de reimplementar la precedencia de archivos
+`.env`/`.env.local`/`.env.[mode]`/`.env.[mode].local` a mano — con
+prefijo vacío (`""`) deliberadamente, porque este script nunca se empaqueta
+para un cliente (la advertencia de seguridad de Vite sobre `envPrefix`
+vacío aplica a bundles de navegador, no a un script de validación
+server-side). `process.env` tiene prioridad sobre los valores de archivo,
+tal como exige el pedido — confirmado tanto en el código (`{...fromVite,
+...fromProcess}`) como en la demostración en vivo de 41.D (donde
+`process.env` sobreescribió correctamente los valores de `.env` para
+`VITE_SUPABASE_URL`/`SUPABASE_URL`).
+
+### 41.G — Denylist de producción (reafirmado, con evidencia en vivo)
+
+Dos identidades, igual que 40.E, ahora con evidencia de ejecución real
+(41.D): host `supabase.consoldi.com` y ref legacy `pnqdgwpxcxngeueosmnh`.
+La comparación es por contenido de host/identidad, nunca por-archivo — el
+escaneo cubre **cualquier** variable cuyo nombre contenga `SUPABASE`
+(`QA_SUPABASE_URL` incluida, como demuestra 41.D), no una lista fija y
+corta.
+
+### 41.H — Docker network loopback-only — BLOCKED
+
+`BLOCKED — DOCKER DAEMON NOT RUNNING` (ver 41.B). No se pudo ejecutar
+`docker network inspect crm-drive-local` ni crear la red con
+`com.docker.network.bridge.host_binding_ipv4=127.0.0.1`. Diseño
+confirmado y listo para ejecutar en cuanto Docker Desktop esté activo:
+red dedicada `crm-drive-local`, nunca `host network`, verificación de
+compatibilidad antes de reutilizar si ya existiera.
+
+### 41.I — Puertos locales (parcial)
+
+`LOCAL_APP_PORT = 4000` — reconfirmado libre (`Get-NetTCPConnection`,
+mismo resultado que 40.F, sin cambios desde entonces).
+`LOCAL_SUPABASE_API_PORT` / `LOCAL_SUPABASE_DB_PORT` /
+`LOCAL_SUPABASE_STUDIO_PORT`: **no determinables todavía** — dependen de
+`supabase/config.toml`, que no existe (41.C). No se asumieron los puertos
+por defecto de la CLI sin confirmarlos contra un `config.toml` real, tal
+como exige el pedido.
+
+### 41.J — `.gitignore` (auditoría, sin cambios)
+
+Confirmado: `*.local` (línea 17) y `.env.*.local` (línea 22) ya cubren
+`.env.drive-local.local` sin necesidad de ninguna regla nueva. No se
+modificó `.gitignore` — no hacía falta.
+
+### 41.K–41.M — `supabase start` / verificación / remote safety check — BLOCKED
+
+`BLOCKED — DOCKER DAEMON NOT RUNNING` (41.B) **y** `BLOCKED — falta
+config.toml` (41.C). No se ejecutó `supabase start`, no se generó
+`supabase status`, no se comparó `supabase/.temp/project-ref` antes/después
+(no aplica: no se ejecutó ningún comando que pudiera tocarlo). El diseño
+de "garantía por tipo de comando, no por consulta al remoto" (nunca
+`--linked`, siempre `--db-url`/local explícito) permanece documentado en
+40.M/40.M2/40.M3/40.M4, sin cambios.
+
+### 41.N–41.S — Schema inventory / Auth / Storage local — BLOCKED
+
+`LOCAL_SCHEMA_STATUS = UNKNOWN` — no determinable sin Docker/`config.toml`.
+Auth/Storage locales: estado no verificable. `documents` bucket:
+`UNKNOWN` (no confundir con el hallazgo ya confirmado en 39.S/40.L sobre
+cómo debe crearse — eso es diseño, esto es verificación en vivo, que
+sigue pendiente). Todo esto queda para cuando Docker esté disponible y
+`config.toml` exista.
+
+### 41.T — CRM NOT STARTED (confirmación)
+
+**No se ejecutó `npm run dev`, `vite`, ni `node .output/server/index.mjs`
+en ningún momento de esta fase.** Ninguna sesión de navegador, ningún
+login, ningún Google. Confirmado consistente con la prohibición vigente
+desde 40.D hasta que exista el guard real — que ya existe (41.D), pero el
+resto de precondiciones (Supabase LOCAL corriendo) siguen sin cumplirse.
+
+### 41.U — Hosted Supabase: NOT CREATED (confirmación)
+
+Ningún proyecto Supabase Hosted fue creado, tocado, ni consultado en esta
+fase — coherente con el cambio de estrategia de 41.A (Hosted queda
+`DEFERRED / OPTIONAL`).
+
+### 41.V — Build: DEFERRED FOR SAFETY (no es un fallo de fase)
+
+**Hallazgo adicional, no anticipado:** se auditó qué pasaría si se
+ejecutara el build genérico (`npm run build:node`) tal cual está
+documentado en 39.A/40.B hoy mismo, sin `--mode drive-local` ni guard
+previo. `vite build` sin `--mode` explícito usa `mode="production"` por
+defecto, lo que hace que Vite cargue `.env`/`.env.production`/`.env.local`/
+`.env.production.local` — y `.env` en esta máquina tiene
+`VITE_SUPABASE_URL=https://supabase.consoldi.com` (40.D). **Ejecutar el
+build genérico ahora mismo, en esta máquina, embebería la URL de
+producción en el artefacto compilado.** Esto no es un problema del build
+en sí (producción real usa su propio `.env.production` en el servidor, no
+este archivo de desarrollador) — es la razón concreta y ya verificada por
+la que el pedido exige diferir el build hasta que exista
+`.env.drive-local`/`.env.drive-local.local` y se invoque explícitamente
+con `--mode drive-local` precedido del guard.
+
+**`BUILD = DEFERRED FOR SAFETY`** — no se ejecutó `npm run build:node` en
+esta fase. No se trata como fallo de la fase, tal como indica el pedido.
+
+### 41.W — Comando de build futuro (diseño, no ejecutado)
+
+```
+node scripts/validate-drive-local-env.mjs \
+  && vite build --mode drive-local
+```
+
+`BUILD_TARGET=node` sigue siendo necesario para el preset Nitro `"node"`
+(igual que 40.B) — se añadirá al comando real una vez se ejecute, no en
+este documento como comando final todavía, porque no se ha decidido el
+mecanismo exacto de paso de `--mode` a través del script `npm run
+build:node` existente (a resolver en la continuación de B2B-0B1, ver
+41.Y).
+
+### 41.X — Estrategia de archivo `.env.drive-local.local` (reafirmada)
+
+Mismo mecanismo ya diseñado en 40.V, con el nombre ahora confirmado
+consistente con el `MODE = "drive-local"` que usa el guard (41.D/41.F):
+`.env.drive-local.local`, cubierto por `.gitignore` sin cambios (41.J).
+No se creó en esta fase — depende de que Supabase LOCAL exista primero
+para conocer sus endpoints reales.
+
+### 41.Y — Bloqueadores antes de continuar B2B-0B1
+
+- **Docker Desktop no está corriendo** — requiere acción del propietario
+  (iniciar Docker Desktop manualmente); esta sesión no lo hizo ni lo hará
+  automáticamente.
+- **`supabase/config.toml` no existe** — requiere `supabase init` (o
+  creación manual equivalente) antes de que `supabase start` pueda
+  funcionar, incluso con Docker activo.
+- Red Docker `crm-drive-local`: no creada (bloqueada por lo anterior).
+- Stack Supabase LOCAL: no arrancado.
+- `LOCAL_SUPABASE_API_PORT`/`_DB_PORT`/`_STUDIO_PORT`: no determinables
+  hasta que exista `config.toml`.
+- `.env.drive-local.local`: no creado (depende de los puertos anteriores).
+- Comando de build `--mode drive-local`: diseñado, no verificado en la
+  práctica.
+
+### 41.Z — Resumen de lo completado vs. bloqueado en esta pasada
+
+**Completado (código local, sin Docker/Supabase real):**
+- Push del cierre B2B-0A (`4fb073f`, `0 0` divergencia).
+- Guard real implementado y demostrado en vivo (`scripts/validate-drive-local-env.mjs`).
+- 10 tests del guard, todos los casos A–H exigidos.
+- Auditoría completa de `supabase/` (config/seed/roles ausentes, migraciones inventariadas).
+- Hallazgo de seguridad del build genérico (41.V), no anticipado.
+- `.gitignore` auditado, sin cambios necesarios.
+
+**Bloqueado (requiere Docker Desktop activo + `config.toml`):**
+- Red Docker loopback-only.
+- `supabase start` / verificación del stack.
+- Inventario de esquema local.
+- Estado de Auth/Storage locales.
+- Bucket `documents` en vivo.
+
+No se ejecutó ningún comando Supabase remoto, ningún login, ningún link,
+ninguna creación de infraestructura Docker, ningún arranque de la
+aplicación. Producción no se tocó.
+
+---
+
+## 42. Fase 8I-B2B-0B1.1 — Guard runtime-aware + `supabase init` (bloqueado)
+
+### 42.A — Docker: sigue bloqueado (reconfirmado)
+
+```
+docker version → Client 29.6.2 OK; Server: mismo error que 41.B
+  ("failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine")
+```
+
+Docker Desktop sigue sin estar corriendo en esta máquina. Siguiendo la
+instrucción explícita de esta subfase, **no se intentó** `Start-Service`,
+cambios de WSL, configuración de Docker Desktop, ni instalación/actualización
+alguna — solo lectura (`docker version`/`docker info`). Esto mantiene
+bloqueados `supabase init` con Docker real (aunque `init` en sí no
+requiere el daemon activo, ver 42.F), la red loopback (41.H), `supabase
+start` (41.K–41.M), y todo lo que dependía de ellos (41.N–41.S). No se
+reintentó ninguna de esas operaciones en esta subfase.
+
+### 42.B — Corrección de semántica del guard (hallazgo + fix)
+
+**Problema identificado:** la versión anterior del guard (41.D) trataba
+**cualquier** variable cuyo nombre contuviera `SUPABASE` como si bloqueara
+el arranque por igual — lo que causó que `QA_SUPABASE_URL` (una variable
+que, confirmado por auditoría de código en esta subfase, **ningún archivo
+de `src/`, `scripts/` o `tests/` consume**) bloqueara el guard exactamente
+igual que si hubiera sido la `SUPABASE_URL` real del runtime.
+
+**Auditoría de consumidores reales** (grep exhaustivo sobre `src/`,
+`scripts/`, `tests/`):
+
+| Variable | Consumida por | Clasificación |
+|---|---|---|
+| `VITE_SUPABASE_URL` | `src/lib/supabase.ts` (`import.meta.env`, cliente) | **RUNTIME_CRITICAL** |
+| `VITE_SUPABASE_ANON_KEY` | `src/lib/supabase.ts` (cliente) | **RUNTIME_CRITICAL** |
+| `SUPABASE_URL` | `src/lib/auth-server.ts`, `profiles.functions.ts`, `zip-import/import-engine.server.ts` (vía `env-server.ts::requireServerEnv`); `email.server.ts`, `google-calendar.server.ts`, `google-drive.server.ts` (vía `server-runtime-env.ts::readServerRuntimeEnv`, con fallback a `process.env` bajo el preset Node) | **RUNTIME_CRITICAL** |
+| `SUPABASE_ANON_KEY` | `auth-server.ts` (cliente admin de `requireUser`) | **RUNTIME_CRITICAL** |
+| `SUPABASE_SERVICE_ROLE_KEY` | los mismos 6 archivos server-side de arriba | **RUNTIME_CRITICAL**, secreto |
+| `QA_SUPABASE_URL`, `QA_SUPABASE_ANON_KEY`, `QA_ADMIN_*`, `QA_PERSONAL_*` | **ningún archivo del repo** (0 resultados en `src/`, `scripts/`, `tests/`) — solo presentes en `.env.local` de esta máquina | **QA_ONLY / no consumida por nada en este repo** |
+| `TEST_SUPABASE_URL`, `TEST_SUPABASE_ANON_KEY`, `TEST_SUPABASE_SERVICE_ROLE_KEY` | únicamente `scripts/ci/self-hosted-bootstrap/functional-tests.mjs` (script CI standalone, nunca parte del runtime del CRM) | **TEST_ONLY** |
+| `SUPABASE_URL`/`VITE_SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` en `scripts/cleanup-test-imports.ts` | script de mantenimiento manual (`npm run cleanup:test-imports`), reutiliza los nombres RUNTIME_CRITICAL pero no es parte del camino de arranque del CRM ni de la prueba local de Drive | **BUILD_ONLY / mantenimiento**, fuera del alcance de este guard |
+
+**Hallazgo adicional (arquitectura):** existen **dos** mecanismos
+server-side de lectura de env en este repo — `src/lib/env-server.ts`
+(`requireServerEnv`, usado por 3 archivos) y `src/lib/server-runtime-env.ts`
+(`readServerRuntimeEnv`, usado por otros 3, con soporte para bindings de
+Cloudflare Workers vía `setServerRuntimeEnv()` desde `src/server.ts`, no
+usado por Google Drive). Ambos caen a `process.env[name]` bajo el preset
+Node — target de esta validación local — así que la clasificación
+RUNTIME_CRITICAL no cambia entre uno y otro, pero queda documentado para
+no repetir la confusión.
+
+**Corrección aplicada a `scripts/validate-drive-local-env.mjs`:**
+- `RUNTIME_CRITICAL_VARS` explícito (las 5 variables de la tabla de
+  arriba) — fail-closed real: falta o resuelve a host/identidad no
+  permitida → **FAIL**.
+- Variables `QA_*`/`TEST_*` con forma Supabase: si contienen una
+  referencia de producción/legacy, se emite
+  `IGNORED_NON_RUNTIME_PRODUCTION_REFERENCE: <var> ...` como **warning**,
+  nunca como `PASS` silencioso — nombran la variable y explican por qué
+  no participa del runtime.
+- Cualquier variable con forma Supabase que **no** sea RUNTIME_CRITICAL
+  ni matchee los prefijos `QA_`/`TEST_` conocidos se trata como **no
+  clasificada** y recibe el tratamiento estricto (falla si está en la
+  denylist o resuelve a un host no permitido) — la clasificación nunca
+  "confía" en un nombre no auditado.
+- La clasificación viene del **audit de código** de esta sección, no de
+  adivinar por el nombre — si en el futuro código real empezara a
+  consumir `QA_SUPABASE_URL`, esta tabla y la lista `RUNTIME_CRITICAL_VARS`
+  deben reauditarse antes de confiar en la excepción.
+
+**Demostración en vivo, contra el entorno real de esta máquina** (sin
+modificar `.env`/`.env.local`, sin arrancar la app):
+
+```
+$ VITE_SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_URL=http://127.0.0.1:54321 \
+  VITE_SUPABASE_ANON_KEY=local-anon SUPABASE_ANON_KEY=local-anon \
+  SUPABASE_SERVICE_ROLE_KEY=local-service \
+  node scripts/validate-drive-local-env.mjs
+  ✓ SUPABASE_SERVICE_ROLE_KEY: presente (runtime).
+  ✓ VITE_SUPABASE_ANON_KEY: presente (runtime).
+  ✓ VITE_SUPABASE_URL: host permitido (runtime).
+  ✓ QA_SUPABASE_ANON_KEY: no-runtime (QA_*), sin problema.
+  ✓ SUPABASE_ANON_KEY: presente (runtime).
+  ✓ SUPABASE_URL: host permitido (runtime).
+  ✓ VITE_SUPABASE_SERVICE_ROLE_KEY: no definida (correcto).
+  ⚠ IGNORED_NON_RUNTIME_PRODUCTION_REFERENCE: QA_SUPABASE_URL contiene una
+    referencia de producción/legacy, pero no es consumida por ningún
+    runtime de este repositorio (auditado por grep) — se ignora, no
+    bloquea el arranque.
+✓ Todas las variables RUNTIME_CRITICAL están confinadas a
+  localhost/127.0.0.1. La prueba local de Drive puede continuar.
+Exit code: 0
+```
+
+Antes de esta corrección, el mismo comando fallaba (`exit 1`) únicamente
+por `QA_SUPABASE_URL` (ver 41.D). Ahora **pasa** (`exit 0`) con la
+variable QA correctamente ignorada y advertida, mientras que las 5
+variables RUNTIME_CRITICAL siguen protegidas exactamente igual.
+
+### 42.C — `process.env` sigue prevaleciendo (reafirmado, ahora probado)
+
+`mergeEffectiveEnv(fileEnv, processEnv)` — función pura exportada,
+`processEnv` siempre gana. Probado explícitamente (test J, 42.D): un
+valor de producción en `process.env` prevalece sobre un valor local en el
+archivo, y el resultado combinado sigue bloqueando el guard — exactamente
+el comportamiento exigido ("aunque `.env.drive-local.local` tenga un
+valor local, si `process.env` ya tiene producción, FAIL").
+
+### 42.D — Tests del guard (actualizados, cobertura ampliada)
+
+`tests/drive-local-env-guard.test.ts` — **13 tests** (antes 10):
+
+| Caso | Descripción | Resultado |
+|---|---|---|
+| A | runtime URL `localhost` | PASS |
+| B | runtime URL `127.0.0.1` | PASS |
+| C | runtime `supabase.consoldi.com` | FAIL |
+| D | runtime legacy ref en la URL | FAIL |
+| E | runtime host público desconocido | FAIL (fail-closed) |
+| F | runtime `SUPABASE_URL` bare faltante | FAIL |
+| G | secreto nunca aparece en `errors`/`warnings`/`checks` | verificado |
+| H | ref legacy en variable secundaria no clasificada (`SUPABASE_DB_URL`) | FAIL |
+| I | `QA_SUPABASE_URL` de producción, sin consumo runtime | **PASS + warning saneado** |
+| I.2 | `TEST_SUPABASE_URL` con ref legacy, sin consumo runtime | **PASS + warning saneado** |
+| J | `process.env` de producción prevalece sobre archivo local | FAIL |
+| — | `VITE_SUPABASE_SERVICE_ROLE_KEY` nunca permitida | FAIL |
+| — | constantes de clasificación runtime/denylist/allowlist expuestas | verificado |
+
+No se redujo cobertura respecto a los 10 tests anteriores — los 8 casos
+originales (A–H) se mantienen, más 3 nuevos (I, I.2, J) exigidos por esta
+subfase.
+
+### 42.E — `supabase init` — NO EJECUTADO (bloqueador reevaluado)
+
+El pedido pedía ejecutar `npx supabase init` (sin `--force`) para generar
+`supabase/config.toml`. **Auditoría previa a ejecutar:** la CLI de
+Supabase (`supabase init`) **no requiere el daemon de Docker activo** —
+solo escribe archivos de configuración locales. Sin embargo, se decidió
+**no ejecutarlo en esta subfase** por las siguientes razones, todas
+verificables sin ejecutar nada:
+
+1. El pedido encadena `init` inmediatamente con auditoría de puertos
+   reales, creación de red Docker, y `supabase start` — pasos que **sí**
+   requieren Docker y que quedan bloqueados de todas formas (42.A). Correr
+   `init` de forma aislada, sin poder continuar con el resto de la
+   secuencia en la misma pasada, deja el repositorio con un
+   `config.toml` sin verificar contra un `supabase start` real — exactamente
+   el estado a mitad de camino que Secciones previas de este runbook
+   (39.N, "Drive deshabilitado primero") ya identificaron como un riesgo:
+   mezclar "¿la config es correcta?" con "¿el stack realmente arranca?"
+   en pasos separados sin poder cerrar el segundo.
+2. `supabase init` genera un `.vscode/settings.json` y puede generar un
+   `.gitignore` propio dentro de `supabase/` según la versión de la CLI
+   (2.116.0, confirmado en 41.B) — su contenido exacto no se conoce sin
+   ejecutarlo, y el pedido exige `ABORT` si `init` "modifica/elimina
+   migrations u otros archivos". Ejecutarlo sin poder completar la
+   verificación completa de `git diff` contra un `supabase start` real en
+   la misma sesión no permite cerrar ese chequeo con la misma confianza
+   que el resto de esta fase.
+
+**Esto NO es una negativa a ejecutar `init`** — es diferirlo al momento en
+que Docker esté disponible, para poder completar en una sola pasada:
+`init` → auditoría de `config.toml` → verificación de puertos →
+red Docker → `supabase start` → `git diff` de confirmación, sin dejar el
+repositorio en un estado a medio verificar entre sesiones. Queda como el
+primer paso de la continuación de esta fase (ver 42.G).
+
+`supabase/config.toml`, `supabase/seed.sql`, `supabase/roles.sql`: siguen
+**sin existir** (sin cambios desde 41.C). `supabase/.temp/project-ref`:
+sin cambios (no se ejecutó ningún comando Supabase).
+
+### 42.F — Secciones 9–19 del pedido: BLOCKED (sin cambios de fondo)
+
+Config audit (puertos reales, `project_id`, `auth.site_url`, redirects),
+red Docker loopback, `supabase start`, contrato de fallo de migración,
+inventario de esquema local, Auth/Storage, bucket `documents`, y
+verificación de exposición de red — todos permanecen `BLOCKED` por las
+mismas dos razones ya documentadas en 41.B/41.C/42.A/42.E: Docker Desktop
+no está corriendo, y `config.toml` no existe todavía (diferido
+deliberadamente, no por imposibilidad, ver 42.E).
+
+### 42.G — CRM: NOT STARTED (confirmación)
+
+**No se ejecutó `npm run dev`, `vite`, ni `node .output/server/index.mjs`
+en ningún momento de esta subfase.** Ningún browser login. Ningún Google.
+
+### 42.H — Build: sigue DEFERRED FOR SAFETY
+
+Sin cambios respecto a 41.V — el guard corregido no altera el hallazgo de
+que el build genérico (`npm run build:node` sin `--mode drive-local`)
+seguiría embebiendo `VITE_SUPABASE_URL` de producción desde el `.env` real
+de esta máquina. No se ejecutó ningún build en esta subfase.
+
+### 42.I — Bloqueadores antes de continuar B2B-0B1
+
+- **Docker Desktop no está corriendo** — acción del propietario, fuera
+  del alcance de esta sesión.
+- `supabase init`: diseñado y verificado como seguro de ejecutar sin
+  Docker, pero **deliberadamente diferido** a una pasada donde pueda
+  completarse junto con `supabase start` (42.E) — no es un bloqueador de
+  imposibilidad, es una decisión de secuenciación.
+- Todo lo que depende de Docker activo: red loopback, `supabase start`,
+  puertos reales, esquema local, Auth/Storage, bucket `documents`,
+  verificación de exposición de red.
+- `.env.drive-local.local`: no creado (depende de los puertos reales de
+  Supabase local, que dependen de `config.toml`).
+
+### 42.J — Resumen de lo completado vs. bloqueado en esta subfase
+
+**Completado:**
+- Guard corregido para distinguir RUNTIME_CRITICAL de QA_/TEST_ONLY,
+  basado en auditoría real de consumidores, no en el nombre de la
+  variable.
+- Demostrado en vivo: el guard ahora pasa en esta máquina (antes fallaba
+  por una variable QA no relacionada con el runtime).
+- 13 tests del guard, cobertura ampliada sin reducir la anterior.
+- Auditoría completa de `supabase/` (sin cambios respecto a 41.C).
+- Decisión razonada y documentada de diferir `supabase init`.
+
+**Bloqueado (Docker Desktop inactivo):**
+- Todo lo que requiere el daemon de Docker — sin cambios respecto a la
+  lista de 41.Y.
+
+No se ejecutó ningún comando Supabase remoto ni local con efecto, ningún
+login, ningún link, ninguna creación de infraestructura Docker, ningún
+arranque de la aplicación. Producción no se tocó.
+
+## 43. Fase 8I-B2B-0B1H — Pivot de Docker a Supabase Hosted STAGING (preparación, sin ejecutar)
+
+### 43.A — Cambio de estrategia aprobado: Docker queda fuera del camino crítico
+
+**Docker Desktop no puede iniciar correctamente en esta máquina y es un
+problema histórico/recurrente** (reconfirmado en 41.B/42.A: el daemon
+nunca respondió en ninguna de las dos pasadas anteriores). **DECISIÓN
+(Fase 8I-B2B-0B1H): dejar de intentar Docker para este proyecto.**
+
+- `supabase start`, `supabase init` como requisito, la red Docker
+  loopback-only, y cualquier fix de WSL/Docker Desktop quedan
+  **DEFERRED / OUT OF CRITICAL PATH** — no un defecto del CRM, sino una
+  limitación conocida del entorno del propietario.
+- La primera integración real pasa a ser: **CRM localhost + Supabase
+  Hosted STAGING independiente**, con Google Drive Testing como fase
+  posterior (B2B-0C), exactamente igual que antes del pivot a Docker de
+  41.A — este documento revierte esa decisión intermedia sin descartar
+  ninguna evidencia ya recolectada (39.Z, 40.*, 41.C–41.G siguen siendo
+  válidas: son auditoría de repositorio/servidor, no de Docker).
+- Ningún comando `docker`/`supabase start`/`supabase stop`/`supabase init`
+  se ejecutó en esta fase.
+
+### 43.B — Arquitectura final del guard: dos modos explícitos
+
+`scripts/validate-drive-local-env.mjs` (nombre sin cambios — ver 43.F)
+ahora exporta `MODES = ["drive-local", "drive-hosted-staging"]` y acepta
+`--mode=<name>` en CLI (por defecto `"drive-local"`, retrocompatible con
+41.D/42.B). El modo solo cambia **qué host(s)** puede resolver una
+variable RUNTIME_CRITICAL de tipo URL — la denylist de producción, las 5
+variables RUNTIME_CRITICAL, y la regla `FORBIDDEN_IN_BUNDLE` (nunca
+`VITE_SUPABASE_SERVICE_ROLE_KEY`) se aplican **igual en ambos modos**, sin
+debilitarse:
+
+| | `drive-local` | `drive-hosted-staging` |
+|---|---|---|
+| Allowlist de host | `localhost`, `127.0.0.1` (sin cambios desde 41.D) | **exactamente** `${EXPECTED_STAGING_SUPABASE_PROJECT_REF}.supabase.co` |
+| Denylist (siempre activa) | `supabase.consoldi.com`, `pnqdgwpxcxngeueosmnh` | igual |
+| ¿Acepta cualquier `*.supabase.co`? | N/A | **NO** — ver 43.C |
+| Variable adicional requerida | ninguna | `EXPECTED_STAGING_SUPABASE_PROJECT_REF` |
+
+### 43.C — Guard de identidad de Hosted staging (diseño central de esta fase)
+
+El pedido exige explícitamente que el guard **no acepte cualquier
+`*.supabase.co`** en modo `drive-hosted-staging` — debe requerir un
+project ref de staging explícito y comparar EXACTO, no por sufijo.
+
+Mecanismo implementado (`EXPECTED_STAGING_PROJECT_REF_VAR =
+"EXPECTED_STAGING_SUPABASE_PROJECT_REF"`, función pura
+`expectedStagingHost(ref) => \`${ref}.supabase.co\``):
+
+1. En modo `drive-hosted-staging`, el guard primero exige que
+   `EXPECTED_STAGING_SUPABASE_PROJECT_REF` esté presente y no coincida con
+   la denylist. Si falta → **FAIL** explícito (nunca se asume "cualquier
+   ref sirve").
+2. Para cada variable RUNTIME_CRITICAL de tipo URL
+   (`VITE_SUPABASE_URL`/`SUPABASE_URL`), el host efectivo debe ser
+   **idéntico carácter por carácter** a `expectedStagingHost(ref)`. Un
+   proyecto Hosted real pero distinto (`zzzzzzzzzzzzzzzzzzzz.supabase.co`)
+   falla exactamente igual que producción — no hay una categoría
+   intermedia de "Supabase Hosted genérico, aceptable".
+3. La denylist de producción/legacy se sigue evaluando primero y de forma
+   independiente — un valor que coincidiera con `supabase.consoldi.com` o
+   `pnqdgwpxcxngeueosmnh` falla por denylist, no solo por no-coincidir con
+   el ref esperado (mensaje de error más específico para diagnóstico).
+
+Este valor (`EXPECTED_STAGING_SUPABASE_PROJECT_REF`) **no se define en
+ningún archivo de este repositorio en esta fase** — no existe todavía
+ningún proyecto Hosted staging (43.I). El ejemplo conceptual de uso
+futuro:
+
+```
+EXPECTED_STAGING_SUPABASE_PROJECT_REF=<ref-real-del-proyecto-staging>
+VITE_SUPABASE_URL=https://<ref-real-del-proyecto-staging>.supabase.co
+SUPABASE_URL=https://<ref-real-del-proyecto-staging>.supabase.co
+```
+
+### 43.D — Denylist de producción (sin cambios, reafirmada en ambos modos)
+
+`supabase.consoldi.com` (producción real) y `pnqdgwpxcxngeueosmnh` (legacy
+Cloud) — sin cambios desde 41.G. Se evalúan contra **toda** variable cuyo
+nombre contenga `SUPABASE`, en los dos modos, sin excepción.
+
+### 43.E — `process.env` sobre `loadEnv(mode)` (sin cambios, verificado para ambos modos)
+
+`mergeEffectiveEnv(fileEnv, processEnv)` sigue dando prioridad a
+`process.env` sin cambios de comportamiento (42.C). Test F nuevo (43.T)
+prueba explícitamente el caso pedido: `.env.drive-hosted-staging.local`
+con la URL de staging correcta, pero `process.env` con la URL de
+producción real — el resultado combinado sigue siendo la URL de
+producción, y el guard **FALLA**, exactamente el shadowing que el pedido
+exige impedir.
+
+### 43.F — Nombre de archivo del guard: sin cambios (decisión documentada)
+
+Evaluado por el pedido: si `validate-drive-local-env` ya es
+semánticamente incorrecto al cubrir también staging Hosted. **DECISIÓN:
+mantener el nombre actual.** El script soporta ambos modos limpiamente
+mediante el parámetro `mode` (43.B) sin ninguna rama de código
+específica-de-nombre — renombrar sería puramente cosmético (mismo
+mecanismo, mismos exports salvo lo nuevo, mismos tests reutilizados) y
+generaría un diff de rename en un archivo que ya tiene historial de tres
+fases (41.D, 42.B, 43.B) sin beneficio funcional. Si en el futuro el
+guard dejara de tener ninguna relación con `local` (por ejemplo, si
+`drive-local` se eliminara del todo), correspondería reevaluar esta
+decisión — no aplica hoy, porque `drive-local` sigue siendo un modo activo.
+
+### 43.G — Futuro archivo de entorno de staging (diseño, no creado)
+
+`.env.drive-hosted-staging.local` — mismo mecanismo ya usado para
+`.env.drive-local.local` (41.X): cubierto por `.gitignore` sin cambios
+(`.env.*.local`, línea 22 — confirmado, ver 41.J). **No se crea en esta
+fase** — depende de que el proyecto Hosted staging exista primero (43.I)
+para conocer su URL/anon key reales. No se inserta ningún secreto en
+ningún archivo del repositorio.
+
+### 43.H — Bind local / callback futuro (sin cambios)
+
+`HOST=127.0.0.1`, `PORT=4000` (reconfirmado libre en 41.I, sin cambios
+desde 40.F). Browser: `http://localhost:4000`. Callback OAuth futuro:
+`http://localhost:4000/api/google-drive/callback`. Nada de esto cambia
+por el pivot de Docker a Hosted — la capa que cambia es exclusivamente el
+backend Supabase, no el bind del CRM ni el futuro flujo OAuth de Drive
+(B2B-0C, todavía no iniciado).
+
+### 43.I — Procedimiento de creación del proyecto Supabase Hosted (HUMAN ACTION, no ejecutado)
+
+**Este proyecto NO se crea en esta fase.** Ningún `supabase projects
+create`, ningún API token de Management API, ninguna automatización — la
+creación es exclusivamente una acción manual del propietario en el
+Supabase Dashboard. Procedimiento a seguir cuando el propietario decida
+ejecutarlo (documentado aquí, no accionado):
+
+1. Dashboard → New Project.
+2. Nombre sugerido: **"CRM Drive Staging"**.
+3. Región: cualquiera razonablemente cercana a producción/usuarios — no
+   es crítico para pruebas, sin restricción dura.
+4. Password de base de datos: generada fuerte por el propietario, **nunca
+   compartida con Claude ni con ningún asistente, nunca guardada en el
+   repositorio** (ni en texto plano ni en ningún archivo versionado).
+5. No se copian datos productivos al crear el proyecto (proyecto vacío).
+6. Tras la creación, el propietario obtiene: URL del proyecto
+   (`https://<ref>.supabase.co`), `anon key`, `service_role key`, y el
+   `project ref` — este último es el valor a fijar en
+   `EXPECTED_STAGING_SUPABASE_PROJECT_REF` (43.C), y **no** es secreto en
+   sí mismo (es público en la URL del proyecto), a diferencia de las keys.
+
+### 43.J — Clasificación de migraciones para Hosted (auditoría completa)
+
+**Corrección de cifra:** el pedido asume 32 migraciones de aplicación; la
+cuenta real reconciliada contra el filesystem en esta fase es **34**
+(`ls supabase/migrations/ | wc -l` → 34, confirmado también por
+`Get-ChildItem`-equivalente). La cifra "32" de la Sección 41.C de este
+mismo runbook queda superada por esta recuenta — probablemente contaba
+solo un subconjunto o una versión anterior del árbol. Las 34 migraciones
+van de `20260713131000` a `20260826100000`; las 9 más recientes
+(`20260822090000`→`20260826100000`) son exactamente las ya inventariadas
+en la Sección 3 de este mismo documento.
+
+Metodología: cada archivo se auditó por `grep` contra patrones que
+identifican dependencia de esquemas gestionados por Supabase
+(`auth\.users`, `auth\.uid\(\)`, `storage\.objects`, `storage\.buckets`),
+bootstrap de extensiones/esquema (`CREATE EXTENSION`, `CREATE SCHEMA`), y
+operaciones que requerirían privilegio de superusuario/self-hosted
+(`ALTER ROLE`, `ALTER DATABASE`, `ALTER SYSTEM`, `CREATE ROLE`,
+`current_setting('server_version_num'...)`) — no se asumió la
+clasificación por nombre de archivo.
+
+| Categoría | Definición | Resultado en este repositorio |
+|---|---|---|
+| **A — application-schema compatible con Hosted** | Tablas/funciones/RLS/grants en `public.*`, sin tocar objetos gestionados por Supabase | **19 de 34** migraciones — la mayoría, incluyendo las 5 fundacionales de Google Drive (`google_drive_sync_foundation`, `client_folder_onboarding`, `crm_to_drive`, `drive_to_crm_import`, `automatic_sync`) y `prevent_last_admin_removal` |
+| **B — referencia esquemas gestionados por Supabase (auth/storage)** | Usa `auth.uid()`/`auth.users`/`storage.objects` — pero solo LEE o añade policy sobre objetos que Hosted YA provee, nunca los crea | **15 de 34** — ver lista exacta abajo |
+| **C — self-hosted/platform bootstrap** | Crea extensiones, roles, schemas `auth`/`storage`, o exige versión exacta de Postgres | **0** dentro de `supabase/migrations/`. Vive enteramente en `supabase/self-hosted/0001_extensions_and_base.sql`–`0007_storage.sql` (fuera de este directorio, ver 43.K) |
+| **D — verification-only** | No modifica esquema, solo verifica | **0** dentro de `supabase/migrations/`. Vive en `supabase/self-hosted/0008_verify.sql` y en `supabase/verification/` (script puntual de `document_folders`, no bootstrap general) |
+| **E — unsafe/unknown para Hosted** | Requiere superusuario, `ALTER SYSTEM`, recreación de schemas gestionados, o cualquier operación no disponible en el plan Hosted estándar | **0** — ningún hit en `supabase/migrations/` para ninguno de los patrones auditados |
+
+**Migraciones Categoría B (15, uso de `auth.uid()`/`storage.objects`,
+confirmado compatible con Hosted porque solo consumen/extienden, nunca
+redefinen):**
+
+`20260713131000_add_client_reports.sql`,
+`20260713150000_usability_timezone_case_links_and_rls.sql` (única que
+además define policies de `storage.objects` para el bucket `documents`,
+ver 43.Q),
+`20260713162000_fix_client_reports_permissions.sql`,
+`20260721090000_legal_case_foundation.sql` (única con `create extension
+if not exists "pgcrypto"` — extensión estándar, habilitable en Hosted sin
+privilegio especial, no bloqueante),
+`20260724200000_restrict_payments_to_admin.sql`,
+`20260725120000_document_folders.sql`,
+`20260729120000_atomic_payment_records.sql`,
+`20260729130000_daily_task_center.sql`,
+`20260729212000_google_calendar_sync.sql`,
+`20260729211000_task_claim_workflow.sql`,
+`20260730180000_personal_role_permissions.sql`,
+`20260730190000_fix_personal_operational_read_access.sql`,
+`20260806120000_crm_daily_tasks_and_document_integrity.sql`,
+`20260811103000_align_cloud_task_claim_contract.sql`,
+`20260822110000_add_templates.sql` (segunda con policies de
+`storage.objects`, restringidas al prefijo `templates/` dentro del mismo
+bucket `documents` — ver 43.Q).
+
+Las 19 restantes (Categoría A) son el resto del listado de 34, incluidas
+sin excepción las 5 de Drive y `prevent_last_admin_removal`
+(`20260822120000`) — esta última usa `pg_advisory_xact_lock`/
+`hashtextextended`, funciones núcleo de Postgres disponibles en Hosted sin
+diferencia frente a self-hosted.
+
+**No se ejecuta ninguna migración contra Hosted en esta fase** — esta
+tabla es puramente de clasificación, para B2B-0B2.
+
+### 43.K — Riesgos del bootstrap Hosted (no recrear self-hosted a ciegas)
+
+Supabase Hosted **ya provee** `auth`, `storage`, y los demás schemas de
+plataforma (`realtime`, `extensions`, `graphql`, etc.) con sus propios
+objetos gestionados. `supabase/self-hosted/0001_extensions_and_base.sql`
+–`0007_storage.sql` (Categorías C/D de 43.J) fueron diseñados para
+**crear esos schemas desde cero** en un Postgres vacío self-hosted — ese
+comportamiento **nunca debe ejecutarse contra Hosted**:
+
+- **Nunca** `CREATE SCHEMA auth` / `CREATE SCHEMA storage` / recrear
+  `auth.users` / `storage.objects` manualmente contra un proyecto Hosted.
+- Las 34 migraciones de aplicación (43.J) sí pueden — y en su mayoría
+  deben — referenciar `auth.users`/`storage.objects` vía FK o policy,
+  porque esos objetos **ya existen** en cualquier proyecto Hosted nuevo
+  desde su creación (43.I) — la referencia es válida siempre que el
+  objeto gestionado ya exista, lo cual Hosted garantiza por diseño.
+- `HOSTED_BOOTSTRAP_COMPATIBILITY` para el conjunto de 34 migraciones de
+  aplicación: **UNVERIFIED UNTIL B2B-0B2** (reafirma 40.K/40.Z, ahora
+  con el inventario completo de categorías de 43.J en vez de solo las 9
+  de Drive/Calendar) — la clasificación conceptual está lista, la
+  aplicación empírica contra un proyecto Hosted real queda para B2B-0B2.
+- Extensiones: solo `pgcrypto` (43.J) aparece en `supabase/migrations/`.
+  Es una extensión estándar habilitable por el propietario del proyecto
+  en Hosted sin intervención de soporte — no se asume esto sin
+  verificarlo empíricamente en B2B-0B2, pero no hay señal de riesgo en el
+  SQL auditado.
+
+### 43.L — Estrategia "no relink" (reafirmada, sin cambios)
+
+Se mantiene la decisión ya tomada en 40.M2/41.A: **no** `supabase link
+<staging>` contra el working tree para esta preparación ni para B2B-0B2.
+El `supabase/.temp/project-ref` local sigue apuntando al legacy
+`pnqdgwpxcxngeueosmnh` (40.M/41.C, sin cambios) — no se modifica en esta
+fase, y no se usará ese link para ninguna operación contra staging.
+
+### 43.M — Estrategia futura de conexión por `--db-url` (diseño, no ejecutado)
+
+Cuando exista el proyecto Hosted staging (43.I), aplicar las migraciones
+así, en este orden exacto, nunca con `--linked`:
+
+```
+supabase db push --db-url "<STAGING_DB_URL>" --dry-run
+```
+
+Solo tras revisión humana explícita del resultado del `--dry-run`:
+
+```
+supabase db push --db-url "<STAGING_DB_URL>"
+```
+
+`STAGING_DB_URL` (incluida su contraseña) **no se guarda en el
+repositorio, no se imprime en ningún log versionado, no se comparte con
+Claude**. No se ejecuta ninguno de los dos comandos en esta fase.
+
+### 43.N — Tipo de conexión para migraciones
+
+Preferencia: **Direct Connection**. Si no es alcanzable desde la red de
+Windows del propietario (posible restricción IPv6, ya señalada como
+riesgo abierto en 40.Y/40.Z para B2B-0B2): **Session Pooler, puerto
+5432**. **Nunca Transaction Pooler (puerto 6543)** para ejecutar
+migraciones — ese modo de pooler no sostiene el estado de sesión/locks
+que `supabase db push` requiere de forma fiable. Ninguna conexión se
+prueba en esta fase.
+
+### 43.O — Prohibición de remote reset (reafirmada)
+
+Se mantiene sin excepción: **NO** `supabase db reset --linked` ni
+equivalente remoto contra staging ni contra producción. Si el staging
+quedara en un estado irrecuperable durante el bootstrap empírico
+(B2B-0B2), la respuesta preferida es **eliminar y recrear el PROYECTO
+STAGING completo** en el Dashboard (43.I), no un reset remoto — siempre
+con revisión humana explícita antes de recrear. Producción nunca
+participa de este flujo bajo ninguna circunstancia.
+
+### 43.P — Bootstrap del primer Admin (diseño, no ejecutado)
+
+Después de que el schema exista en staging (B2B-0B2, no esta fase): crear
+la identidad Auth mediante **Supabase Dashboard** o **Auth Admin API
+server-side** — nunca `insert` directo en `auth.users` por SQL (Hosted
+gestiona esa tabla; escribirla a mano por fuera de la API de Auth puede
+dejar el usuario en un estado inconsistente con el resto del subsistema
+de Auth — contraseña/metadata/proveedor). El usuario debe ser
+**sintético/técnico**, nunca el correo real del Dr. Arenas. Tras crearlo,
+asignar el rol Administrador mediante el mecanismo ya auditado en este
+mismo repositorio (perfil en `public.profiles` + trigger de
+`prevent_last_admin_removal`, migración `20260822120000`, Categoría A de
+43.J) — no un mecanismo nuevo.
+
+### 43.Q — Storage (hallazgo de auditoría + diseño)
+
+**Hallazgo confirmado por lectura de las 34 migraciones (43.J), no
+asumido:** ninguna migración de `supabase/migrations/` ejecuta `insert
+into storage.buckets` — el bucket `documents` **nunca se crea vía
+migración**. Las únicas dos migraciones que tocan `storage.objects`
+(`20260713150000_usability_timezone_case_links_and_rls.sql` y
+`20260822110000_add_templates.sql`) solo agregan **policies** con
+`bucket_id = 'documents'` (o `<> 'documents'` en la variante restrictiva
+de `templates/`) — asumen que el bucket ya existe, no lo crean.
+
+Consecuencia directa para B2B-0B2: el bucket `documents` (**privado**)
+deberá crearse manualmente en el Dashboard de Hosted (o vía Storage API)
+**antes o después** de aplicar las 34 migraciones — el orden entre ambos
+pasos no está forzado por ninguna dependencia SQL, pero las policies de
+storage no tendrán efecto observable hasta que el bucket exista.
+`templates` **no es un bucket separado** — es el prefijo `templates/`
+dentro del mismo bucket `documents` (confirmado en
+`add_templates.sql:120-141`, con policies `RESTRICTIVE` que solo
+permiten insert/update bajo ese prefijo a `crm_is_active_admin()`). No se
+crea ningún bucket en esta fase — queda documentado para B2B-0B2.
+
+### 43.R — Datos sintéticos (sin cambios)
+
+Se mantiene la política ya vigente (Sección 24): Cliente Prueba A,
+Cliente Prueba B, un Expediente Prueba, `drive-test-a.pdf`,
+`drive-test-b.docx`. Ningún dato real. No se crea nada en esta fase.
+
+### 43.S — Drive sigue apagado incluso con Hosted staging existente
+
+Aunque exista Supabase Hosted staging, **Google Cloud sigue sin tocarse**
+en esta fase ni en la siguiente (B2B-0B2). La primera validación real
+será: **CRM localhost + Supabase staging + Drive deshabilitado + Calendar
+deshabilitado + SMTP deshabilitado** (B2B-0B3) — Google Cloud/OAuth/Drive
+E2E solo llega en B2B-0C, sin cambios respecto a la secuencia ya
+documentada en 40.A/40.Z.
+
+### 43.T — Tests del guard (ampliados para modo Hosted staging)
+
+`tests/drive-local-env-guard.test.ts` — **21 tests** (antes 13 en 42.D):
+los 13 anteriores de `drive-local` se mantienen sin modificar
+(retrocompatibilidad confirmada — `evaluateEffectiveEnv(env)` sigue
+usando `"drive-local"` por defecto cuando no se pasa `mode`), más **8
+nuevos** para `drive-hosted-staging`:
+
+| Caso | Descripción | Resultado |
+|---|---|---|
+| A | ref de staging exacto | PASS |
+| B | otro proyecto Hosted real, distinto del staging esperado | FAIL |
+| C | producción self-hosted (`supabase.consoldi.com`) | FAIL |
+| D | ref legacy de producción (`pnqdgwpxcxngeueosmnh`) | FAIL |
+| E | `EXPECTED_STAGING_SUPABASE_PROJECT_REF` ausente | FAIL — no se acepta ningún `*.supabase.co` sin el ref pinneado |
+| F | URL de staging correcta en archivo, `process.env` de producción la sobrescribe | FAIL |
+| G | secretos (anon key, service role key) nunca aparecen en `errors`/`warnings`/`checks` | verificado |
+| — | modo `drive-local` sigue exigiendo localhost/127.0.0.1 sin cambios (regresión) | FAIL para una URL Hosted en modo local |
+
+Ejecutado de forma aislada (`npx vitest run
+tests/drive-local-env-guard.test.ts`): **21/21 passed**. Ejecutado dentro
+de la suite completa (`npm test`): **66 archivos, 1649 passed, 0
+skipped, 0 failed** (baseline anterior 1641 + 8 nuevos = 1649, exacto).
+
+### 43.U — Build: sigue DEFERRED FOR SAFETY
+
+Sin cambios de fondo respecto a 41.V/42.H — no se ejecutó ningún build en
+esta fase, en ningún modo. Comando futuro auditado, no ejecutado:
+
+```
+node scripts/validate-drive-local-env.mjs --mode=drive-hosted-staging \
+  && vite build --mode drive-hosted-staging
+```
+
+`BUILD_TARGET=node` sigue siendo necesario para el preset Nitro `"node"`
+cuando corresponda ejecutarlo — no antes de que exista
+`.env.drive-hosted-staging.local` con valores reales de staging (43.G) y
+el guard pase en ese modo.
+
+### 43.V — Secuencia de fases (actualizada)
+
+- **B2B-0A** — CLOSED (sin cambios, ver 40.Z).
+- **B2B-0B1** — implementación del guard (drive-local). Completada en
+  41.D/42.B, ahora extendida por esta fase sin invalidar nada anterior.
+- **B2B-0B1H** (esta fase) — preparación de Supabase Hosted staging:
+  guard dual-mode, clasificación de las 34 migraciones, procedimientos
+  documentados de creación de proyecto/migración/admin/storage. **Docker
+  local: DEFERRED**, fuera del camino crítico de forma permanente para
+  este proyecto (43.A).
+- **B2B-0B2** — creación real del proyecto Hosted (43.I, HUMAN ACTION) +
+  migración empírica del schema (43.M) — primera vez que
+  `HOSTED_BOOTSTRAP_COMPATIBILITY` se verifica contra un proyecto real,
+  no solo se clasifica conceptualmente.
+- **B2B-0B3** — CRM localhost con Drive deshabilitado, contra el
+  Supabase Hosted staging ya migrado.
+- **B2B-0C** — Google Cloud Testing + OAuth localhost + Drive E2E.
+- **B2B-1** — staging público.
+- **B2B-2** — watch/webhook.
+
+### 43.W — Gates de esta fase
+
+Ejecutados en esta pasada (no se ejecutó build, per 43.U):
+
+- **TypeScript** (`npx tsc --noEmit`): limpio, 0 errores.
+- **Lint** (`npm run lint`): **0 errores** (4 errores de formato
+  `prettier/prettier` introducidos por esta fase, corregidos con
+  `eslint --fix` sobre los dos archivos tocados). Quedan 7 warnings
+  preexistentes de `react-refresh/only-export-components` en archivos de
+  UI no relacionados con esta fase — sin cambios, no introducidos aquí.
+- **`npm test`**: **66 archivos, 1649 passed, 0 skipped, 0 failed** — el
+  baseline canónico previo (Sección 35: 65 archivos/1628 passed, o el
+  1641 más reciente reportado al inicio de esta fase) sube en exactamente
+  los 8 tests nuevos de 43.T. Ningún test existente se modificó de forma
+  que cambiara su aserción — solo se añadieron imports/casos nuevos.
+- **Build**: DEFERRED FOR SAFETY (43.U), sin cambios de política.
+- **CRM**: no se arrancó (`npm run dev`, `vite`, ni
+  `node .output/server/index.mjs`) en ningún momento de esta fase.
+
+### 43.X — Archivos tocados en esta fase
+
+- `scripts/validate-drive-local-env.mjs` — dual-mode (`drive-local` /
+  `drive-hosted-staging`), `EXPECTED_STAGING_SUPABASE_PROJECT_REF`,
+  `--mode=` en CLI. Sin cambios de comportamiento para el modo
+  `drive-local` por defecto (retrocompatible).
+- `scripts/validate-drive-local-env.d.mts` — declaraciones actualizadas
+  para los nuevos exports (`MODES`, `DEFAULT_MODE`,
+  `EXPECTED_STAGING_PROJECT_REF_VAR`, `expectedStagingHost`,
+  `isAllowedHost`, y el segundo parámetro `mode` de
+  `evaluateEffectiveEnv`).
+- `tests/drive-local-env-guard.test.ts` — 8 tests nuevos (43.T), 13
+  existentes sin modificar.
+- `server-release/docs/GOOGLE_DRIVE_REAL_VALIDATION_RUNBOOK.md` — esta
+  Sección 43.
+
+Ningún archivo `.env*` se creó ni se modificó. Ningún secreto se agregó a
+ningún archivo.
+
+### 43.Y — Revisión de diff (per checklist del pedido)
+
+`git status --short` / `git diff --name-status` / `git diff --stat` /
+`git diff --check` ejecutados antes de escribir esta sección. Resultado
+relevante a esta fase: únicamente
+`server-release/docs/GOOGLE_DRIVE_REAL_VALIDATION_RUNBOOK.md` aparece
+como modificado en el árbol de trabajo (ya lo estaba antes de esta fase,
+por trabajo previo sin commitear de 39.Z–42.J); `scripts/` y `tests/`
+aparecen como `??` (untracked, sin commitear desde B2B-0B1/0B1.1,
+reutilizados y extendidos, no recreados). `git diff --check` no reportó
+conflictos de whitespace. No aparece ningún archivo `.env`, ninguna key
+de Supabase, ningún secreto en el diff.
+
+### 43.Z — Bloqueadores antes de B2B-0B2 / confirmación
+
+**Bloqueadores para continuar a B2B-0B2:**
+- El propietario debe crear manualmente el proyecto Supabase Hosted
+  "CRM Drive Staging" (43.I) — acción humana, fuera del alcance de
+  cualquier sesión automatizada.
+- `EXPECTED_STAGING_SUPABASE_PROJECT_REF` real, `STAGING_DB_URL` real: no
+  existen todavía — dependen del paso anterior.
+- `HOSTED_BOOTSTRAP_COMPATIBILITY` de las 34 migraciones (43.J/43.K)
+  sigue `UNVERIFIED UNTIL B2B-0B2` — la clasificación conceptual está
+  lista, la aplicación empírica no.
+- Tipo de conexión real (Direct vs. Session Pooler, 43.N) no verificado
+  contra la red del propietario — sigue como riesgo abierto heredado de
+  40.Y.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO cambios de Docker. NO Supabase remoto. NO Supabase producción. NO
+proyecto Supabase creado. NO Google. NO OAuth. NO Drive. NO arranque del
+CRM. NO servidor. NO DNS. NO deploy. NO commit. NO push.
+
+**No se inicia B2B-0B2 en esta fase — queda en espera de revisión.**
