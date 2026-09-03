@@ -4919,3 +4919,232 @@ explícitamente fuera del alcance de este cierre.
 NO escritura en Supabase. NO acceso a producción. NO implementación de
 migración. NO `migration repair`. NO reset. NO Google. NO arranque del
 CRM.
+
+## 47. Fase 8I-B2B-0B2B-I1 — Implementación local del T0-CANONICAL
+
+**Alcance:** LOCAL ONLY. Ningún comando de Supabase (`db push`,
+`migration list --linked`, `migration repair`, `db reset`) se ejecutó.
+Ninguna escritura contra `ccnvrslhnzdqwanhceqx` ni ningún otro proyecto
+Supabase. El staging permanece exactamente como en el cierre de R2: 0
+tablas `public`, 0 filas en `supabase_migrations.schema_migrations` — no
+tocado en esta fase.
+
+### 47.A — Archivo de baseline creado
+
+`supabase/migrations/20260713120000_crm_application_baseline.sql` —
+único archivo de migración nuevo, exactamente el nombre aprobado en el
+cierre de R2 (Sección 46.Y, punto 6). Ningún otro archivo de
+`supabase/migrations/` fue tocado.
+
+### 47.B — Distinción T0-CANONICAL vs. T0 histórico puro
+
+El archivo implementa exactamente la definición aprobada en 46.Y: el T0
+histórico de `git show 4668d4163c3c0f5b0d4cc14a6e511ee378b77976:
+supabase/schema.sql` (Sección 46.F), con dos desviaciones deliberadas,
+ambas señaladas en comentarios SQL dentro del propio archivo (no
+silenciosas):
+
+1. **`handle_new_user()` + `on_auth_user_created`**: copiados
+   verbatim de `supabase/self-hosted/0004_functions_and_rpc.sql` (la
+   función) y `supabase/self-hosted/0005_triggers.sql` (el trigger) —
+   no reescritos de memoria. La versión histórica de T0 (que lee `role`
+   de `raw_user_meta_data`) **no aparece en ningún lugar del archivo**,
+   ni siquiera citada — el comentario que explica la decisión evita
+   deliberadamente reproducir el patrón vulnerable como texto (para que
+   ni siquiera una búsqueda ingenua sobre el archivo lo encuentre como
+   "presente").
+2. **Campos de compatibilidad de repetición** (`updated_at` en
+   `clients`, `cases`, `documents`): ausentes del snapshot T0 de
+   2026-06-30, añadidos porque el análisis de colisión de la Sección
+   46.J demostró que `20260721090000_legal_case_foundation.sql` crea
+   `clients_set_updated_at`/`cases_set_updated_at`/
+   `documents_set_updated_at` (triggers `BEFORE UPDATE` que asignan
+   `NEW.updated_at`) y fallaría con `42703` sin esa columna. Cada
+   declaración lleva el comentario literal "T0-CANONICAL replay
+   compatibility field", distinguiéndola explícitamente de un hecho
+   histórico de T0.
+
+Todo lo demás — las 7 tablas, sus columnas/tipos/defaults/constraints,
+RLS habilitada, y las 23 policies permisivas (`auth.uid() is not null`,
+sin distinción de rol) — reproduce el T0 histórico de git tal cual,
+sin ninguna forma final de `self-hosted/0003` ni del dump de
+`audit/cloud-schema.sql`.
+
+### 47.C — Precondición tri-estado
+
+Implementada como un bloque `do $$ ... $$;` al inicio de la transacción,
+antes de cualquier `CREATE TABLE` de aplicación: cuenta cuántas de las 7
+tablas núcleo existen vía `to_regclass`. `0` → continúa (FRESH). `7` →
+`RAISE EXCEPTION` con `errcode '55000'` y mensaje explícito, sin fugar
+secretos (solo nombra el hecho estructural, ningún valor de
+configuración). `1..6` → `RAISE EXCEPTION` igual, incluyendo el conteo
+exacto encontrado. No se usa `CREATE TABLE IF NOT EXISTS` como mecanismo
+de seguridad en ningún punto del archivo — la precondición explícita es
+el único mecanismo, tal como exigía el pedido.
+
+### 47.D — Las siete tablas núcleo
+
+`profiles`, `clients`, `cases`, `payments`, `payment_records`,
+`agenda_events`, `documents` — DDL exacto documentado columna por
+columna en la Sección 46.F de este runbook; el archivo SQL referencia
+esa sección y la línea exacta de `schema.sql` para cada tabla. Ningún
+objeto de las 34 migraciones existentes se recrea aquí (no
+`document_folders`, no `case_tasks`, no `client_reports`, no
+`google_calendar_*`, no `google_drive_*`, no `templates`) — esos siguen
+siendo responsabilidad exclusiva de sus propias migraciones.
+
+### 47.E — Grants
+
+Sin `GRANT`/`REVOKE` explícitos sobre las 7 tablas (Sección 46.F: la
+única evidencia T0 de ese tipo es el `REVOKE EXECUTE` de
+`handle_new_user`, reproducido). Documentado en un comentario dentro del
+propio archivo por qué se omiten los demás: la evidencia disponible es
+`SECONDARY_AUDIT`, no `DIRECT_GIT`, y las dos migraciones que sí
+establecen grants explícitos (`20260721130000`/`20260721140000`) corren
+después en la cadena y los fijan por sí mismas.
+
+### 47.F — `pgcrypto`
+
+`create extension if not exists "pgcrypto";` — presente en el T0
+histórico mismo (línea 9 de `schema.sql`), no introducida como novedad.
+No se crea ni recrea ningún schema de plataforma.
+
+### 47.G — Auditoría de repetición estática (repetida sobre el archivo real)
+
+Repetida la matriz de la Sección 46.J contra el archivo efectivamente
+escrito (no solo el diseño): **0 colisiones, 0 `UNKNOWN` bloqueantes.**
+El punto que en 46.J quedaba como única incógnita — el trigger
+`*_set_updated_at` de `20260721090000` — queda resuelto por la adición
+explícita de `updated_at` (47.B, punto 2). Verificado adicionalmente que
+ningún nombre de constraint auto-generado por PostgreSQL colisiona: el
+único caso relevante, `cases_status_check`
+(`20260724120000_fix_cases_status_check_constraint.sql`), antecede su
+`ADD CONSTRAINT` con `DROP CONSTRAINT IF EXISTS` sobre el mismo nombre
+auto-generado (`<tabla>_<columna>_check`), así que el resultado es
+idéntico exista o no colisión de nombre previa.
+
+### 47.H — Validador estático
+
+`scripts/validate-crm-baseline.mjs` (nuevo, con declaraciones de tipos
+en `scripts/validate-crm-baseline.d.mts` siguiendo el mismo patrón ya
+usado por `scripts/validate-drive-local-env.mjs`/`.d.mts`). Nunca se
+conecta a una base de datos ni ejecuta SQL — lee únicamente los archivos
+de `supabase/migrations/` y `supabase/self-hosted/` desde disco.
+Implementa las 14 comprobaciones pedidas (expandidas a 25 entradas
+individuales, porque varios requisitos —p. ej. "no crear objetos de
+plataforma"— se verifican como un patrón prohibido por objeto, no como
+una sola comprobación monolítica). Ejecutado directamente
+(`node scripts/validate-crm-baseline.mjs`): **25/25 comprobaciones
+pasan.**
+
+### 47.I — Pruebas del validador
+
+`tests/crm-baseline-validator.test.ts` (nuevo, 42 pruebas): confirma las
+25 comprobaciones contra el archivo real, más pruebas unitarias de las
+funciones puras (`extractFunctionSource`, `normalizeSql`,
+`stripSqlComments`) y, específicamente para la Sección 17 del pedido,
+una prueba de equivalencia estricta entre `handle_new_user()` del
+baseline y de `supabase/self-hosted/0004_functions_and_rpc.sql` que
+además demuestra **no ser demasiado laxa** (una copia sintética con la
+vulnerabilidad histórica reintroducida falla la comparación de
+equivalencia y activa `ROLE_METADATA_ESCALATION_PATTERN`) ni
+**demasiado estricta** (una reformateada solo en espacios en blanco sigue
+pasando como equivalente).
+
+### 47.J — Integridad de las 34 migraciones históricas
+
+`MANIFEST_V1` recalculado sobre los 34 archivos históricos (excluyendo
+el nuevo baseline): `MIGRATION_COUNT = 34`,
+`MANIFEST_V1_SHA256 = b3fc4909efbf9a3001249e6fdf354cbe4c35b0a59ba036f6e7257ceedc87b214`
+— **idéntico** al valor congelado en R1/R2. Ninguno de los 34 archivos
+fue modificado.
+
+### 47.K — MANIFEST_V2
+
+Sobre las 35 migraciones (34 históricas + el nuevo baseline), mismo
+algoritmo determinista:
+
+```
+MIGRATION_COUNT_V2 = 35
+MANIFEST_V2_SHA256 = 422cd62f34404d0f58eb571f722f1b1aabf2ed224b7619f95130c7e8c1d64029
+```
+
+(64 caracteres, verificado con `wc -c`.) `MANIFEST_V1` (sobre las 34) y
+`MANIFEST_V2` (sobre las 35) son necesariamente distintos — ambos se
+reportan por separado, ninguno sustituye al otro.
+
+### 47.L — Storage
+
+Confirmado por el propio validador (`no-storage-provisioning:INSERT INTO
+storage.buckets`, 47.H): el baseline no inserta en `storage.buckets`, no
+crea policies sobre `storage.objects`, no crea el bucket `documents`.
+El aprovisionamiento de Storage permanece un paso posterior separado
+(Sección 46.R), sin cambios de diseño.
+
+### 47.M — Requisitos de rehearsal pendientes (sin cambios de estado)
+
+Ninguno de los rehearsals diseñados en fases anteriores se ejecutó en
+esta fase (I1 es implementación local, no ejecución):
+`PRODUCTION_BASELINE_COMPATIBILITY` permanece `UNVERIFIED` (Sección
+45.R); el rehearsal de timestamp antiguo contra un clon desechable
+(Sección 46.N) no se ejecutó; el contrato de 6 condiciones para
+`migration repair` (Sección 46.O) sigue sin cumplirse porque ninguna de
+sus condiciones (que incluyen el propio rehearsal) se satisfizo aquí.
+
+### 47.N — Archivos modificados en esta fase
+
+- `supabase/migrations/20260713120000_crm_application_baseline.sql`
+  (nuevo).
+- `scripts/validate-crm-baseline.mjs` (nuevo).
+- `scripts/validate-crm-baseline.d.mts` (nuevo).
+- `tests/crm-baseline-validator.test.ts` (nuevo).
+- `server-release/docs/GOOGLE_DRIVE_REAL_VALIDATION_RUNBOOK.md` (esta
+  Sección 47).
+
+Ninguno de los 34 archivos de `supabase/migrations/` existentes fue
+tocado. `audit/` no fue tocado. Ningún `.env`. Ningún secreto.
+
+### 47.O — Gates
+
+`npx tsc --noEmit`: limpio, 0 errores. `npm run lint`: 0 errores tras
+`eslint --fix` sobre los dos archivos nuevos con problemas de formato
+(11 correcciones de `prettier/prettier`, ningún cambio de lógica —
+verificado re-ejecutando el validador después del fix, mismo resultado
+25/25); 7 warnings preexistentes sin cambios. `npm test`: **67 archivos,
+1691 passed, 0 skipped, 0 failed** (baseline anterior 66/1649 + 1 archivo
+nuevo/42 tests nuevos = 67/1691, exacto). Build no ejecutado
+(`BUILD = NOT REQUIRED / DEFERRED FOR ENV SAFETY`, sin cambios de
+código runtime).
+
+### 47.P — Diff
+
+Cambios reales, confirmados con `git status --short` / `git diff
+--name-status` / `git diff --stat` / `git diff --check`: exactamente 4
+archivos nuevos (`supabase/migrations/20260713120000_crm_application_
+baseline.sql`, `scripts/validate-crm-baseline.mjs`,
+`scripts/validate-crm-baseline.d.mts`,
+`tests/crm-baseline-validator.test.ts`) más la modificación de este
+runbook — 5 rutas en total. Ninguna de las 34 migraciones existentes
+aparece en el diff. Ningún `.env`. `audit/` permanece `??`, sin tocar.
+Los 13 elementos untracked históricos permanecen intactos. Sin
+conflictos de espacio en blanco.
+
+### 47.Q — Bloqueadores antes de B2B-0B2B-I2
+
+- Autorización humana explícita para el siguiente paso (probablemente el
+  rehearsal de timestamp antiguo de la Sección 46.N, o directamente el
+  `db push --dry-run` contra el proyecto Hosted "CRM Drive Staging" ya
+  creado).
+- Ningún rehearsal contra clon de producción se ha ejecutado — sigue
+  siendo un bloqueador para cualquier adopción sobre producción real
+  (no sobre staging fresco, que no lo requiere).
+- El contrato de precondición "forma compatible" (Sección 46.P) sigue
+  sin implementarse como script — solo el tri-estado del propio archivo
+  de baseline existe hoy, no un preflight externo reutilizable.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO escritura en Supabase. NO acceso a producción. NO `migration
+repair`. NO reset. NO creación de bucket. NO creación de usuarios. NO
+Google/OAuth/Drive. NO arranque del CRM. NO commit. NO push.
+
+**No se inicia B2B-0B2B-I2 en esta fase — queda en espera de revisión.**
