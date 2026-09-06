@@ -5431,3 +5431,80 @@ NO escritura en base de datos remota. NO llamada Auth en vivo. NO
 NO push.
 
 **No se inicia B2B-0B2B-I2 en esta fase — queda en espera de revisión.**
+
+### 48.K — Fase 8I-B2B-0B2B-I2-E1 / E1H — Rollback remoto confirmado + hotfix del prestate verifier
+
+**E1 (ejecutado por el owner, auditado por Claude):** el owner corrió
+`scripts/sql/verify-crm-bootstrap-pre-20260806120000.sql` contra CRM
+Drive Staging real. Resultado empírico: historial remoto = 23 versiones,
+última = `20260730210000`, `20260806120000` ausente; `case_tasks.
+scheduled_for`/`started_at` ausentes; `case_task_history`/
+`document_change_history` ausentes; las 4 filas de negocio revisadas en
+0. **El rollback del intento fallido anterior contra `20260806120000`
+quedó confirmado como total** — ninguna traza sobrevivió.
+
+**Defecto encontrado en el propio verificador (E1H):** el chequeo D3
+original exigía que las 7 funciones referenciadas por `20260806120000`
+estuvieran TODAS ausentes en el prestate. Esto era falso: `git grep`
+confirma que exactamente 2 de esas 7 —
+`public.validate_case_task_relationship()` y
+`public.apply_case_task_completion()` — ya existen desde
+`20260729130000_daily_task_center.sql` (única otra migración que las
+menciona; `20260806120000` solo las `CREATE OR REPLACE`). El staging
+real las tenía presentes en su forma PRE-#24, y el verificador las
+reportó como un falso `FAIL` — root cause: el chequeo original nunca
+distinguió "introducido por #24" de "ya existía y #24 solo lo
+reemplaza".
+
+**Corrección aplicada** (`scripts/sql/verify-crm-bootstrap-pre-
+20260806120000.sql`, único archivo de lógica modificado): D3 ahora
+exige que las 2 funciones preexistentes EXISTAN, en su forma PRE-#24
+específicamente — verificado por contenido semántico del cuerpo
+(`pg_get_functiondef()` + `LIKE`/regex sobre identificadores estables:
+`apply_case_task_completion()` post-#24 referencia `started_at`, que la
+versión pre-#24 no puede mencionar porque esa columna aún no existe;
+`validate_case_task_relationship()` post-#24 autocompleta `new.client_id
+:= v_case_client_id`, que la versión pre-#24 nunca hace) — nunca un hash
+MD5 congelado sin poder probar independientemente el formato exacto de
+`pg_get_functiondef()`. Las 5 funciones realmente exclusivas de #24
+(`guard_case_task_schedule`, `audit_case_task_changes`,
+`validate_document_relationship`, `audit_document_metadata`,
+`normalize_document_types`) siguen exigidas ausentes, sin cambios. La
+Sección B (historial) se reforzó de informativa a una aserción real
+(23/primero/último). Se añadió un `NOTICE` final inequívoco
+`REMOTE_ROLLBACK_VERIFICATION = CONFIRMED`.
+
+**Auditoría del poststate verifier** (`scripts/sql/verify-
+20260806120000-fresh-poststate.sql`): revisado por el mismo error
+conceptual — no aplica. Su chequeo 7 valida que las 7 funciones EXISTAN
+después de #24 (correcto para poststate: tras #24, las 7 deben existir,
+sean nuevas o reemplazadas), y como toda la migración es una única
+transacción atómica (`begin;`/`commit;`), un commit exitoso garantiza
+que los cuerpos `CREATE OR REPLACE` son exactamente los de #24 — no hay
+estado parcial/mixto posible que una verificación de nombre pudiera
+pasar por alto. No modificado.
+
+**Pruebas añadidas:** `tests/crm-bootstrap-pre-24-verifier-sql.test.ts`
+(15 pruebas, estáticas sobre el texto del artefacto SQL, sin conexión a
+base de datos) — cubren la clasificación correcta de las 2 funciones
+preexistentes vs. las 5 exclusivas de #24, la distinción semántica
+PRE/POST, la ausencia de cualquier hash MD5 congelado como mecanismo
+primario, y que el resto del contrato de rollback (columnas, tablas,
+triggers, historial, filas de negocio, `NOTICE` final) permanece intacto.
+
+**Gates:** `npx tsc --noEmit` limpio. `npm run lint`: 0 errores (7
+warnings preexistentes sin cambios). `npm test`: **70 archivos, 1777
+passed, 0 failed** (69/1762 + 15 pruebas nuevas = exacto).
+`node scripts/validate-crm-baseline.mjs`: **25/25 PASS**, MANIFEST_V1/V2
+sin cambios. Identidad de proyección #24 sin cambios (el projection
+builder no fue tocado): `sourceSha256=2c3ef16d...4ef`,
+`algorithm=v1`, `projectedSha256=d997d7a6...1513`.
+
+**#24 sigue pendiente de ejecución real** — este hotfix corrige
+únicamente la herramienta de verificación local/prestate; ningún push,
+repair, ni proyección se ejecutó contra staging en E1H.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO escritura en base de datos. NO llamada Auth. NO `migration repair`.
+NO `db push`. NO creación de usuarios. NO modificación de migraciones.
+NO commit. NO push.
