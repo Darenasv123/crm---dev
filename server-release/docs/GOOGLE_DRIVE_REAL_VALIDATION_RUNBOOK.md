@@ -5147,4 +5147,287 @@ NO escritura en Supabase. NO acceso a producción. NO `migration
 repair`. NO reset. NO creación de bucket. NO creación de usuarios. NO
 Google/OAuth/Drive. NO arranque del CRM. NO commit. NO push.
 
+## 48. Fase 8I-B2B-0B2B-I2-R2/R3/I3 — Auditoría de excepciones de fresh bootstrap + herramientas locales
+
+Consolida tres turnos posteriores al rehearsal real contra CRM Drive
+Staging (I2): R2 (auditoría exhaustiva de las 12 migraciones restantes
+tras el primer fallo real), R3 (diseño de orquestación + primer-admin,
+sin ejecución), e I3 (implementación LOCAL de las herramientas
+reutilizables que R3 diseñó, sin ninguna escritura remota).
+
+### 48.A — Contexto empírico de partida
+
+El rehearsal real (I2) aplicó baseline + históricas hasta
+`20260729212000` en un solo pase, requirió una intervención manual para
+`20260729213000` (guard destructivo vía `SET LOCAL`, ya
+history-adoptado), continuó exitosamente hasta `20260730210000`, y
+falló en `20260806120000_crm_daily_tasks_and_document_integrity.sql`
+por una aserción que exige una fila histórica real (`case_tasks` con
+`created_at = 2026-08-06 02:02:30.149561+00`) inexistente en staging
+fresco.
+
+### 48.B — Hallazgo R2: tres excepciones finitas, no una
+
+Auditoría completa de las 12 migraciones restantes
+(`20260806120000` → `20260826100000`) confirmó **solo dos bloqueadores
+nuevos** además del ya resuelto `20260729213000`:
+
+- **#24** `20260806120000` — `LEGACY_DATA_COUPLED`, pero **solo en una
+  sentencia** (la 40 de 41): una aserción de regresión sobre una fila
+  histórica real, clasificada `HISTORICAL_ROW_REQUIREMENT =
+  LEGACY_DATA_PROTECTION_ONLY` (ninguna migración crea esa fila; el
+  esquema que produce el resto del archivo es 100% independiente de
+  ella).
+- **#30** `20260822120000_prevent_last_admin_removal.sql` — precheck
+  exige `count(role='Administrador' AND status='Activo') >= 1` antes de
+  activar la protección; en una base de datos fresca y sin usuarios esto
+  es 0 por construcción. Es un problema de **secuenciación**
+  (primer-admin debe existir antes de este punto), no de contenido.
+
+Las 10 migraciones restantes de ese rango son `PURE_SCHEMA` /
+`GENERIC_DATA_MIGRATION` — seguras en fresco sin intervención.
+
+**Matriz completa de 35** (versión/categoría/excepción) registrada en
+el informe de R2 de esta sesión — 3 de 35 requieren intervención: #20
+(ya resuelta), #24, #30.
+
+### 48.C — Corrección de estado R3
+
+`HOSTED_CONTROLLED_BOOTSTRAP_COMPATIBILITY` se corrigió de "READY" a
+**`DESIGN_READY_EXECUTION_UNVERIFIED`** — un diseño completo no es lo
+mismo que una ejecución confirmada. Se mantiene así hasta que #24, el
+primer-admin, y el resto de la secuencia se ejecuten y verifiquen
+empíricamente al menos una vez.
+
+Corrección adicional (R3, ratificada en I3): un bootstrap "squash"
+(Modelo C2) SÍ evita los tres bloqueadores #20/#24/#30 en fresco, porque
+nunca reejecuta los cuerpos históricos que los contienen — corrección
+explícita de una afirmación anterior incorrecta. Aun así, comparado
+contra un B1-B **automatizado** (no manual), B1-B sigue ganando: los
+tres bloqueadores ya están completamente enumerados y acotados (no son
+un riesgo abierto), mientras que C2 introduce una segunda fuente de
+verdad del esquema que debe mantenerse sincronizada indefinidamente.
+**Modelo canónico confirmado: `B1_WITH_ADOPTION_EXCEPTIONS`.**
+
+### 48.D — Mecanismo de primer-admin (R3, evidenciado)
+
+Auditoría de `src/lib/profiles.functions.ts::registerStaffFn` confirmó
+que el CRM ya usa, para toda alta de personal, el patrón: Admin API
+`createUser` (service_role) → trigger `handle_new_user` endurecido crea
+`profiles` como `Personal`/`Activo` → un `UPDATE` de service_role
+promueve exactamente ese `id`. `registerStaffFn` no puede usarse
+directamente para el primer admin porque exige que quien llama ya sea
+Administrador — imposible antes de que exista ninguno. La herramienta
+de bootstrap reutiliza el mismo patrón fuera de esa puerta, sin tocarla
+ni debilitarla.
+
+### 48.E — Herramientas implementadas en I3 (LOCAL, sin escritura remota)
+
+- **`scripts/build-crm-fresh-migration-projection.mjs`** (+
+  `.d.mts`) — construye, en memoria y solo bajo `os.tmpdir()`, una
+  proyección de `20260806120000` que preserva las sentencias 1-39 y 41
+  byte a byte y omite únicamente la sentencia 40, usando anclas de texto
+  exactas (no números de línea) con fallo cerrado ante cualquier
+  desviación (hash de origen, ancla duplicada/ausente, contenido de la
+  aserción mutado, sentencia siguiente desplazada). Nunca escribe bajo
+  `supabase/migrations/`. Verificado end-to-end contra el archivo real:
+  hash de origen `2c3ef16d...4ef`, proyección de 12427 bytes (976 bytes
+  removidos), hash de proyección `d997d7a6...1513`.
+- **`scripts/sql/verify-20260806120000-fresh-poststate.sql`** —
+  contrato de postcondiciones de #24, solo lectura, con `ON_ERROR_STOP`
+  y `RAISE EXCEPTION` por cada chequeo fallido (columnas, índice, tablas
+  nuevas, RLS, políticas, grants, 7 funciones, 4 triggers habilitados,
+  privilegios de `normalize_document_types`, filas de negocio en cero,
+  ausencia de `20260806120000` en el historial).
+- **`scripts/sql/verify-crm-bootstrap-pre-20260806120000.sql`** —
+  verificación empírica de rollback completo del intento fallido previo
+  (columnas/tablas/funciones/triggers exclusivos de `20260806120000`
+  deben estar ausentes) más conteos de filas de negocio en cero, para
+  que el owner la ejecute antes de cualquier proyección manual.
+- **`scripts/bootstrap-staging-first-admin.mjs`** (+ `.d.mts`) —
+  herramienta de bootstrap del primer Administrador, con guard de
+  destino fijo a `ccnvrslhnzdqwanhceqx.supabase.co` (sin override, sin
+  `--force-production`), contraseña vía
+  `STAGING_BOOTSTRAP_ADMIN_PASSWORD` (nunca CLI, nunca logueada), email
+  vía `STAGING_BOOTSTRAP_ADMIN_EMAIL` (debe contener `staging`),
+  precondición de `profiles` vacío (aborta si no), payload de
+  `createUser` sin `role`/`status`, verificación de la fila creada por
+  el trigger (`Personal`/`Activo`) antes de promover, promoción por ID
+  exacto, y verificación del predicado global
+  (`count(Administrador,Activo)=1`). Diseño de compensación: si falla
+  algo entre `createUser` y la promoción confirmada, borra el usuario
+  Auth creado — probado seguro porque `public.profiles.id references
+  auth.users(id) on delete cascade` (línea 110 del baseline) y la
+  precondición de `profiles` vacío garantiza que nada más puede
+  referenciar ese id nuevo. Si el propio borrado de compensación falla,
+  NO se reintenta ni se adivina: devuelve
+  `BOOTSTRAP_PARTIAL_USER_CREATED` con el UUID y pasos de recuperación
+  manual, nunca la contraseña. Este script **no se ejecutó** durante
+  I3 — solo se probó contra un cliente Admin completamente simulado.
+
+### 48.F — Ciclo de vida del admin sintético (R3)
+
+Una vez activo `20260822120000`, el sistema nunca puede volver a 0
+Administradores activos vía `UPDATE`/`DELETE` normal — nunca bloquea
+tener 2. Recomendación: mantener el admin sintético de staging de forma
+permanente (sin necesidad de reemplazo); si algún día se reemplaza,
+crear el segundo admin primero y confirmarlo activo antes de tocar el
+primero.
+
+### 48.G — Gates
+
+`npx tsc --noEmit`: limpio, 0 errores. `npm run lint`: 0 errores (12
+correcciones de `prettier/prettier` + 4 `@typescript-eslint/no-explicit-any`
+resueltas en los archivos nuevos vía tipado explícito/narrowing de unión
+discriminada; 7 warnings preexistentes sin cambios, ninguno nuevo).
+`npm test`: **69 archivos, 1739 passed, 0 failed** (baseline anterior
+67/1691 + 2 archivos nuevos/48 tests nuevos = 69/1739, exacto).
+`node scripts/validate-crm-baseline.mjs`: **25/25 PASS**,
+`MANIFEST_V2_SHA256 = 422cd62f34404d0f58eb571f722f1b1aabf2ed224b7619f95130c7e8c1d64029`
+sin cambios. Build no ejecutado (`DEFERRED FOR ENV SAFETY`).
+
+### 48.H — Diff
+
+Únicamente archivos nuevos:
+`scripts/build-crm-fresh-migration-projection.mjs`,
+`scripts/build-crm-fresh-migration-projection.d.mts`,
+`scripts/bootstrap-staging-first-admin.mjs`,
+`scripts/bootstrap-staging-first-admin.d.mts`,
+`scripts/sql/verify-20260806120000-fresh-poststate.sql`,
+`scripts/sql/verify-crm-bootstrap-pre-20260806120000.sql`,
+`tests/crm-fresh-migration-projection.test.ts`,
+`tests/bootstrap-staging-first-admin.test.ts`, más esta Sección 48.
+Ninguna de las 35 migraciones tocada. Ningún `self-hosted/*.sql`
+tocado. Ningún `.env`. `audit/` sin tocar. Los 13 elementos untracked
+históricos permanecen intactos. `git diff --check` limpio.
+
+### 48.I — Bloqueadores empíricos antes de `VERIFIED`
+
+1. Ejecutar `scripts/sql/verify-crm-bootstrap-pre-20260806120000.sql`
+   contra staging real (confirma rollback total del intento fallido).
+2. Ejecutar `scripts/build-crm-fresh-migration-projection.mjs`,
+   correr la proyección manualmente contra staging, y ejecutar
+   `scripts/sql/verify-20260806120000-fresh-poststate.sql`.
+3. `migration repair --status applied 20260806120000` solo si (2) pasa
+   íntegramente — 24 Remote / 35 Local esperado.
+4. Autorización explícita y ejecución real (no simulada) de
+   `scripts/bootstrap-staging-first-admin.mjs` contra staging.
+5. `db push` de `20260811103000` → `20260826100000` en un solo pase,
+   confirmando que `20260822120000` pasa con el admin recién creado.
+6. Solo tras 1-5 exitosos de punta a punta, `B1_WITH_ADOPTION_EXCEPTIONS`
+   pasa de `DESIGN_READY_EXECUTION_UNVERIFIED` a `VERIFIED`.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO escritura en base de datos. NO `migration repair`. NO creación de
+usuarios (ni siquiera de prueba — el script de primer-admin no se
+ejecutó, solo se probó contra un mock). NO modificación de migraciones.
+NO modificación del baseline. NO creación de bucket. NO Google. NO
+arranque del CRM. NO commit. NO push.
+
+### 48.J — Fase 8I-B2B-0B2B-I2-I3H — Endurecimiento final (LOCAL, sin escritura remota)
+
+Consolida el endurecimiento del diseño I3 antes de cualquier ejecución
+real, sin ejecutar nada remotamente.
+
+**Identidad canónica congelada de la proyección #24** — no el nombre de
+archivo temporal (efímero, timestamp-based), sino la tripleta:
+
+```
+sourceSha256:    2c3ef16da63d6db53106737d870ce11abfefeda90645e76ea09f4b2f9e5c34ef
+algorithmVersion: v1
+projectedSha256: d997d7a62da7eba753dca34d216fef4c5ec85ea4e724ea7d5dd2ee00f4cc1513
+```
+
+Recomputada dos veces de forma independiente (`buildProjection()` llamado
+dos veces en el mismo proceso): resultado idéntico ambas veces, 64
+caracteres hexadecimales, `/^[0-9a-f]{64}$/i` válido. `sourceBytes=13403`,
+`projectedBytes=12427`, `bytesRemoved=976` — exactos. Congelado como
+`EXPECTED_PROJECTED_SHA256` en el propio script (no solo en este runbook)
+para detección de drift automática en pruebas futuras.
+
+**Puerta de confirmación de ejecución** — `bootstrap-staging-first-admin.mjs`
+ahora exige `STAGING_BOOTSTRAP_CONFIRM = "CREATE_FIRST_ADMIN_ON_CRM_DRIVE_STAGING"`
+(valor exacto, nunca por argv, no es secreto) antes de realizar **cualquier**
+llamada remota — ni siquiera una lectura — salvo en modo dry-run. También
+exige ahora `EXPECTED_STAGING_SUPABASE_PROJECT_REF` (antes opcional, ahora
+requerido) y una nueva atestación separada,
+`STAGING_BOOTSTRAP_MIGRATION_WINDOW = "20260806120000_APPLIED_AND_20260822120000_NOT_APPLIED"`:
+como el cliente service_role habla solo PostgREST/Admin API y
+`supabase_migrations` no está expuesto por esa API, el script no puede
+verificar el historial de migraciones por sí mismo sin debilitar
+seguridad (embebiendo una credencial Postgres) — esta ventana de
+migración es una atestación humana/de orquestación requerida, documentada
+como tal en el propio código, no una comprobación real contra la base.
+
+**Modo dry-run** — `STAGING_BOOTSTRAP_DRY_RUN="true"` ejecuta todos los
+guards y lecturas (target, ventana de migración, prestate de
+`profiles`/admins activos, búsqueda de huérfano) pero nunca llama
+`createUser`/`UPDATE`/`deleteUser`. Deliberadamente NO exige la
+confirmación de ejecución (no puede escribir de todos modos — exigirla
+solo añadiría fricción sin añadir seguridad, según la instrucción
+explícita de no complicar el diseño solo para soportar dry-run).
+
+**Detección de usuario Auth huérfano preexistente** — antes de crear
+nada, el script busca por email exacto (normalizado) vía
+`listUsers()` paginado (única primitiva de enumeración del Admin API;
+no existe un `getUserByEmail` directo). Si encuentra una coincidencia
+mientras `profiles` está vacío, aborta con
+`BOOTSTRAP_PARTIAL_AUTH_USER_EXISTS` (solo UUID + email, nunca
+token/password/service_role) y **nunca borra automáticamente** ese
+usuario — su procedencia es desconocida (podría venir de una corrida
+parcial anterior), así que solo un humano puede decidir. Si la búsqueda
+no puede descartar concluyentemente una coincidencia dentro de un límite
+acotado de páginas (`AUTH_LOOKUP_MAX_PAGES=50`, `AUTH_LOOKUP_PAGE_SIZE=1000`),
+también aborta en vez de asumir ausencia.
+
+**Distinción PREEXISTENTE vs CORRIDA-ACTUAL** — codificada explícitamente:
+el caso de usuario huérfano preexistente retorna antes de llamar
+`createUser()` y nunca activa compensación. La compensación automática
+(borrar el usuario Auth) solo se activa para un usuario creado POR ESTA
+MISMA invocación, y ahora ambos resultados de compensación
+(`COMPENSATED` y `BOOTSTRAP_PARTIAL_USER_CREATED`) llevan
+`scope: "CURRENT_RUN"` explícito, verificado en pruebas — nunca ambiguo
+con el caso preexistente.
+
+**Endurecimiento de prestate** — ahora se exige, además de
+`profiles` vacío, un conteo separado de Administradores activos = 0
+(defensa en profundidad, aunque implicado por `profiles` vacío) y la
+atestación de ventana de migración descrita arriba.
+
+**Higiene de secretos (documentación, sin valores reales)** — patrón
+PowerShell futuro previsto para la ejecución real (nunca en este
+repositorio con un valor real):
+
+```powershell
+$env:STAGING_BOOTSTRAP_ADMIN_EMAIL = "bootstrap+staging@<dominio-propio>"
+$env:STAGING_BOOTSTRAP_ADMIN_PASSWORD = Read-Host -AsSecureString | ConvertFrom-SecureString -AsPlainText
+$env:STAGING_BOOTSTRAP_CONFIRM = "CREATE_FIRST_ADMIN_ON_CRM_DRIVE_STAGING"
+$env:STAGING_BOOTSTRAP_MIGRATION_WINDOW = "20260806120000_APPLIED_AND_20260822120000_NOT_APPLIED"
+# SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / EXPECTED_STAGING_SUPABASE_PROJECT_REF
+# siguen viniendo de .env.drive-hosted-staging.local, nunca de argv.
+node scripts/bootstrap-staging-first-admin.mjs
+```
+
+Ninguna contraseña real ni service_role real aparece en este runbook ni
+en el repositorio. La contraseña nunca se acepta por argv ni se
+imprime/loguea/persiste.
+
+**Gates:** `npx tsc --noEmit` limpio. `npm run lint`: 0 errores (formato
+`prettier/prettier` autofixed, ningún cambio de lógica; 7 warnings
+preexistentes sin cambios). `npm test`: **69 archivos, 1762 passed, 0
+failed** (68/1739 → +1 test de identidad canónica de proyección + 22
+tests nuevos de endurecimiento del primer-admin = +23, exacto).
+`node scripts/validate-crm-baseline.mjs`: **25/25 PASS**, MANIFEST_V2 sin
+cambios.
+
+**Estado sin cambios:**
+`HOSTED_CONTROLLED_BOOTSTRAP_COMPATIBILITY = DESIGN_READY_EXECUTION_UNVERIFIED`
+— el endurecimiento de I3H no constituye ejecución empírica. Los 6 gates
+empíricos de la Sección 48.I permanecen exactamente iguales.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO escritura en base de datos remota. NO llamada Auth en vivo. NO
+`migration repair`. NO `db push`. NO creación de usuarios. NO commit.
+NO push.
+
 **No se inicia B2B-0B2B-I2 en esta fase — queda en espera de revisión.**
