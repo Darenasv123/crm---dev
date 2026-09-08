@@ -5508,3 +5508,107 @@ repair, ni proyección se ejecutó contra staging en E1H.
 NO escritura en base de datos. NO llamada Auth. NO `migration repair`.
 NO `db push`. NO creación de usuarios. NO modificación de migraciones.
 NO commit. NO push.
+
+### 48.L — Fase 8I-B2B-0B2B-I2-E2 / E2B / E2C — 28/35, cuarta excepción descubierta, herramienta de prerequisito
+
+**Corrección a la Sección 48.K:** la frase de cierre "#24 sigue pendiente
+de ejecución real" era exacta en el momento en que se escribió (E1H no
+ejecutó nada remotamente). Entre E1H y esta sección, el owner ejecutó
+empíricamente la proyección de `#24` contra staging real (E2) — **`#24`
+pasó de PENDIENTE a HECHO**. No se reescribe la Sección 48.K; esta nota
+la sustituye hacia adelante.
+
+**Estado remoto empírico actual (E2/E2B):** **28/35** migraciones
+aplicadas, última = `20260822100000`. El push continuó normalmente tras
+`#24` hasta fallar en **`20260822110000_add_templates.sql`** con
+`SQLSTATE 42883: function public.crm_is_active_admin() does not exist`.
+Verificado de solo lectura: `public.templates` ausente, sus índices/
+triggers/policies ausentes, las 2 policies restrictivas de
+`storage.objects` ausentes, `crm_is_active_admin()` ausente —
+**`REMOTE_20260822110000_PARTIAL_STATE = FULL_ROLLBACK_CONFIRMED`**. El
+primer Administrador sintético de staging permanece: `profiles_total=1`,
+`active_admins=1`.
+
+**Auditoría de cierre de dependencias (E2B):** un escaneo exhaustivo de
+cada `public.*()` referenciado en las 35 migraciones tracked, comparado
+contra cada `public.*()` efectivamente creado en ellas, produjo
+**exactamente dos** nombres sin resolver en todo el historial:
+`public.crm_is_active_staff()` y `public.crm_is_active_admin()`. Ninguna
+migración tracked los crea nunca; su única fuente tracked es
+`supabase/self-hosted/0004_functions_and_rpc.sql` (definiciones) y
+`supabase/self-hosted/0006_rls_and_grants.sql` (grants, dentro de un
+contexto de revoke-all propio del self-hosted). Clasificación:
+`PRODUCTION_HISTORY_VALIDITY = VALID` / `FRESH_BOOTSTRAP_PORTABILITY =
+NOT_PORTABLE_AS_IS` / `PRIMARY_ROOT_CAUSE = OUT_OF_BAND_HISTORICAL_OBJECT`
+— ambas funciones existían en el Cloud real (por eso `20260811103000`
+compiló sin error: sus 3 referencias viven dentro de cuerpos `plpgsql`,
+que Postgres no valida contra el catálogo al crear la función, solo al
+ejecutarla — un **landmine latente ya desplegado** en
+`guard_case_task_update()`/`claim_case_task(uuid)`/`return_case_task(uuid)`,
+confirmado pero no explotado hasta ahora), pero nunca se capturaron como
+migración tracked, por lo que un fresh bootstrap puramente tracked
+carece de ellas. `20260822110000` falla porque sus 3 referencias viven
+dentro de expresiones `CREATE POLICY ... WITH CHECK`, que Postgres SÍ
+valida de forma inmediata.
+
+**Recuento de excepciones corregido: 4, no 3.**
+1. `20260729213000` guard destructivo — **HECHO**
+2. Secuenciación del primer Admin (antes de `20260822120000`) — **HECHO**
+3. `20260806120000` aserción de fila histórica (`#24`) — **HECHO** (E2)
+4. Prerequisito `crm_is_active_staff()`/`crm_is_active_admin()` — **PENDIENTE**
+
+**Herramientas implementadas en E2C (LOCAL, sin escritura remota):**
+- **`scripts/build-crm-fresh-security-prerequisite-projection.mjs`** (+
+  `.d.mts`) — extrae, con fallo cerrado, los dos fragmentos `CREATE
+  FUNCTION` verbatim desde `supabase/self-hosted/0004_functions_and_rpc.sql`
+  (hash de archivo completo pinneado:
+  `b7c501ae2d2579ab08ad6f3d3897710629ecd84f8d261535281152e2e43dcd23`;
+  fragmento `crm_is_active_staff`:
+  `e696e72b05f33ee30306ea5dbe81afa282238c5d998d88a0254e5c82a24128ed`;
+  fragmento `crm_is_active_admin`:
+  `65d7c37bcd04fe5fab18937fee962c5f9704ba5481a6dacff711b8be1c958a54`) y
+  ensambla una transacción única: precondición (ambas funciones
+  ausentes, `public.profiles`/`auth.uid()` presentes, fallo cerrado ante
+  estado parcial) → las 2 definiciones verbatim → ACL mínimo y dirigido
+  (NUNCA el `REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public` masivo de
+  `0006_rls_and_grants.sql`, que mutaría funciones ya desplegadas sin
+  relación — en su lugar, revoke/grant explícito por función, documentado
+  como una proyección mínima de ese mismo modelo de seguridad) →
+  postcondición (existencia, `language sql`/`stable`/`security definer`/
+  `search_path=''`, `authenticated` con EXECUTE, `anon`/`PUBLIC` sin
+  EXECUTE). Nunca toca `supabase/migrations/` ni
+  `supabase/self-hosted/`; escribe solo bajo `os.tmpdir()`.
+- **`scripts/sql/verify-crm-security-prerequisite-prestate.sql`** —
+  solo lectura: historial=28/primero/último exactos, `20260822110000`
+  ausente, ambas funciones ausentes, Admin preservado, `templates`/sus
+  policies de storage ausentes. `NOTICE` final
+  `CRM_SECURITY_PREREQUISITE_PRESTATE = CONFIRMED`.
+- **`scripts/sql/verify-crm-security-prerequisite-poststate.sql`** —
+  solo lectura: historial sin cambios (28, `20260822110000` aún
+  ausente — este prerequisito nunca se adopta vía `migration repair`,
+  no es una migración versionada), ambas funciones ahora existen con la
+  forma esperada, ACL exacto, Admin/`templates` sin cambios, y los 3
+  objetos latentes de `20260811103000` verificados **solo por catálogo**
+  (`to_regprocedure`), nunca invocados. `NOTICE` final
+  `CRM_SECURITY_PREREQUISITE_POSTSTATE = CONFIRMED`.
+
+**Secuencia futura prevista (no ejecutada aún):** prestate verifier →
+construir la proyección → verificar identidad congelada → checkpoint
+humano → ejecutar el SQL temporal exacto → poststate verifier →
+checkpoint humano → `db push --dry-run` → `db push` normal comenzando en
+`20260822110000` (sin `migration repair` para este prerequisito — no es
+una migración, `20260822110000` se aplica tal cual está escrita una vez
+satisfecho el prerequisito).
+
+**Gates:** `npx tsc --noEmit` limpio. `npm run lint`: 0 errores (7
+warnings preexistentes sin cambios). `npm test`: **72 archivos, 1813
+passed, 0 failed** (70/1777 + 36 pruebas nuevas = exacto).
+`node scripts/validate-crm-baseline.mjs`: **25/25 PASS**, MANIFEST_V1/V2
+sin cambios (este prerequisito nunca se añade a `supabase/migrations/`,
+así que el conteo de 35 y ambos manifiestos quedan intactos por diseño,
+no por coincidencia). Proyección `#24` y herramienta de primer-admin
+reverificadas independientemente sin cambios.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO escritura en base de datos. NO escritura Auth. NO `migration repair`.
+NO `db push`. NO modificación de migraciones. NO commit. NO push.
