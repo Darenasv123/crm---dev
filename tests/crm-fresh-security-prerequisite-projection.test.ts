@@ -103,6 +103,22 @@ describe("buildProjection() — fuente real congelada", () => {
     expect(result.projectedText).toContain("create function public.crm_is_active_admin()");
   });
 
+  it("los fragmentos verbatim siguen conteniendo set search_path = '' (fuente semántica sin tocar)", () => {
+    const result = buildProjection();
+    for (const f of result.fragments) {
+      expect(f.text).toContain("set search_path = ''");
+    }
+  });
+
+  it('POST2 exige la representación canónica de catálogo search_path="" (E2CI), no el predicado roto search_path=', () => {
+    // PostgreSQL 17.6, evidencia empírica: `set search_path = ''` se
+    // canonicaliza en pg_proc.proconfig como `search_path=""`, nunca como
+    // `search_path=`. El predicado anterior no podía coincidir jamás.
+    const result = buildProjection();
+    expect(result.projectedText).toContain("array['search_path=\"\"']::text[]");
+    expect(result.projectedText).not.toContain("array['search_path=']::text[]");
+  });
+
   it("nunca modifica los archivos fuente en disco", () => {
     buildProjection();
     expect(readFileSync(SOURCE_FILE_RELATIVE_PATH, "utf8")).toBe(REAL_SOURCE_TEXT);

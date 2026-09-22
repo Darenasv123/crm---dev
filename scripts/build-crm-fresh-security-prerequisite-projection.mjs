@@ -235,11 +235,11 @@ begin
       l.lanname = 'sql'
       and p.provolatile = 's'
       and p.prosecdef is true
-      and coalesce(p.proconfig, array[]::text[]) @> array['search_path=']::text[]
+      and coalesce(p.proconfig, array[]::text[]) @> array['search_path=""']::text[]
       and p.proowner = (select oid from pg_roles where rolname = current_user)
     );
   if v_bad_shape is not null then
-    raise exception 'FAIL[POST2]: function(s) do not match the expected shape (language sql, stable, security definer, search_path='''', owned by the executing role): %', v_bad_shape;
+    raise exception 'FAIL[POST2]: function(s) do not match the expected shape (language sql, stable, security definer, proconfig containing the canonical catalog entry search_path="" -- i.e. defined via SET search_path = '''', owned by the executing role): %', v_bad_shape;
   end if;
 
   if not has_function_privilege('authenticated', 'public.crm_is_active_staff()', 'execute') then

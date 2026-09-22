@@ -5612,3 +5612,92 @@ reverificadas independientemente sin cambios.
 **Confirmación de alcance de esta fase (sin excepciones):**
 NO escritura en base de datos. NO escritura Auth. NO `migration repair`.
 NO `db push`. NO modificación de migraciones. NO commit. NO push.
+
+### 48.M — Fase 8I-B2B-0B2B-I2-E2CI — Primer intento de escritura del prerequisito, POST2 falló antes de COMMIT, hotfix del verificador local
+
+**Primer intento real de escritura del prerequisito #4 contra CRM Drive
+Staging.** El PRESTATE verifier pasó exactamente (historial=28/último
+`20260822100000`/`20260822110000` ausente, ambas funciones ausentes,
+Admin preservado, `templates` ausente) y la identidad de la proyección
+generada coincidía exacta con la congelada en el repo en ese momento
+(`sourceSha256`/fragment hashes de 0004 sin cambios). El SQL generado
+creó ambas funciones y su ACL dentro de una única transacción, pero
+**`POST2` falló antes de `COMMIT`** — la transacción completa hizo
+rollback. Un verificador externo de solo lectura confirmó rollback
+total: ambas funciones objetivo ausentes tras el intento,
+`REMOTE_20260822110000_PARTIAL_STATE` sin cambios,
+`profiles_total=1`/`active_admins=1` preservados. **No fue necesaria
+ninguna recuperación remota** — el fallo antes de `COMMIT` significa
+que staging nunca quedó en un estado intermedio. Estado remoto
+empírico: **28/35 sin cambios**, última = `20260822100000`,
+`20260822110000` aún ausente.
+
+**Diagnóstico empírico de causa raíz — `CATALOG_REPRESENTATION_MISMATCH_FOR_EMPTY_SEARCH_PATH`:**
+el POST2/B2 de ambos verificadores comprobaba
+`coalesce(p.proconfig, array[]::text[]) @> array['search_path=']::text[]`.
+Contra PostgreSQL 17.6 real, una función definida con `set search_path
+= ''` canonicaliza su entrada de catálogo en `pg_proc.proconfig` como
+el elemento de texto `search_path=""` — nunca `search_path=` (sin
+valor). El predicado anterior, por tanto, **no podía coincidir jamás**,
+incluso contra un catálogo perfectamente correcto: el prerequisito fue
+escrito correctamente y luego rechazado por su propio verificador. La
+fuente autoritativa (`supabase/self-hosted/0004_functions_and_rpc.sql`)
+nunca se tocó ni se sospechó — el defecto era exclusivamente de la
+representación de catálogo asumida por el verificador, no del diseño
+de la función ni del ACL.
+
+**Hotfix aplicado (E2CI, LOCAL, sin escritura remota):** se corrigió el
+predicado en los dos lugares que lo contenían —
+`scripts/build-crm-fresh-security-prerequisite-projection.mjs` (bloque
+POST2 embebido en el SQL generado) y
+`scripts/sql/verify-crm-security-prerequisite-poststate.sql` (bloque B)
+— a `array['search_path=""']::text[]`. El prestate verifier no
+comprueba la forma de las funciones (solo su ausencia), así que no
+contenía el defecto y no fue tocado. Se añadieron pruebas de regresión
+estáticas (sin conexión a base de datos) que documentan la evidencia
+empírica y exigen la representación canónica, y que fallan si el
+predicado roto vuelve a aparecer.
+
+**Identidad de la proyección — cambia por diseño:** al corregir el
+predicado embebido en el SQL generado, la identidad de la proyección
+cambia necesariamente.
+- Identidad anterior (defectuosa, no reutilizable):
+  `5510fa4b1ed25b2cc05531c43c8d84d131d7f31760130e295e46dca1708d1e88`.
+- Identidad nueva, regenerada localmente tras el hotfix:
+  `GENERATED_PROJECTION_SHA256 = c20fde40739e1474896b1b684d012fca331dd148beba44d5cd7d23bea3354d27`,
+  `GENERATED_PROJECTION_BYTES = 5254`.
+El artefacto temporal se inspeccionó localmente y se eliminó de
+`os.tmpdir()` tras la verificación — nunca se escribió dentro del
+repositorio.
+
+**Identidades autoritativas — sin cambios (verificado):**
+`EXPECTED_SOURCE_FILE_SHA256` (0004) =
+`b7c501ae2d2579ab08ad6f3d3897710629ecd84f8d261535281152e2e43dcd23`;
+`EXPECTED_ACL_PROVENANCE_FILE_SHA256` (0006) =
+`42f16e8c6907c10934b96e38f704eeff0fd8269edba95f950bb191505eeb5b80`;
+fragmento `crm_is_active_staff` =
+`e696e72b05f33ee30306ea5dbe81afa282238c5d998d88a0254e5c82a24128ed`;
+fragmento `crm_is_active_admin` =
+`65d7c37bcd04fe5fab18937fee962c5f9704ba5481a6dacff711b8be1c958a54`.
+Ni los cuerpos de las funciones, ni el diseño de ACL, ni ninguna
+migración, ni `supabase/self-hosted/` se modificaron.
+
+**Gates:** `npx tsc --noEmit` limpio. `npm run lint`: 0 errores (7
+warnings preexistentes sin cambios, no relacionados). `npm test`:
+**72 archivos, 1825 passed, 0 failed**.
+`node scripts/validate-crm-baseline.mjs`: **25/25 PASS**,
+`MANIFEST_V1_SHA256 = b3fc4909efbf9a3001249e6fdf354cbe4c35b0a59ba036f6e7257ceedc87b214`,
+`MANIFEST_V2_SHA256 = 422cd62f34404d0f58eb571f722f1b1aabf2ed224b7619f95130c7e8c1d64029`
+(ambos exactos a los valores congelados; este hotfix no toca
+`supabase/migrations/`).
+
+**Excepción #4 permanece `PENDIENTE`** — este hotfix corrige
+únicamente el verificador local; **no se implica que la excepción #4
+esté completada**. El siguiente intento de escritura real contra
+staging queda pendiente, a reintentar después de este congelado de
+identidad.
+
+**Confirmación de alcance de esta fase (sin excepciones):**
+NO lectura de base de datos. NO escritura en base de datos. NO
+llamada Auth. NO `migration repair`. NO `db push`. NO modificación de
+migraciones. NO commit. NO push.

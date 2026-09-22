@@ -67,10 +67,10 @@ begin
       l.lanname = 'sql'
       and p.provolatile = 's'
       and p.prosecdef is true
-      and coalesce(p.proconfig, array[]::text[]) @> array['search_path=']::text[]
+      and coalesce(p.proconfig, array[]::text[]) @> array['search_path=""']::text[]
     );
   if v_bad_shape is not null then
-    raise exception 'FAIL[B2]: function(s) do not match the expected shape (language sql, stable, security definer, search_path=''''): %', v_bad_shape;
+    raise exception 'FAIL[B2]: function(s) do not match the expected shape (language sql, stable, security definer, proconfig containing the canonical catalog entry search_path="" -- i.e. defined via SET search_path = ''''): %', v_bad_shape;
   end if;
 
   raise notice 'OK[B]: both target functions exist with the expected language/volatility/security/search_path';

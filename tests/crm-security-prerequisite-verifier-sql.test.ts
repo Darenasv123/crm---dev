@@ -120,6 +120,17 @@ describe("verify-crm-security-prerequisite-poststate.sql", () => {
     expect(poststate).toContain("search_path=");
   });
 
+  it('exige la representación canónica de catálogo search_path="" (E2CI), no el predicado roto search_path=', () => {
+    // PostgreSQL 17.6, evidencia empírica: `set search_path = ''` en la
+    // definición de una función se canonicaliza en pg_proc.proconfig como
+    // el elemento de texto `search_path=""`, no `search_path=` (sin valor).
+    // `array['search_path='] <@ proconfig` nunca es true para ninguna
+    // función correctamente definida -- ese predicado roto habría hecho
+    // fallar POST2/B2 siempre, incluso contra un catálogo correcto.
+    expect(poststate).toContain("array['search_path=\"\"']::text[]");
+    expect(poststate).not.toContain("array['search_path=']::text[]");
+  });
+
   it("exige ACL exacto: authenticated=sí, anon=no, PUBLIC=no", () => {
     expect(poststate).toMatch(
       /has_function_privilege\('authenticated', 'public\.crm_is_active_staff\(\)', 'execute'\)/,
